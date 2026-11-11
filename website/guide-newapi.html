@@ -19,24 +19,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>NewAPI 接入教程（OpenAI 兼容中转网关配置与模型分类）— AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine 教程：用内置 NewAPI 提供商接入自建中转网关，按网关端点元数据自动区分文本与图片模型。"
+      content="AI Art Engine (AIArtEngine) v8.9.1 NewAPI 自建中转网关接入指南：通过内置 NewAPI 提供商连接 OpenAI 兼容网关，读取 /api/pricing 端点元数据自动区分文本与图片模型，并详解令牌分组排查与手动填写模型 ID。"
     />
-    <title>NewAPI 接入教程 — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="NewAPI接入教程, OneAPI中转网关, OpenAI兼容接口配置, 自建AI网关, 文本图片模型自动分类, AI Art Engine模型配置, AI Art Engine"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="NewAPI 接入教程 — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine 教程：用内置 NewAPI 提供商接入自建中转网关，按网关端点元数据自动区分文本与图片模型。" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="NewAPI 接入教程（OpenAI 兼容中转网关配置与模型分类）— AI Art Engine" />
+    <meta
+      property="og:description"
+      content="使用内置 NewAPI 提供商一站式接入自建或托管 OpenAI 兼容中转网关，根据网关端点元数据自动归类文本对话与图片生成/编辑模型。"
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="NewAPI 接入教程 — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine 教程：用内置 NewAPI 提供商接入自建中转网关，按网关端点元数据自动区分文本与图片模型。" />
+    <meta name="twitter:title" content="NewAPI 接入教程（OpenAI 兼容中转网关配置与模型分类）— AI Art Engine" />
+    <meta
+      name="twitter:description"
+      content="在 AI Art Engine v8.9.1 中配置 NewAPI 中转网关，自动识别文本与图片模型并排查令牌分组与端点常见问题。"
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
@@ -49,7 +61,55 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "NewAPI 接入教程（OpenAI 兼容中转网关配置与模型分类）— AI Art Engine",
+            "description": "AI Art Engine v8.9.1 NewAPI 中转网关接入指南：涵盖 Base URL (/v1) 填写规范、基于 /api/pricing 元数据的文本与图片模型自动分类、令牌分组排障以及手动添加模型 ID。",
+            "inLanguage": "zh-CN",
+            "url": "https://justin-sky.github.io/ai-art-engine/guide-newapi.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/guide-newapi.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "首页",
+                "item": "https://justin-sky.github.io/ai-art-engine/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "NewAPI 接入教程",
+                "item": "https://justin-sky.github.io/ai-art-engine/guide-newapi.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#manual">跳到正文</a>
@@ -127,7 +187,7 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · NewAPI</p>
+          <p class="eyebrow">Guide · v8.9.1 · NewAPI Relay Gateway</p>
           <h1>NewAPI 接入教程</h1>
           <p class="lede">
             NewAPI 是开源的 OpenAI 兼容中转网关，把多家渠道的模型聚合成一个地址。本软件内置了

@@ -19,24 +19,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>MCP 接入教程（102 工具全量参考）— Claude Code / Cursor / Codex 驱动 AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine MCP 接入教程：把应用接入 Claude Code 等 AI Agent，用对话规划工作流、编辑节点图、运行生成与查询任务。"
+      content="AI Art Engine (AIArtEngine) v8.9.1 MCP 接入教程：通过 stdio 桥或 Streamable HTTP 将桌面端接入 Claude Code、Cursor、Codex，完整调用 102 个本地 MCP 工具（93 主工具 + 9 Blender 实时桥），编排类型化 DAG 节点图、技能市场工作流、视频取证、游戏 UI 与 Machinations 数值仿真。"
     />
-    <title>MCP 接入教程 — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI Art Engine MCP, AIArtEngine MCP Server, Claude Code MCP 接入, Cursor MCP 配置, Codex MCP, Blender MCP 桥, AI 工作流 Agent 工具, DAG 节点图编排, X-MCP-Mode, 本地 AIGC 工具服务"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="MCP 接入教程 — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine MCP 接入教程：把应用接入 Claude Code 等 AI Agent，用对话规划工作流、编辑节点图、运行生成与查询任务。" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="MCP 接入教程（102 工具全量参考）— AI Art Engine v8.9.1" />
+    <meta
+      property="og:description"
+      content="将 AI Art Engine 接入 Claude Code / Cursor / Codex：93 个 /mcp 核心工具 + 9 个 /mcp/blender 实时建模工具、请求级 Agent/Plan/Ask 权限隔离与双向 stdio 桥完整指南。"
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="MCP 接入教程 — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine MCP 接入教程：把应用接入 Claude Code 等 AI Agent，用对话规划工作流、编辑节点图、运行生成与查询任务。" />
+    <meta name="twitter:title" content="MCP 接入教程（102 工具全量参考）— AI Art Engine v8.9.1" />
+    <meta
+      name="twitter:description"
+      content="将 AI Art Engine 接入 Claude Code / Cursor / Codex：93 个 /mcp 核心工具 + 9 个 /mcp/blender 实时建模工具、请求级 Agent/Plan/Ask 权限隔离与双向 stdio 桥完整指南。"
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
@@ -49,7 +61,55 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "MCP 接入教程（102 工具全量参考）— Claude Code / Cursor / Codex 驱动 AI Art Engine",
+            "description": "AI Art Engine v8.9.1 本地双向 MCP 服务接入指南：涵盖 stdio 桥与 HTTP 直连配置、93 个 /mcp 主工具与 9 个 /mcp/blender 工具全集、DAG 节点图编排及 Agent/Plan/Ask 请求级模式权限隔离。",
+            "inLanguage": "zh-CN",
+            "url": "https://justin-sky.github.io/ai-art-engine/guide-mcp.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/guide-mcp.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "首页",
+                "item": "https://justin-sky.github.io/ai-art-engine/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "MCP 接入教程",
+                "item": "https://justin-sky.github.io/ai-art-engine/guide-mcp.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <style>
       pre.mcp-code {
         background: var(--bg-soft);
@@ -133,12 +193,12 @@
         <ol>
           <li><a href="#what">MCP 是什么</a></li>
           <li><a href="#setup">三步接入 Claude Code</a></li>
-          <li><a href="#tools">工具清单</a></li>
+          <li><a href="#tools">102 工具全集</a></li>
           <li><a href="#examples">场景示例</a></li>
           <li><a href="#env">配置与环境变量</a></li>
           <li><a href="#settings-bridge">stdio 桥可视化设置</a></li>
           <li><a href="#reverse-bridge">反向桥：dsh 直连 stdio server</a></li>
-          <li><a href="#security">安全与当前限制</a></li>
+          <li><a href="#security">模式隔离与安全护栏</a></li>
           <li><a href="#blender">Blender 工具集（进阶）</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
@@ -148,14 +208,12 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · MCP</p>
-          <h1>MCP 接入教程</h1>
+          <p class="eyebrow">Guide · MCP · v8.9.1</p>
+          <h1>MCP 接入教程（102 工具全量参考）</h1>
           <p class="lede">
-            把 AiArtEngine 接入 <strong>Claude Code</strong> 等 AI Agent：应用启动后自带一个本地
-            MCP 工具服务，Agent 可以直接<strong>规划工作流、编辑节点图、运行生成、查询任务</strong>——对标
-            LibTV CLI 的「产品即 Agent 工具」体验，但完全本地化，无需云账号授权。
-            应用内置的 <strong>AI 对话面板</strong>（工作区左侧「◈」）也走这同一套工具集：在聊天里
-            <code>@</code> 引用资产，让助手直接调用下列工具干活。
+            把 AI Art Engine 接入 <strong>Claude Code、Cursor、Codex</strong> 等 AI Agent：应用启动后自带本地双向
+            MCP 工具服务（<strong>93 个 <code>/mcp</code> 主工具 + 9 个 <code>/mcp/blender</code> 实时桥工具，共 102 个</strong>），Agent 可以直接<strong>编排类型化 DAG 节点图、检索与安装技能市场工作流、执行视频四轴取证与时间线精剪、生成游戏 UI / Machinations 数值沙盘 / 可玩 HTML5 游戏</strong>——完全本地化，无需云账号授权。
+            应用内置的 <strong>AI 对话面板</strong>（工作区「◈」）也走这同一套工具面：在聊天里 <code>@</code> 引用资产，即可直接驱动整套引擎。
           </p>
         </header>
 
@@ -163,17 +221,16 @@
           <h2>1. MCP 是什么</h2>
           <p>
             MCP（Model Context Protocol）是 AI Agent 调用外部工具的标准协议。接入后，你的编码
-            Agent 多了一组「AiArtEngine 工具」，对话即可驱动应用：
+            Agent 多了一组「AI Art Engine 工业资产工具」，对话即可驱动桌面端：
           </p>
-          <pre class="mcp-code"><code>Claude Code / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AiArtEngine 应用（127.0.0.1 工具服务）</code></pre>
+          <pre class="mcp-code"><code>Claude Code / Cursor / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AI Art Engine（127.0.0.1 工具服务）</code></pre>
           <ul>
             <li>应用每次启动会在 <code>127.0.0.1</code> 起一个带 Bearer token 的本地工具服务，连接信息写入 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS / Linux 路径见下文）。文件跨重启保留，<strong>token 稳定不变</strong>，客户端配置一次即可；也可在应用「设置 → MCP 接入」中编辑 Token。</li>
             <li>桥脚本 <code>scripts/mcp-bridge.mjs</code> 零依赖，由 Agent 客户端拉起，负责协议转换与转发。</li>
-            <li>通信仅限本机回环地址；除健康检查外全部需要 token。</li>
+            <li>通信仅限本机回环地址；除健康检查外全部需要 token 鉴权，并支持基于请求头的 <strong>Agent / Plan / Ask</strong> 模式权限隔离（<code>X-MCP-Mode</code> / <code>X-AIArt-Mode</code>）。</li>
           </ul>
           <div class="tip">
-            前置条件：AiArtEngine 桌面应用处于运行状态；桥脚本需要 Node.js 18+；
-            <code>workflow_plan</code> 类工具依赖应用里已配置的文本模型。
+            前置条件：AI Art Engine 桌面应用处于运行状态；使用 stdio 桥脚本需本机装有 Node.js 18+（HTTP 直连方式无需 Node.js）；驱动画布节点运行生成任务时，对应模态的模型需已在「设置 → 模型」中配置启用。
           </div>
         </section>
 
@@ -181,9 +238,9 @@
           <h2>2. 三步接入 Claude Code（两种方式任选其一）</h2>
           <h3>方式 A：stdio 桥（推荐）</h3>
           <ol>
-            <li>启动 AiArtEngine 桌面应用。</li>
+            <li>启动 AI Art Engine 桌面应用。</li>
             <li>
-              注册 MCP server（桥脚本在仓库内，把路径换成你的实际仓库位置）：
+              注册 MCP server（桥脚本在仓库内，把路径换成你的实际仓库或安装目录位置）：
               <pre class="mcp-code"><code>claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code></pre>
               或手动写入 MCP 配置文件：
               <pre class="mcp-code"><code>{
@@ -195,12 +252,12 @@
   }
 }</code></pre>
             </li>
-            <li>重启 Agent 会话，工具即可使用。其他支持 MCP 的客户端（Codex、Trae 等）按同样的「command + args」方式配置。</li>
+            <li>重启 Agent 会话，工具即可使用。其他支持 MCP 的客户端（Cursor、Codex、Trae 等）按同样的「command + args」方式配置。</li>
           </ol>
           <h3>方式 B：HTTP 直连（无需 Node.js）</h3>
           <p>
-            支持 streamable HTTP 的客户端可跳过桥脚本，token 取自
-            mcp.json（持久复用）：
+            支持 Streamable HTTP 的客户端可跳过桥脚本，token 取自
+            <code>mcp.json</code>（持久复用）：
           </p>
           <pre class="mcp-code"><code>claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer &lt;token&gt;"</code></pre>
           <h3>配置模板（.mcp.json）</h3>
@@ -243,203 +300,103 @@
             <code>{ "port": 43110, "token": "…", "pid": …, "version": "…" }</code>）由应用自动写入与删除，
             <strong>不要手改</strong>；token 跨重启复用，要重置删除该文件后重启应用即可。
           </div>
-          <ol start="4">
-          </ol>
         </section>
 
         <section id="tools">
-          <h2>3. 工具清单</h2>
+          <h2 id="catalog">3. 102 个实时 MCP 工具全集（93 主工具 + 9 Blender 工具）</h2>
+          <div class="tip">
+            <strong>架构演进说明（v8.9.1）：</strong>早期版本中的独立媒体直生与旧版预设规划命令已全部下线，统一收归为<strong>类型化有向无环图（DAG）节点与技能市场工作流</strong>。现在无论是图像/视频/语音/音效/音乐生成、3D 模型生成与绑骨切分，还是 World Labs 3D 高斯泼溅空间世界，均通过两种标准范式驱动：
+            <br />① <strong>节点图精细编排</strong>：先查 <code>graph_node_types</code>（获取节点端口、参数 Schema 与原生能力）→ 用 <code>graph_edit</code> 增改节点/连线/预设 → 调 <code>task_run</code> 与 <code>task_status</code> 执行并追踪；
+            <br />② <strong>技能市场工作流直装复用</strong>：调 <code>skill_search</code> 检索领域包 → <code>skill_install</code> 原子安装 → <code>workflow_use_installed</code> 物化为宿主画布资产后运行。
+          </div>
+
           <table>
             <thead>
               <tr>
-                <th>分组</th>
-                <th>工具</th>
-                <th>作用</th>
+                <th>能力分组（数量）</th>
+                <th>工具列表（精确名称）</th>
+                <th>核心职责</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td rowspan="11">工程与资产</td>
-                <td><code>app_status</code></td>
-                <td>版本、当前工程、资产数量</td>
-              </tr>
-              <tr>
-                <td><code>project_list</code> / <code>project_open</code> / <code>project_create</code></td>
-                <td>最近工程、打开、新建</td>
-              </tr>
-              <tr>
-                <td><code>asset_list</code> / <code>asset_read_file</code></td>
-                <td>资产列表、按相对路径读取工程内文件</td>
-              </tr>
-              <tr>
-                <td><code>asset_write_text</code></td>
-                <td>更新剧本 / 备注等文本资产（界面同步）</td>
-              </tr>
-              <tr>
-                <td><code>folder_create</code></td>
-                <td>新建资产库文件夹，返回 <code>folderId</code></td>
-              </tr>
-              <tr>
-                <td><code>asset_create</code></td>
-                <td>新建资产（剧本 / 策划案 / 世界观 / 分镜 / 画布 / 图片 / 视频 / 声音 / 2D 动作）</td>
-              </tr>
-              <tr>
-                <td><code>asset_import</code></td>
-                <td>把本机绝对路径的素材导入资产库（图片 / 视频 / 音频 / 文本，单次上限 50）</td>
-              </tr>
-              <tr>
-                <td><code>asset_rename</code></td>
-                <td>重命名资产（界面同步）</td>
-              </tr>
-              <tr>
-                <td><code>asset_move</code></td>
-                <td>资产归档：在资产库内移动（媒体文件随目录搬移）</td>
-              </tr>
-              <tr>
-                <td><code>asset_delete</code></td>
-                <td>从资产库移除资产（默认拒绝删除仍被引用的资产）</td>
-              </tr>
-              <tr>
-                <td><code>folder_list</code></td>
-                <td>资产库文件夹列表（生成工具 folderId 的来源）</td>
-              </tr>
-              <tr>
-                <td rowspan="14">交付与后期</td>
-                <td><code>transcribe_audio</code></td>
-                <td>音频 / 视频转写为带时间戳的分段文本（字幕底稿）</td>
-              </tr>
-              <tr>
-                <td><code>audio_separate</code></td>
-                <td>人声 / 伴奏分离（产物落 <code>Cache/Separated/</code>）</td>
-              </tr>
-              <tr>
-                <td><code>storage_upload</code></td>
-                <td>上传工程内媒体到对象存储，返回可分享 URL</td>
-              </tr>
-              <tr>
-                <td><code>asset_package_export</code></td>
-                <td>导出 <code>.aipackage</code> 交付包（无界面链路需给绝对路径）</td>
-              </tr>
-              <tr>
-                <td><code>asset_package_import</code></td>
-                <td>导入 <code>.aipackage</code> 交付包（可按 guid 选子集）</td>
-              </tr>
-              <tr>
-                <td><code>stage2d_spine_export</code></td>
-                <td>2D 舞台骨骼装配导出成 Spine 骨架包（部件透明页 + skeleton.json + .atlas）</td>
-              </tr>
-              <tr>
-                <td><code>asset_qc</code></td>
-                <td>图片资产引擎就绪体检（漏底 / 白边 / 碎屑 / 贴边 / 尺寸 / 命名，只读）</td>
-              </tr>
-              <tr>
-                <td><code>asset_qc_fix</code></td>
-                <td>边缘去污染返工，产出新资产并给出修复前后对比</td>
-              </tr>
-              <tr>
-                <td><code>timeline_read</code></td>
-                <td>读成片时间线：片段 / 设置 / 总时长，可按轨过滤</td>
-              </tr>
-              <tr>
-                <td><code>timeline_rough_cut</code></td>
-                <td>智能粗剪：按配音转写挤掉静默并全线前移，默认只回计划</td>
-              </tr>
-              <tr>
-                <td><code>timeline_export</code></td>
-                <td>时间线合成 MP4（转场 / 混音 / 烧字幕 / 水印）</td>
-              </tr>
-              <tr>
-                <td><code>timeline_edit</code></td>
-                <td>时间线增删改：铺素材上轨 / 改音量转场字幕 / 删片段 / 按转写重建字幕</td>
-              </tr>
-              <tr>
-                <td><code>timeline_preview</code></td>
-                <td>看成片画面：按导出同一条滤镜图抽帧，画面直接回给多模态客户端</td>
-              </tr>
-              <tr>
-                <td rowspan="6">规划与运行</td>
-                <td><code>workflow_list_presets</code></td>
-                <td>12 个行业模板列表（id + 标题）</td>
-              </tr>
-              <tr>
-                <td><code>workflow_plan</code></td>
-                <td>自然语言 → 节点图计划（走应用已配置文本模型）</td>
-              </tr>
-              <tr>
-                <td><code>workflow_commit</code></td>
-                <td>计划落盘为宿主资产（界面同步出现）</td>
-              </tr>
-              <tr>
-                <td><code>task_run</code> / <code>task_status</code></td>
-                <td>运行宿主资产工作流、轮询执行状态（应用任务列表同步显示）</td>
-              </tr>
-              <tr>
-                <td><code>graph_node_types</code></td>
-                <td>可添加节点类型清单（typeId / 名称 / 端口 / 默认参数，graph_edit 建节点白名单）</td>
-              </tr>
-              <tr>
-                <td><code>graph_read</code></td>
-                <td>读取宿主资产图结构（节点 id / 连线，graph_edit 前置）</td>
-              </tr>
-              <tr>
-                <td rowspan="4">生成</td>
-                <td><code>generate_image</code></td>
-                <td>文生图 / 图生图，落盘为工程资产</td>
-              </tr>
-              <tr>
-                <td><code>generate_video</code></td>
-                <td>提交视频生成并登记资产（可 <code>video_job_*</code> 跟踪）</td>
-              </tr>
-              <tr>
-                <td><code>generate_model3d</code></td>
-                <td>文生 / 图生 3D，产出 GLB 资产</td>
-              </tr>
-              <tr>
-                <td><code>decide</code></td>
+                <td><strong>1. 系统、多工程工作区、Git 与定时任务（14）</strong><br /><small>端点：<code>/mcp</code></small></td>
                 <td>
-                  用 OpenRouter 决策模型对给定状态做类型化判定（noul 是/否、choice 多选一、score
-                  有序打分），返回带概率、可直接分支的结论；三种原语可混用，判定不落盘
+                  <code>app_status</code> · <code>models_list</code> · <code>storage_status</code> ·
+                  <code>project_list</code> · <code>project_open</code> · <code>project_create</code> ·
+                  <code>project_memory_read</code> · <code>project_memory_write</code> · <code>project_memory_append</code> ·
+                  <code>project_git_status</code> · <code>project_git_diff</code> ·
+                  <code>schedule_list</code> · <code>schedule_delete</code> · <code>ask_user</code>
                 </td>
+                <td>查询应用版本/已启用模型/对象存储状态；跨多工程切换创建与持久记忆读写；查看工程 Git 状态与差异；管理 24h 定时任务；在 Plan/交互流程中向用户发起结构化提问确认。</td>
               </tr>
               <tr>
-                <td rowspan="5">编辑与查询</td>
-                <td><code>graph_edit</code></td>
-                <td>对宿主资产图应用节点 / 连线编辑操作批（支持任意深层点路径 <code>params</code>、预设 <code>preset</code>、节点 <code>dive_open</code> / <code>dive_close</code> 与 <code>run_node</code>）</td>
-              </tr>
-              <tr>
-                <td><code>director_stage_edit</code></td>
-                <td>3D 导演台全功能直控（角色 / 道具 / 白模 / 相机机位的显示隐藏、锁定、平移旋转缩放、姿势、材质颜色、关键帧打点、白模搭建及 <code>stage.3d</code> 节点参数实时同步）</td>
-              </tr>
-              <tr>
-                <td><code>graph_icon_refine</code></td>
-                <td>单枚图标精修回炉：重画某一枚 → 写回打包节点逐枚覆盖 → 重跑打包（与弹窗同一口径；调用期间任务列表与素材库卡片角标可见运行中活动）</td>
-              </tr>
-              <tr>
-                <td><code>models_list</code></td>
-                <td>已启用模型提供商与各模态勾选模型（含 OpenRouter 的 <code>decisions</code> 决策模型；不含密钥）</td>
-              </tr>
-              <tr>
-                <td><code>video_job_list</code> / <code>video_job_get</code></td>
-                <td>异步视频任务状态</td>
-              </tr>
-              <tr>
-                <td rowspan="3">可玩 HTML</td>
-                <td><code>gameplay_prepare_project</code></td>
+                <td><strong>2. 资产库、交付包、音色档案、引擎质检与 Spine/SVG（21）</strong><br /><small>端点：<code>/mcp</code></small></td>
                 <td>
-                  为一句话小游戏落下纯 Node + esbuild 脚手架（含
-                  <code>src/core</code> / <code>src/assets</code> 资产层骨架），返回工程相对路径
+                  <code>asset_list</code> · <code>asset_read_file</code> · <code>asset_write_text</code> ·
+                  <code>asset_create</code> · <code>asset_import</code> · <code>asset_rename</code> ·
+                  <code>asset_move</code> · <code>asset_delete</code> ·
+                  <code>folder_list</code> · <code>folder_create</code> · <code>folder_move</code> ·
+                  <code>asset_package_export</code> · <code>asset_package_import</code> · <code>storage_upload</code> ·
+                  <code>voice_profile_list</code> · <code>voice_profile_upsert</code> · <code>voice_profile_delete</code> ·
+                  <code>asset_qc</code> · <code>asset_qc_fix</code> · <code>stage2d_spine_export</code> · <code>render_svg</code>
                 </td>
+                <td>工程资产与目录全生命周期增删改移、本机文件批量导入、<code>.aipackage</code> 交付包导入导出、云端对象存储上传；跨集 TTS 角色音色档案管理；透明通道白边/碎屑体检与自动去污染返工；Spine 2D 骨骼包（<code>skeleton.json + .atlas</code>）导出与 SVG 栅格化预览。</td>
               </tr>
               <tr>
-                <td><code>gameplay_build</code></td>
+                <td><strong>3. DAG 节点图、3D 导演台、任务执行与技能市场（18）</strong><br /><small>端点：<code>/mcp</code></small></td>
                 <td>
-                  后台 cook（<code>npm install</code> + <code>node build.mjs</code>）打成单文件，返回
-                  <code>jobId</code>；<strong>由宿主跑 npm</strong>。成功后自动登记 gamePlay 资产，对话卡的「试玩」用浏览器打开
+                  <code>graph_node_types</code> · <code>graph_read</code> · <code>graph_edit</code> · <code>graph_icon_refine</code> ·
+                  <code>director_stage_read</code> · <code>director_stage_edit</code> ·
+                  <code>task_run</code> · <code>task_status</code> · <code>video_job_list</code> · <code>video_job_get</code> ·
+                  <code>list_model3d_animations</code> · <code>decide</code> ·
+                  <code>skill_list</code> · <code>skill_search</code> · <code>skill_inspect_github</code> ·
+                  <code>skill_install</code> · <code>skill_uninstall</code> · <code>workflow_use_installed</code>
                 </td>
+                <td>节点白名单与参数 Schema 查询、宿主图拓扑批量编辑与单节点运行、图标包单枚回炉；56 骨骼 3D 导演台读写直控与 3D 动作库查询；工作流与异步视频任务调度；OpenRouter 类型化概率决策（<code>noul / choice / score</code>）；<code>ai-art-engine-skills</code> 及 GitHub 技能检索、预检、安装、卸载与一键物化工作流。</td>
               </tr>
               <tr>
-                <td><code>gameplay_job_status</code></td>
-                <td>轮询构建状态与日志尾部，取单文件产物路径与体积</td>
+                <td><strong>4. 本地视觉、音频分离、视频四轴取证与时间线 NLE（15）</strong><br /><small>端点：<code>/mcp</code></small></td>
+                <td>
+                  <code>vision_local_ocr</code> · <code>vision_local_yolo</code> ·
+                  <code>transcribe_audio</code> · <code>audio_separate</code> ·
+                  <code>extract_video_frames</code> · <code>grab_video_frames</code> · <code>detect_video_keyframes</code> ·
+                  <code>analyze_video_beats</code> · <code>semantic_analyze_video</code> · <code>semantic_timeline_read</code> ·
+                  <code>timeline_read</code> · <code>timeline_rough_cut</code> · <code>timeline_export</code> ·
+                  <code>timeline_edit</code> · <code>timeline_preview</code>
+                </td>
+                <td>三端离线 OCR 与本地 ONNX YOLO 检测；WhisperX 级转写与 Demucs 人声伴奏分离；抽帧、关键帧切点与 Librosa 节拍分析；四轴语义拆解与取证时间线读取；剪映级多轨时间线读写、去气口粗剪、画面抽帧预览与 MP4 合成导出。</td>
+              </tr>
+              <tr>
+                <td><strong>5. 网页提取与录屏实操教程合成（10）</strong><br /><small>端点：<code>/mcp</code></small></td>
+                <td>
+                  <code>web_extract_article</code> · <code>web_fetch_video</code> ·
+                  <code>screen_record_start</code> · <code>screen_record_step</code> · <code>screen_record_wait</code> ·
+                  <code>screen_record_stop</code> · <code>screen_record_status</code> ·
+                  <code>ui_bounds</code> · <code>ui_click</code> · <code>tutorial_compose</code>
+                </td>
+                <td>提取网页正文与拉取参考视频素材；驱动应用 UI 自动化定位与点击（<code>ui_bounds</code> / <code>ui_click</code>）、分步录屏打点，并通过 <code>tutorial_compose</code> 自动配音烧录字幕合成实操教学成片。</td>
+              </tr>
+              <tr>
+                <td><strong>6. 游戏工业资产、可玩 HTML5 与 Machinations 数值沙盘（15）</strong><br /><small>端点：<code>/mcp</code></small></td>
+                <td>
+                  <code>gameplay_prepare_project</code> · <code>gameplay_build</code> · <code>gameplay_job_status</code> ·
+                  <code>game_tile_pbr_process</code> · <code>game_audio_variants</code> · <code>game_bundle_export</code> ·
+                  <code>game_data_table_generate</code> · <code>game_level_map_generate</code> ·
+                  <code>game_shader_particle_generate</code> · <code>game_systems_graph_generate</code> ·
+                  <code>game_one_sentence_create</code> · <code>game_ui_suite_create</code> · <code>game_playable_preview_compile</code> ·
+                  <code>machinations_building_blocks</code> · <code>machinations_studio</code>
+                </td>
+                <td>纯代码程序化 2D/3D 可玩 HTML5 脚手架、esbuild 单文件打包与无头 Chromium 试玩门禁；无缝地块 PBR 贴图、音效变体、配置表、关卡地图、着色器粒子、一句话游戏资产图、整套游戏 UI（支持导出原生 TySh PSD / Unity / Godot）与可玩预览编译；Machinations v2 游戏经济 59 积木查询、蒙特卡洛/灵敏度仿真、曲线反推与 C#/GDScript 导出。</td>
+              </tr>
+              <tr>
+                <td><strong>7. Blender 实时建模桥（9）</strong><br /><small>端点：<code>/mcp/blender</code></small></td>
+                <td>
+                  <code>get_scene_info</code> · <code>get_world_state_snapshot</code> · <code>get_object_info</code> ·
+                  <code>get_viewport_screenshot</code> · <code>execute_blender_code</code> · <code>export_scene</code> ·
+                  <code>describe_node_type</code> · <code>bpy_api_lookup</code> · <code>get_addon_status</code>
+                </td>
+                <td>直连本机运行中的 Blender（<code>localhost:9876</code>）：读取场景与网格包围盒快照、实时查询 RNA/着色器节点、执行完整 <code>bpy</code> Python 建模脚本、视口截图多模态自查，并导出 GLB/FBX/USD 配 <code>asset_import</code> 入库（详见 <a href="#blender">§7</a>）。</td>
               </tr>
             </tbody>
           </table>
@@ -449,21 +406,19 @@
           <h2>4. 场景示例</h2>
           <p>接入后直接用自然语言下指令，Agent 会自动感知当前焦点窗口并组合工具：</p>
           <ul>
-            <li>「列出我的最近工程，打开第一个」→ <code>project_list</code> + <code>project_open</code></li>
+            <li>「列出我的最近工程，打开第一个并查看工程记忆」→ <code>project_list</code> + <code>project_open</code> + <code>project_memory_read</code></li>
+            <li>「搜索技能市场里的短剧工作流，安装后在当前工程新建一份漫剧画布」→ <code>skill_search</code> + <code>skill_install</code> + <code>workflow_use_installed</code></li>
+            <li>「在当前自由画布里新建一个图片生成节点接上 10 合 1 图像精修，跑出 9:16 海报」→ <code>graph_node_types</code> + <code>graph_edit</code>（<code>node_upsert</code> + <code>edge_connect</code>）+ <code>task_run</code> + <code>task_status</code></li>
             <li>「隐藏林小满，把她往左移 2 米并转 45 度，设成坐姿」→ <code>director_stage_edit</code>（支持独立 <code>.dstage</code> 与节点图 <code>stage.3d</code> Dive）</li>
-            <li>「把美颜节点改成甜美写真预设，瘦脸调到 55，去掉眼镜」→ <code>graph_edit</code>（<code>preset</code> + 深层点路径 <code>params</code>）</li>
-            <li>「把打光节点设成赛博朋克霓虹风格，主光偏蓝紫，加上体积雾」→ <code>graph_edit</code>（<code>node_params</code> 语义化更新）</li>
-            <li>「用 shortDrama 模板规划一条工作流并落盘」→ <code>workflow_plan</code>（presetId=shortDrama）+ <code>workflow_commit</code></li>
-            <li>「运行刚才创建的工作流，完成后告诉我结果」→ <code>task_run</code> + <code>task_status</code> 轮询</li>
-            <li>「给这张图节点下面加一个配音节点并连上」→ <code>graph_edit</code>（node_upsert + edge_connect）</li>
-            <li>「这张图还能加哪些节点？图标包打包用哪个类型？」→ <code>graph_node_types</code>（typeId + 端口 + 默认参数 + 参数 Schema + 预设清单）</li>
-            <li>「图标包第 3 枚的剑画糊了，重画这一枚」→ <code>graph_icon_refine</code>（cellKey + hint，自动写回并重跑打包）</li>
-            <li>「用已配置的模型生成一张 9:16 的海报」→ <code>models_list</code> + <code>generate_image</code></li>
+            <li>「对参考视频做四轴取证拆解，看看前 5 个镜头的景别与台词切点」→ <code>semantic_analyze_video</code> + <code>semantic_timeline_read</code></li>
+            <li>「图标包第 3 枚的剑画糊了，只重画这一枚并重跑图集打包」→ <code>graph_icon_refine</code>（<code>cellKey</code> + <code>hint</code>，自动写回并重跑打包）</li>
+            <li>「搭建一套二次元抽卡经济循环，跑 200 次蒙特卡洛看看第 30 天金币通胀，再导出 Unity C# 脚本」→ <code>machinations_building_blocks</code> + <code>machinations_studio</code></li>
+            <li>「生成一套暗黑奇幻风背包 + 商城 + 战斗 HUD 游戏 UI 工作流」→ <code>game_ui_suite_create</code> + <code>task_run</code></li>
             <li>
               「做个低多边形太空站捡能量块的 3D 小游戏，WASD 移动」→
-              <code>gameplay_prepare_project</code>（3d）→ 写 <code>src/assets/**</code> 与
+              <code>gameplay_prepare_project</code>（<code>3d</code>）→ 写 <code>src/assets/**</code> 与
               <code>src/game/**</code> → <code>gameplay_build</code> +
-              <code>gameplay_job_status</code> 轮询到 <code>done</code>，对话卡点「试玩」即在浏览器里开玩
+              <code>gameplay_job_status</code> 轮询到 <code>done</code>（自动通过无头浏览器试玩门禁），对话卡点「试玩」即开玩
             </li>
           </ul>
         </section>
@@ -553,17 +508,20 @@
         </section>
 
         <section id="security">
-          <h2>6. 安全与当前限制</h2>
+          <h2>6. 请求级模式隔离（Agent / Plan / Ask）与安全护栏</h2>
           <ul>
-            <li>服务只监听 <code>127.0.0.1</code>，token 鉴权；文件读写被限制在工程根目录内（唯一例外是
-              <code>asset_import</code>：按你给出的绝对路径读取工程外文件并复制进工程）；密钥信息不对外暴露。</li>
-            <li>并发闸门：<code>generate_image</code> / <code>generate_speech</code> /
-              <code>decide</code> / <code>workflow_plan</code>
-              同时最多 3 个（<code>AIAE_MCP_GEN_LIMIT</code> 可调），排队满直接报错，防止 Agent 失控消耗额度。</li>
-            <li>操作审计：每次工具调用追加写
-              <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（参数截断、5MB 滚动），生成与写入可回查。</li>
-            <li><code>graph_edit</code> / <code>graph_icon_refine</code> 对正在编辑器中打开的图会拒绝修改，避免与编辑器内存态互相覆盖。</li>
-            <li><code>workflow_plan</code> 走 LLM，耗时可能数十秒；<code>generate_video</code> / <code>generate_model3d</code> 为异步任务，用 <code>video_job_*</code> 跟踪。</li>
+            <li>
+              <strong>请求级模式权限隔离（<code>X-MCP-Mode</code> / <code>X-AIArt-Mode</code>，实现见 <code>src/shared/mcpModeAccess.ts</code>）</strong>：模式不做成全局开关，而是按单次请求头分级裁剪 <code>tools/list</code> 并在 <code>tools/call</code> 上硬拦截越权调用：
+              <ul>
+                <li><strong>Agent（Craft）模式</strong>：开放全部读 / 写 / 生成类工具（外部 Claude Code / Cursor 客户端不带模式头时默认等同此级别）。</li>
+                <li><strong>Plan 模式</strong>：在用户通过 <code>ask_user</code> 确认分步方案之前，仅暴露只读工具（如 <code>app_status</code>、<code>graph_read</code>、<code>graph_node_types</code>、<code>asset_qc</code>、<code>skill_search</code>、<code>vision_local_ocr</code> 等），任何改写工程或消耗模型额度的调用均被服务端拒绝；用户点击确认后同轮自动解锁写与生成权限。</li>
+                <li><strong>Ask 模式</strong>：<code>tools/list</code> 返回空集并拒绝一切工具调用，严格限定为纯问答咨询。</li>
+              </ul>
+            </li>
+            <li>服务只监听 <code>127.0.0.1</code>，Bearer token 鉴权；文件读写被严格限制在工程根目录内（唯一例外是 <code>asset_import</code>：按显式传入的绝对路径读取本机素材并复制入库）；API 密钥绝不对外暴露。</li>
+            <li>并发闸门：长耗时或消耗额度的同步工具（如 <code>decide</code>、<code>transcribe_audio</code>、<code>semantic_analyze_video</code>、<code>tutorial_compose</code>、<code>gameplay_build</code> 等）同时最多并发 3 个（<code>AIAE_MCP_GEN_LIMIT</code> 可调），超出立即友好报错，防止 Agent 循环失控消耗额度。</li>
+            <li>操作审计：每次工具调用追加写 <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（参数截断、5MB 滚动），生成与写入全程可回溯。</li>
+            <li><code>graph_edit</code> / <code>graph_icon_refine</code> 对正在画布编辑器中打开的图会协同保护或拒绝冲突覆盖；画布工作流执行为异步任务，统一用 <code>task_run</code> + <code>task_status</code>（或视频作业 <code>video_job_list</code> / <code>video_job_get</code>）轮询追踪。</li>
             <li>接入方式两选一：<strong>stdio 桥</strong>（安装包内置在 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>；开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>，需 Node.js 18+）或 <strong>HTTP 直连</strong>（无需 Node.js）。</li>
           </ul>
         </section>

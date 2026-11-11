@@ -1,297 +1,178 @@
-# 本地视觉（YOLO）基础架构
+# 本地视觉（ONNX / YOLO / FaceMesh / SAM 2.1）与跨平台离线 OCR 架构（v8.9.1）
 
-> 把 YOLO 目标检测 / 实例分割 / 姿态估计以 **Local-First** 方式集成进应用：
-> ONNX 模型 + onnxruntime 本地 CPU 推理，数据不出机、无调用成本，与云端生成链路（模型提供商）互补。
+> 将目标检测、实例分割、17 点人体姿态、468 点人脸网格、SAM 2.1 交互式点框分割、高精度 Alpha 抠图，以及零依赖原生系统离线 OCR 以 **Local-First** 方式集成进桌面端：数据不出本机、零云端调用成本，同时通过 IPC 与 MCP 工具（`vision_local_ocr` / `vision_local_yolo`）向全工作区节点与 AI Agent 开放。
 
-## 1. 目标与边界
+---
 
-- **做什么**：提供 `detect` / `segment` / `pose` 三类本地视觉能力，作为后续功能（素材自动打标、智能构图、抠图、视频分镜解析、动捕）的底座。
-- **不做什么**：
-  - 不做训练 / 微调（模型由用户放入目录或随包分发）。
-  - 不做 GPU 加速（CPU 优先；DML 预留扩展位）。
-  - 不做模型内置下载器（模型文件由用户放置，文档给出建议来源）。
+## 1. 能力全景与边界
 
-## 2. 架构总览
+### 1.1 已落地的七大本地视觉与识别支柱
 
-```
-┌─────────────────────────────┐      ┌──────────────────────────────┐
-│  Renderer                   │      │  Main                        │
-│  features/yolo/api.ts       │ IPC  │  ipc.ts                      │
-│  window.studio.yoloDetect() │─────▶│  └─ yoloService.ts           │
-└─────────────────────────────┘      │       │ 管理生命周期/路由/模型│
-                                     │       │ utilityProcess.fork   │
-                                     └───────┼──────────────────────┘
-                                             ▼
-                             ┌──────────────────────────────┐
-                             │  YoloWorker（独立 Node 进程） │
-                             │  yoloWorker.ts               │
-                             │  ├ imageDecoder.ts 纯JS解码  │
-                             │  ├ preprocess.ts   letterbox │
-                             │  ├ postprocess.ts  NMS/解析  │
-                             │  └ onnxruntime-node（N-API） │
-                             └──────────────────────────────┘
-```
+1. **YOLO11 目标检测 / 实例分割 / 17 点人体姿态**（`detect` / `segment` / `pose`，随包内置开箱即用）。
+2. **`stage.2d` 辅助 2D 人形立绘自动绑骨**（`src/shared/gameAssets/stage2dHumanoid.ts`）：融合 `YOLOv8/YOLO11-Pose` COCO-17 关键点与 2–8 头身二次元/Q 版 Alpha 剪影形态学，自动剔除透明区幻觉点、吸附不透明像素并修正正立绘解剖学左右手脚翻转。
+3. **两段式 BlazeFace + MediaPipe 468 点 FaceMesh 人脸网格**（`src/main/yolo/faceInfer.ts`、`src/shared/faceMesh.ts`，随包内置）：映射为 `canonical-68` 关键点，驱动 `image.portrait`（4 频段小波实时精修 + 云端重绘回贴）的面部区域门禁、Procrustes 身份锁与羽化蒙版。
+4. **SAM 2.1（Segment Anything 2.1）交互式点/框分割**（`src/main/yolo/sam2Infer.ts`、`src/shared/sam2Catalog.ts`）：支持正负点击点（`points`）与矩形框（`box`）提示词实时解码掩码，内置 6 槽位图像 Embedding LRU 缓存，点选交互毫秒级响应。
+5. **高精度边缘 Alpha 抠图精修（Matting）**（`src/main/yolo/mattingInfer.ts`、`src/shared/mattingCatalog.ts`）：支持 `BiRefNet-Lite`、`RMBG-1.4`（FP16 / Q8）与 `MODNet`，可在分割抠图与 UI 拆层时替换粗糙掩码，保留发丝与半透明边缘。
+6. **跨平台原生 OS 离线 OCR**（`src/main/services/localOcrService.ts`）：调用 Windows `Windows.Media.Ocr`、macOS Apple `Vision.framework`、Linux `tesseract`，零原生 NPM 依赖完成词级坐标检测、同行聚类与文字主色/描边双采样。
+7. **MCP 标准工具直通**（`src/main/services/mcpServerService.ts`）：通过 `vision_local_ocr` 与 `vision_local_yolo` 直接向内置 DeepSeek Harness 与外部 Claude / Cursor Agent 暴露全部本地视觉能力。
 
-**进程隔离是关键决策**：推理是 CPU 密集任务，且 onnxruntime 是原生模块。把它放进
-`utilityProcess` 独立进程，避免：阻塞主进程事件循环、原生模块崩溃拖垮整个应用、
-污染主应用"纯 JS"约定。
+### 1.2 架构边界
 
-## 3. 关键设计决策
+- **不做本地模型训练 / 微调**：端侧专注低延迟推理；自定义 `.onnx` 权重可放入本地模型目录即放即用。
+- **进程级崩溃与阻塞隔离**：全部 ONNX 原生推理运行于 Electron `utilityProcess` 独立子进程（`src/main/yolo/yoloWorker.ts`），绝不阻塞主进程事件循环或拖垮渲染层。
 
-| 决策                                             | 理由                                                                                                                                               |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `utilityProcess.fork()` 跑推理                   | Electron 官方推荐；崩溃隔离、可重启、不阻塞主进程；`process.parentPort` 提供消息通道                                                               |
-| `onnxruntime-node`（N-API）                      | **无需 electron-rebuild**，符合项目 `npmRebuild:false` 约束；N-API 对 Electron ABI 稳定                                                            |
-| 动态 `require('onnxruntime-node')`               | 包缺失时 worker 仍能启动并返回明确错误，而不是启动即崩                                                                                             |
-| 纯 JS 解码（`jpeg-js` / `pngjs`）                | 保持"主应用纯 JS"约定，零原生依赖、零编译；WebP 走渲染层 canvas → raw 兜底                                                                         |
-| JPEG 解码上限 4096MB / 160MP                     | jpeg-js 默认 512MB 是按「不可信内容」设的，实测约 21 字节/像素 → 30MP 出头就误伤相机原图；上限只放宽到「覆盖最大画幅」，解压炸弹仍由分辨率上限拒掉 |
-| 输入三形态 `file / dataUrl / raw`                | file 适配资产库路径，dataUrl 通用，raw 适配渲染层 canvas（webp）                                                                                   |
-| 模型目录 `<userData>/yolo-models`                | 用户可放置任意 YOLO ONNX；设置页可改目录；文件名推断任务类型                                                                                       |
-| sigmoid 兼容 + 退化框过滤                        | 部分导出变体输出 logits（值 >1），检测后统一 sigmoid；面积≈0 的框直接丢弃                                                                          |
-| `electron-builder` `asarUnpack` onnxruntime-node | `.node` 原生模块不能直接从 asar 内 dlopen，需解包到 `app.asar.unpacked`                                                                            |
+---
 
-## 4. 模块清单
-
-| 文件                                    | 职责                                                                  |
-| --------------------------------------- | --------------------------------------------------------------------- |
-| `src/shared/yolo.ts`                    | 对外契约：任务类型、结果类型、输入三形态、COCO 标签、阈值常量         |
-| `src/shared/ipc.ts`                     | IPC 通道（`yolo:*`）+ `StudioApi` 方法签名                            |
-| `src/main/yolo/protocol.ts`             | 主进程 ↔ worker 的 JSON-RPC 风格消息协议                              |
-| `src/main/yolo/yoloService.ts`          | worker 生命周期、请求路由（pending map）、模型扫描/选择、相对路径解析 |
-| `src/main/yolo/yoloWorker.ts`           | worker 入口：消息循环、ort 加载、会话缓存、坐标逆映射                 |
-| `src/main/yolo/imageDecoder.ts`         | PNG / JPEG 纯 JS 解码                                                 |
-| `src/main/yolo/preprocess.ts`           | letterbox + RGBA → CHW float32 张量（填充 114/255）                   |
-| `src/main/yolo/postprocess.ts`          | 输出解析、sigmoid 兼容、退化框过滤、类内 NMS、mask 合成               |
-| `src/renderer/src/features/yolo/api.ts` | 渲染层薄封装 + dataUrl → raw 工具                                     |
-
-## 5. 调用时序（以 detect 为例）
+## 2. 架构总览与硬件加速管线
 
 ```
-Renderer  yoloDetect({ image: { kind:'file', path: 'assets/a.png' }, confThreshold })
-   │  ipcRenderer.invoke('yolo:detect')
-   ▼
-Main      yoloService.detect()
-   │  ensureStarted() —— 首次懒启动 utilityProcess，ping 握手
-   │  resolveModelPath('detect') —— 扫描模型目录选 .onnx
-   │  resolveImageInput() —— 相对工程根路径 → 绝对路径
-   │  call('infer', params) —— postMessage + pending map + 120s 超时
-   ▼
-Worker    decodeImage → rgbaToLetterboxTensor → InferenceSession.run
-   │  parseYoloOutput（sigmoid 兼容 → 阈值过滤 → 退化框过滤 → NMS）
-   │  toBox() 把 640 坐标逆映射回原图（scale / pad）
-   ▼
-Main      返回 YoloDetectResult 给 Renderer
+┌────────────────────────────────────┐      ┌──────────────────────────────────────────┐
+│  Renderer / AI Agent               │      │  Main Process                            │
+│  • features/yolo/api.ts            │ IPC  │  • ipc.ts (`yolo:*` / `ocr:*`)           │
+│  • MCP `vision_local_yolo`         │─────▶│  • mcpServerService.ts                   │
+│  • MCP `vision_local_ocr`          │      │  • yoloService.ts / yoloModelManager.ts  │
+└────────────────────────────────────┘      │  • localOcrService.ts (WinRT/Vision/CLI) │
+                                            └───────────────────┬──────────────────────┘
+                                                                │ utilityProcess.fork()
+                                                                ▼
+                                            ┌──────────────────────────────────────────┐
+                                            │  YoloWorker (src/main/yolo/yoloWorker.ts)│
+                                            │  ├ ortSession.ts (CUDA→DML→CoreML→CPU)   │
+                                            │  ├ imageDecoder.ts + WebP Raw 容错兜底   │
+                                            │  ├ preprocess.ts / postprocess.ts (YOLO) │
+                                            │  ├ faceInfer.ts (BlazeFace + 468点网格)  │
+                                            │  ├ sam2Infer.ts (Encoder LRU + Decoder)  │
+                                            │  └ mattingInfer.ts (BiRefNet/RMBG/MODNet)│
+                                            └──────────────────────────────────────────┘
 ```
 
-## 6. 模型约定
+### 2.1 GPU 硬件加速自动探测与无感回退（`src/main/yolo/ortSession.ts`）
 
-### 随包内置（默认）
+创建 `onnxruntime-node` `InferenceSession` 时，`createAcceleratedSession()` 按以下优先级自动探测可用 Execution Provider：
 
-三个模型随应用分发，共约 33MB：
+1. **`cuda`**（NVIDIA CUDA，Linux / Windows）
+2. **`dml`**（DirectML，Windows 10/11 原生 D3D12，兼容 NVIDIA / AMD / Intel 核显与独显；自动设置 `enableMemPattern: false` 与 `executionMode: 'sequential'` 规避驱动兼容故障）
+3. **`coreml`**（Apple Silicon / macOS ANE & GPU）
+4. **`cpu`**（跨平台兜底，开启图级别全优化 `graphOptimizationLevel: 'all'`）
 
-| 文件                | 任务    | 体积    | 覆盖能力             |
-| ------------------- | ------- | ------- | -------------------- |
-| `yolo11n.onnx`      | detect  | 10.4 MB | 打标 / 构图 / 分镜   |
-| `yolo11n-seg.onnx`  | segment | 11.2 MB | 抠图 / 擦除重绘 mask |
-| `yolo11n-pose.onnx` | pose    | 11.3 MB | 动捕 / 姿态          |
+若高优先级硬件后端因驱动缺失或算子不支持初始化失败，会话加载器会**自动回退至 `cpu`** 并记录实际生效的 `activeBackend`（可通过 `yolo:status` 或 `vision_local_yolo({ task: "status" })` 查询），确保任何机器上永不因显卡环境差异报错中断。
 
-- 源位置：`resources/yolo-models/`；打包配置：`electron-builder.yml` → `extraResources: resources/yolo-models → yolo-models`（即安装目录下的 `resources/yolo-models`）。
-- **同步策略**：应用启动时 `YoloService.ensureBundledModels()` 把内置模型拷贝到模型目录，规则为
-  - 缺失的内置模型 → 安装；
-  - 清单（`.bundled-models.json`）中已记录过的 → 不再重复落地，因此**用户主动删除后不会被"复活"**；
-  - 后续新增的内置模型（升级版本）→ 只装新增的那些。
-- 模型体积大（三个合计约 33MB），但**已入库**：`resources/yolo-models/*.onnx` 虽在 `.gitignore` 里，五份随包模型（含人脸两个）是显式 `git add -f` 提交的，本地与 CI 构建**零下载**。`npm run fetch:yolo-models` 保留为恢复路径（文件缺失 / 被截断时拉回），`pack` / `dist` 仍会调用它，已有文件时直接跳过。新增的 `.onnx` 默认不进库，确需随包再 `git add -f`。
+---
 
-### 用户自定义
+## 3. 核心模块清单
 
-- 目录：`<userData>/yolo-models/`（`%APPDATA%\aiartengine\yolo-models`），设置项 `yolo.modelDir` 可覆盖。
-- 文件名决定任务类型：含 `seg` → segment，含 `pose` → pose，否则 detect。
-- 单任务多个模型时按大小选最大；也可用 `modelId` 显式指定。
-- 许可提示：YOLOv8 / YOLO11 官方权重为 **AGPL-3.0**，随应用分发存在传染性风险，商用前请评估或替换为许可宽松的模型。
+| 文件路径                                                    | 职责说明                                                                                                                             |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/shared/localModelLayout.ts`                            | 统一本地模型根目录 `<userData>/local-models/{yolo,face,sam2,matting,whisper}` 路径约定                                               |
+| `src/main/yolo/localModelMigrate.ts`                        | 启动时自动将历史旧目录 `<userData>/yolo-models` 无损迁移至新版分层结构                                                               |
+| `src/shared/yolo.ts`                                        | 任务契约（`detect` / `segment` / `pose` / `face` / `sam2`）、输入三形态（`file / dataUrl / raw`）、COCO 标签与阈值常量               |
+| `src/shared/yoloCatalog.ts`、`src/shared/yoloFaceModels.ts` | YOLO11 与人脸两段式模型的元数据、SHA-256 校验值与匹配规则                                                                            |
+| `src/shared/sam2Catalog.ts`、`src/shared/mattingCatalog.ts` | SAM 2.1 四档规格（`tiny / small / base_plus / large`）与抠图模型（BiRefNet / RMBG / MODNet）目录                                     |
+| `src/main/yolo/yoloModelManager.ts`                         | 内置安全模型下载器：主机白名单校验（GitHub Releases / Hugging Face）、断点续传、SHA-256 与最小字节数校验、ZIP 解包（`sam2Unzip.ts`） |
+| `src/main/yolo/yoloService.ts`                              | `utilityProcess` 生命周期守护、随包模型同步（`.bundled-models.json` 防删后复活）、请求路由与相对工程路径解析                         |
+| `src/main/yolo/yoloWorker.ts`                               | Worker 进程主循环：会话缓存管理、任务分发与退出时资源释放                                                                            |
+| `src/main/yolo/ortSession.ts`                               | `CUDA → DirectML → CoreML → CPU` 硬件加速探测与自动降级封装                                                                          |
+| `src/main/yolo/imageDecoder.ts`                             | 纯 JS PNG/JPEG 解码（放宽至 4096MB / 160MP 兼容高像素相机原图，同时拦截解压炸弹）                                                    |
+| `src/main/yolo/faceInfer.ts`、`src/shared/faceMesh.ts`      | BlazeFace（`128×128`）检测 + FaceMesh（`192×192` → 468 点 → `canonical-68`）两段式推理与几何映射                                     |
+| `src/main/yolo/sam2Infer.ts`                                | SAM 2.1 双会话（Image Encoder + Mask Decoder）推理与 6 帧图像特征 LRU 缓存                                                           |
+| `src/main/yolo/mattingInfer.ts`                             | 高精度前景 Alpha 推理与原图尺寸双线性还原                                                                                            |
+| `src/main/services/localOcrService.ts`                      | Windows / macOS / Linux 原生系统离线 OCR 引擎与 TSV/WinRT/Vision 词框解析                                                            |
+| `src/shared/graph/uiControlSpec.ts`                         | OCR 同行词聚类、父子控件排他匹配与字芯/描边自适应双色采样                                                                            |
+| `src/shared/gameAssets/stage2dHumanoid.ts`                  | `stage.2d` 立绘 Alpha 剪影形态学 + YOLO-Pose 17 点混合 2D 骨骼求解器                                                                 |
+| `src/renderer/src/features/yolo/api.ts`                     | 渲染层 IPC 薄封装与伪装扩展名 WebP 的 Chromium Canvas → `raw` 自动容错重试                                                           |
 
-## 7. IPC 契约
+---
 
-| 通道                  | 说明                                                                        |
-| --------------------- | --------------------------------------------------------------------------- |
-| `yolo:status`         | worker 就绪 / ort 版本 / 后端 / 模型清单 / 错误                             |
-| `yolo:detect`         | 目标检测，返回 `YoloDetectResult`                                           |
-| `yolo:segment`        | 实例分割，返回 boxes + 160×160 二值 mask                                    |
-| `yolo:pose`           | 姿态估计，返回 boxes + COCO 17 关键点                                       |
-| `yolo:face`           | 人脸关键点：两段式（BlazeFace + FaceMesh），返回 468 点 + canonical-68 映射 |
-| `yolo:open-model-dir` | 打开模型目录（系统文件管理器）                                              |
+## 4. 本地模型目录与随包/按需分发机制
 
-## 8. 打包注意
+### 4.1 统一目录布局（`<userData>/local-models/`）
 
-- `electron-builder.yml`：`asarUnpack: node_modules/onnxruntime-node/**`（已配置）。
-- `onnxruntime-node` 进依赖白名单（`dependencies`），`externalizeDepsPlugin` 保持外部 require。
-- `electron.vite.config.ts` main 多入口：`index` + `yoloWorker` → 产物 `out/main/yoloWorker.js`，service 用 `join(__dirname, 'yoloWorker.js')` 定位（dev / prod 一致）。
+应用统一在 `<userData>/local-models/` 下按职责分子目录存放本地权重（`src/shared/localModelLayout.ts`）：
 
-## 9. 开发与验证
+- `yolo/`：`yolo11n.onnx`（检测）、`yolo11n-seg.onnx`（实例分割）、`yolo11n-pose.onnx`（17 点姿态）及用户扩展的 `yolo11s/m/l` 权重。
+- `face/`：`face-detect.onnx`（BlazeFace 短距检测器）与 `face-landmark.onnx`（MediaPipe 468 点网格）。
+- `sam2/`：`sam2.1_hiera_{tiny,small,base_plus,large}.{encoder,decoder}.onnx` 双文件组。
+- `matting/`：`birefnet-lite.onnx`、`rmbg-1.4.onnx`、`rmbg-1.4-q8.onnx`、`modnet.onnx`。
+- `whisper/`：本地离线语音转写模型目录（与音频管线共享同一套本地模型根路径）。
 
-- 类型检查：`npm run typecheck:node`
-- 冒烟：模拟 `process.parentPort` 直接加载 `out/main/yoloWorker.js`，发 `ping` / `status` / `infer`（bus.jpg + yolo11n.onnx 可验证端到端，预期 bus + 3~4 person）。
-- 构建产物变更时先 `npm run build` 再冒烟。
+### 4.2 五份随包内置模型（离线零下载开箱即用）
 
-## 10. 后续扩展位
+安装包内 `resources/yolo-models/` 与 `resources/face-models/` 已随仓库内置 5 份核心轻量模型（合计约 35MB，打包前由 `npm run check:pack` 与 `tests/bundledModelFiles.test.ts` 校验完整性）：
 
-- **DML 加速**：装 `onnxruntime-directml`，worker 增加 `executionProviders` 分支，设置加 `backend`。
-- **真深度估计**：Depth Anything v2 ONNX 可复用同一 worker 通道（新增 `depth` 方法）。
-- **视频分镜 / 打标 / 动捕**：基于 `detect` / `pose` 的上层管线（见 `PLAN_SPINE_YOLO.md` 5.4）。
-- **模型下载器**：`yolo:install-model` 从 CDN 拉取模型（预留，本期未做）。
-- **人脸关键点（`face` 任务类型）**：见下节，`image.portrait` 已按可插拔方式接入。
+| 目录                     | 模型文件                                                | 默认能力                                           |
+| ------------------------ | ------------------------------------------------------- | -------------------------------------------------- |
+| `resources/yolo-models/` | `yolo11n.onnx`、`yolo11n-seg.onnx`、`yolo11n-pose.onnx` | 目标检测、实例分割抠图、17 点人体姿态              |
+| `resources/face-models/` | `face-detect.onnx`、`face-landmark.onnx`                | 人脸检测 + 468 点三维语义网格（转 `canonical-68`） |
 
-## 11. 人像处理节点（`image.portrait`）用到的本地视觉
+首次启动时 `YoloService.ensureBundledModels()` 将缺失模型同步至 `<userData>/local-models/{yolo,face}` 并记录在 `.bundled-models.json`；用户手动删除某模型后不会在重启时强制“复活”，亦可在「设置 → 本地模型」面板（`YoloModelsPanel.vue`）随时一键重装或按需下载更高精度的 SAM 2.1 / Matting 扩展包。
 
-`image.portrait` 的像素活**全部交给图片模型**（节点只有一条执行路径：参数 → 提示词 →
-`ctx.generateImage`），本地视觉能力在这个节点里只承担两件事（完整说明见
-[PORTRAIT.md](./PORTRAIT.md)）：
+> **许可证提示**：Ultralytics YOLO11 官方权重采用 **AGPL-3.0** 许可，MediaPipe FaceMesh / BlazeFace 衍生模型采用 **Apache-2.0**，SAM 2.1 采用 **Apache-2.0**；商业闭源分发前请结合业务形态核对各模型条目在 `yoloCatalog.ts` / `mattingCatalog.ts` 中标注的上游许可证。
 
-1. **提示词门禁**：拿不到依赖的组整组不进提示词（宁可少修，不可改错）；
-2. **局部回贴的蒙版**：模型接口没有蒙版通道，出图后按「脸 / 人物 / 手动框」蒙版把结果贴回原图，
-   只改请求的部位。
+---
 
-| 能力              | 现状                   | 用途                                                | 缺失时的降级                                                                                                    |
-| ----------------- | ---------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `face` 人脸关键点 | **随包内置**，开箱可用 | 7 个面部类组的提示词门禁；局部回贴的脸 + 颈蒙版几何 | 这 7 组（修复 / 磨皮 / 肤色 / 五官 / 眼睛 / 妆容 / 光影）不进提示词；脸蒙版缺一块（只画了手动区域框时仍可局部） |
-| `mask` 实例分割   | 随包内置               | 「背景」组的提示词门禁；身形类请求的人物蒙版        | 背景组置灰、不进提示词；人物蒙版缺一块（只有脸 / 手动框时继续，全缺则整图）                                     |
-| `pose` 姿态       | 随包内置               | 「身形」组的提示词门禁                              | 身形组置灰、不进提示词                                                                                          |
+## 5. MCP 工具直通契约（`vision_local_ocr` & `vision_local_yolo`）
 
-`face` 两段式（BlazeFace short-range 检测器 + MediaPipe FaceMesh 468 点），
-渲染层把 468 点映射成 canonical-68 后归一化；检测失败一律降级为「没有人脸」，
-绝不让整张图失败。模型文件名即模型 id（`face-detect.onnx` / `face-landmark.onnx`），
-放进模型目录即被识别。
+主进程 `src/main/services/mcpServerService.ts` 将本地视觉与离线 OCR 直接封装为标准 MCP 工具，供内置对话助手与外部 IDE / CLI Agent 零成本调用：
 
-**托管与分发方式**：这两个模型来自另一套上游，上游没有可长期固定的直链，因此
-①**随包内置**（模型文件已提交进 `resources/face-models/`，见下）②本仓 GitHub Release
-（tag `face-models-v1`，prerelease）作为**换模型与兜底下载**的通路，地址写在 `@shared/yoloCatalog`
-的 `YOLO_FACE_CATALOG_BASE_URL`。两条通路：
+| MCP 工具名          | 核心入参                                                                                                                                                                                              | 返回结构与典型用途                                                                                                                                                                                                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vision_local_ocr`  | `assetId` 或 `relativePath`                                                                                                                                                                           | 调用 `localOcrService.ts` 对工程内图片执行离线文字识别，返回 `{ assetId, relativePath, count, fullText, boxes }`（含每处文字的归一化 `x, y, w, h` 框），适合 UI 截图抄录、分镜台词提取、海报错别字质检                                                                    |
+| `vision_local_yolo` | `task: 'status' \| 'detect' \| 'segment' \| 'pose' \| 'face' \| 'sam2'`，`assetId` / `relativePath`，可选 `confThreshold`、`iouThreshold`、`classes`、`useMatting`、`points`、`box`、`saveCutoutPath` | `status` 查询本地模型与 GPU 后端就绪态；`detect` 返回目标框与类别；`segment`（可配 `useMatting: true` 启用高精度发丝抠图并写入 `saveCutoutPath`）；`pose` 返回 COCO-17 骨骼关键点；`face` 返回 468→68 点人脸地标；`sam2` 按 `points`（正负点）与 `box` 执行交互式精确分割 |
 
-1. **随包内置（默认路径）**：`resources/face-models/face-detect.onnx` 与 `face-landmark.onnx`
-   都在 git 里（显式 `git add -f`，`.gitignore` 规则只挡以后新加的 `.onnx`），所以构建**不联网**；
-   随安装包分发后，用户首次启动时 `YoloService.ensureBundledModels()` 会把内置的 .onnx 拷进
-   模型目录 —— 开箱即用。打包前 `npm run check:pack` 会**硬失败**在缺失 / 被截断的模型上
-   （逐文件给下限：Ultralytics 那批 1MB、人脸两个 256KB，人脸检测器比 YOLO 小一个量级，
-   统一门槛会误判），避免安装包悄悄少东西。
-2. **兜底下载**：用户删掉了内置副本时，设置页仍可按需下载（走 `yolo:model-download`）。
+---
 
-下载链路的两个安全点：
+## 6. 核心业务场景深度接线
 
-- 渲染层把最终地址作为可选的 `sourceUrl` 传下来（tag 变了不必重新打包），主进程按
-  **主机白名单**（`@shared/yoloDownload`：github.com 及其资产重定向域名）校验，
-  避免变成任意 URL 下载器；
-- 目录条目声明了 `sha256` 就**必须校验通过**才落盘（`minBytes` 按条目给值）。
+### 6.1 `stage.2d`：YOLOv8/11-Pose 辅助 2D 立绘骨骼自动对齐（`stage2dHumanoid.ts`）
 
-**发布流程**（上传资产 + 生成要填的哈希）：
+在 2D Spine 骨骼动画舞台（`stage.2d`）中，二次元立绘与 Q 版角色（2–8 头身）直接套用真人比例模板往往导致肩髋错位。`solveHumanoidSkeletonFromRgba()` 采用**「Alpha 剪影形态学 + 本地 YOLO-Pose 17 点先验」双模融合**：
 
-```bash
-node scripts/sync-face-models.mjs --dir <含两个 onnx 的目录>          # 算 sha256，打印可粘贴的条目
-node scripts/sync-face-models.mjs --dir <目录> --upload              # 用 gh CLI 建 release 并上传
-```
+1. **剪影头身比自适应**：逐行扫描不透明像素包络，定位头顶、颈部最窄处（锁骨线）、躯干收腰与双腿分叉点，自动适配 2 头身 Q 版到 8 头身写实立绘。
+2. **YOLO-Pose 关键点约束与异常过滤**：调用本地 `yolo:pose` 提取肩、肘、腕、髋、膝、踝 17 个关键点；自动剔除落在透明背景外的幻觉点，并将靠近边缘的关节点向内吸附至最近的不透明像素（`snapInsideOpaque`）。
+3. **正立绘解剖学左右翻转校正**：COCO 关键点定义的是角色自身的解剖学左/右（面朝镜头时解剖学左肩在画面右侧），求解器自动对齐至 `stage.2d` 画布左/右骨骼槽位（`L_clavicle` / `R_clavicle` 等），生成的 2D 骨架可直接用于自动拆件蒙皮并通过 `stage2d_spine_export` 导出 Spine 4.1 标准资产。
 
-脚本按约定名找文件（认不出时退化为名字特征匹配，与主进程 `pickFaceModel` 同一套口径），
-输出 `RAW_FACE_ENTRIES` 里可直接粘贴的 `{ id, approxMb, minBytes, sha256 }`。
+### 6.2 `image.portrait`：468 点 FaceMesh 驱动 4 频段小波精修与 AI 局部回贴
 
-**换模型 / 更新模型的完整流程**（三处一起改，否则校验会对不上）：
+人像精修工作台（`image.portrait`，详见 [PORTRAIT.md](./PORTRAIT.md)）同时服务于**本地 60fps 实时像素管线**（`src/shared/graph/portraitLiveMath.ts`）与**云端图像大模型重绘**：
 
-```bash
-node scripts/sync-face-models.mjs --dir <含两个 onnx 的目录>          # 1. 算 sha256，打印可粘贴的条目
-node scripts/sync-face-models.mjs --dir <目录> --upload              # 2. 用 gh CLI 更新 release 资产
-                                                                     #    （脚本按 prerelease 建，避免抢 Latest）
-# 3. 把新 sha256 粘进 src/shared/yoloCatalog.ts -> RAW_FACE_ENTRIES
-# 4. 把新 .onnx 覆盖进 resources/face-models/ 并提交（已入库，不再依赖下载）
-npm run check:pack && npm test                                       # 5. 体积自检 + 回归
-```
+- **两段式人脸检测与网格提取**：`faceInfer.ts` 先以 BlazeFace（`128×128`）定位人脸框并外扩旋转裁剪，再经 FaceMesh（`192×192`）回归 468 个三维语义点并映射为归一化 `canonical-68` 地标（`src/shared/faceMesh.ts`、`src/shared/graph/portraitFace.ts`）。
+- **4 频段小波皮肤分离与面部液化**：本地实时引擎基于 68 点语义多边形（脸缘、眼、眉、唇、鼻）构建羽化保护掩码，执行 4 频段小波磨皮（保留毛孔高频纹理、平滑中频瑕疵）、瘦脸大眼液化位移场（`buildFaceLiquifyControlVectors`）、`.cube` 3D LUT 调色与证件照智能裁切排版。
+- **提示词门禁与 Procrustes 身份回贴锁**：走云端模型精修时，若未检测到人脸则自动屏蔽五官/妆容提示词防止幻觉改图；出图后结合人脸 + 颈部羽化蒙版与分割人物蒙版（`yolo:segment`）局部回贴原图，确保只改请求部位、背景与无关区域像素级零漂移。
 
-### ⚠️ 待解决：转换出来的两个模型还不能入库（实测记录）
+### 6.3 SAM 2.1 交互式点/框分割与高精度 Matting
 
-2026-10 用官方 MediaPipe 权重 + `scripts/convert-face-models.py` 实测：**转换管线通了，
-但两个模型都还不能用**。留档避免重复踩坑：
+- **SAM 2.1 双阶段缓存架构（`src/main/yolo/sam2Infer.ts`）**：首次在一张图上点击时运行重量级 Image Encoder 提取特征并存入 6 槽位 SHA-256 LRU 缓存；后续增删正负提示点或拖拽框选仅运行轻量 Mask Decoder，实现交互式局部重绘选区、道具拆件与漫剧分镜抠图。
+- **Matting 边缘精修（`src/main/yolo/mattingInfer.ts`）**：当用户安装 `BiRefNet-Lite`、`RMBG-1.4` 或 `MODNet` 后，抠图节点与 `vision_local_yolo` 可开启 `useMatting: true`，输出 `0..255` 连续 Alpha 通道，解决毛发、婚纱薄纱与发光特效边缘锯齿问题。
 
-1. **转换器选型（已解决，已写进脚本）**
-   `tflite2onnx 0.4.1` 处理不了 MediaPipe 的量化权重（自身警告 float16 不支持），转出来的图
-   **形状完全正确但回归量纲整体偏小**：人脸框缩到约 1/4、置信度 0.81 → 0.67，且不报错 ——
-   这正是「五官 / 妆容静默失效」的典型来源。换 `tf2onnx --tflite`（+ tensorflow）后保真度
-   已核对：同一输入下与 TFLite 解释器原始输出 `max |Δ| < 1e-4`。
+---
 
-2. **锚点边长 bug（已修，`shared/faceMesh.ts`）**
-   `fixedAnchorSize` 下锚点的归一化宽高必须是 **1.0**（scale 只用于插值锚）；原实现填了
-   `scale`，而解码是 `raw / 128 * anchor.w`，等于把 scale 乘两遍 → 检测框只有应有值的
-   1/4~1/5（实测 0.038 vs 应有的 0.169）。已改为 `w = h = 1`，`tests/faceMesh.test.ts` 同步更新。
+## 7. 跨平台原生系统离线 OCR 与伪装 WebP 容错
 
-3. **检测器锚点排列尚未对齐（阻塞）**
-   修好锚点边长后，argmax 命中的锚点解出的框仍偏小（多张实测 0.03~0.12；MediaPipe 基准为
-   0.165×0.247、置信度 0.807）。同一位置相邻两个锚点（固定锚 w=1 与插值锚 w≈0.23）解出的
-   框相差 4 倍，说明**模型输出的锚点排列 / 层序与 `generateBlazeFaceAnchors()` 的顺序未对齐**。
-   需要 MediaPipe 检测器的 cfg（anchor 生成参数 + 输出张量排列）才能定论。
+在游戏 UI 16 类控件拆分（`image.layerSplit` 的 `ui` 模式）及 MCP `vision_local_ocr` 中，系统通过 `src/main/services/localOcrService.ts`（IPC `ocr:recognize-local`）调用操作系统原生 OCR 能力，**零外部原生 NPM 依赖、零额外安装包体积**：
 
-4. **关键点输出约定不符（阻塞）**
-   官方 `face_landmark.tflite`（192 输入 / 1404 输出，形状与契约一致）的输出是**像素量纲**
-   （0~~192 范围），而 `faceInfer.ts` 按 0~~1 归一化处理再回投原图 → 468 点落点完全错。
-   用 MediaPipe Tasks 的 `FaceLandmarker` 在同一裁剪上对照：它给 **478 点、0~1 归一化**。
-   即：**契约（192 / 1404 / 0~1）与这个 tflite 的实际输出约定不一致**，需要 MIS 文档或
-   `face_landmark_with_attention.tflite` 等其它档位来确认正确来源。
+| 操作系统    | 原生离线引擎                                        | 运行机制与特点                                                                                                                                   |
+| ----------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Windows** | `Windows.Media.Ocr.OcrEngine` (WinRT)               | 通过内置脚本调用 Windows 10/11 系统 WinRT OCR API（`TryCreateFromUserProfileLanguages()`），原生输出行文本及每个词的精确 `(X, Y, Width, Height)` |
+| **macOS**   | Apple `Vision.framework` (`VNRecognizeTextRequest`) | 首次调用自动通过 `/usr/bin/swiftc` 将内置 Swift 桥接脚本编译至临时目录缓存，启用 `.accurate` 精度档与中/英/日/韩自动语言识别                     |
+| **Linux**   | 系统 `tesseract` CLI（`--psm 11 ... tsv`）          | 自动探测已装语言包并解析 TSV 词级坐标（`parseTesseractTsvToOcrLines`）；未装 `tesseract` 时优雅返回空结果，绝不抛错中断拆层流水线                |
 
-**验证入口**：`scripts/convert-face-models.py --verify-only <dir>` 只做形状自检；数值验收必须
-跑真实人脸照并与 MediaPipe 参考值对照（上面的基准值可直接复用）。
+### 词级聚类、控件排他回填与伪装 WebP 兜底
 
-接线口径（现状：像素活已全部交给图片模型，本地视觉只做门禁与蒙版）：
+1. **同行邻近词聚类（`clusterOcrLineWordsIntoBoxes` in `src/shared/graph/uiControlSpec.ts`）**：合并同行间距不超过字高 `1.35×` 的相邻词框（CJK 字符零空格拼接，西文单词保留空格），产出紧致归一化 `LocalOcrTextBox`。
+2. **父子控件排他匹配（`matchOcrBoxesToControlRect`）**：将文字框分配给 16 类游戏 UI 控件时，自动剔除已被子控件（如弹窗内的按钮）认领的文字，杜绝父容器面板重复吞字。
+3. **字芯与描边双采样（`estimateUiControlTextStyleFromRgba`）**：自适应区分背景、文字主色与 1px 描边色，直接生成 Photoshop 原生可编辑 `TySh` 文本层（`src/renderer/src/features/graph/model/layerSplitPsd.ts`）及 `ui.atlasCompose` 多引擎导出元数据。
+4. **伪装后缀 WebP 自动容错（`src/renderer/src/features/yolo/api.ts`）**：遇到后缀为 `.png` / `.jpg` 但实际魔数为 `RIFF....WEBP` 的素材时，自动回退至渲染层 Chromium 原生解码转为 `YoloImageInputRaw` 重试，彻底消除解码报错。
 
-- **人脸关键点**是唯一仍在生产链路里的本地视觉：`portraitCapabilities.detectPortraitFaces`
-  （见下节）。执行器用它做两件事 —— 依赖人脸的组能否进提示词、局部回贴的脸 + 颈蒙版几何；
-- **实例分割**有两条消费路径：智能构图 / 抠图，以及人像处理局部回贴的**人物蒙版**
-  （`composePortraitScopedRetouch` 取面积最大的 `person`，`buildCutoutAlpha` 做 letterbox 反算 + 羽化）；
-- **姿态**当前只作为「身形」组的可用性门禁（`PORTRAIT_TOOL_GROUPS` 的 `needs: ['pose']`），
-  生产链路里没有第二个消费点 —— 身形同样由图片模型按提示词完成；
-- 所有本地视觉调用都包在 try/catch 里：模型缺失 / 推理失败一律退化为「没有这项能力」，
-  **不让整次出图失败**（依赖它的组整组不进提示词）。
+---
 
-### `face` 任务类型的实际接线（已实现）
+## 8. 开发验证与回归测试
 
-1. `src/shared/yolo.ts`：`YoloTaskKind` 含 `'face'`，`YoloFaceResult` 内部统一成 **canonical-68** iBUG 顺序（索引约定见 `src/shared/graph/portraitFace.ts`）；
-2. `src/main/yolo/faceInfer.ts`：两段式推理（张量装配 / 会话缓存 / 裁剪投影），纯数学在 `src/shared/faceMesh.ts`（有单测）；`protocol.ts` 的 `face` 方法收 `{ detectorPath, landmarkPath }`；
-3. `src/main/yolo/{yoloWorker,yoloService}.ts`：worker 分发 `face` 并在退出时 `disposeFaceSessions()`；`kindOfModelId` 认得出人脸文件，`resolveFaceModelPath` 解析两段式路径；对外通道 `yolo:face`；
-4. `src/shared/ipc.ts` + `src/preload/index.ts` + `src/main/ipc.ts` + `src/renderer/src/features/yolo/api.ts`：`yoloFace` 一路到渲染层；
-5. `src/renderer/src/components/settings/YoloModelsPanel.vue` + 两套 locale：加「人脸关键点」档位（**只给放置引导，不编造下载源**）；
-6. `src/renderer/src/features/graph/model/portraitCapabilities.ts` 的 `detectPortraitFaces` 调 `yoloFace`，把结果转成 `PortraitFaceAnalysis`（`schema: 'canonical68'`，landmarks 归一化 0..1，box 由 `portraitFaceBoxFromLandmarks` 从关键点反推），按面积降序，失败 / 模型缺失返回 `[]`；
-7. `tests/portraitFaceWiring.test.ts`：源码文本断言锁住上面这条链，防止被静默删掉。
+相关自动化单测（运行 `npm test`）：
 
-### 区域蒙版（468 点稠密环）：已随 v1 流水线删除
-
-v1（本地像素流水线）用 468 点语义稠密环把妆容 / 牙齿 / 磨皮限制在语义区域里。v2 把像素活交给
-图片模型后这条链路没有消费方，相关代码已一并删除（`faceMesh.ts` 的
-`FACE_OVAL` / `FACE_LIPS_*` / `FACE_EYE_*` / `FACE_BROW_*` / `FACE_NOSE` 常量、
-`portraitFace.ts` 的 `PortraitFaceRegion(s)` / `PORTRAIT_ALL_REGIONS` / `portraitRegionPolygon` /
-`portraitRegionFeather`、以及 `landmarks468ToTuples`）。
-
-**将来若要「精细蒙版」**（provider 支持 inpainting 蒙版通道后按眼 / 唇 / 牙 / 脸缘分别罩）
-需要重新引入这套环常量，口径是：
-
-1. 常量照抄 MediaPipe 的**规范连接集**：只保证「是哪些点」，**不保证先后顺序**，使用处必须按
-   绕质心的极角重排成有序闭合环（排序错了会得到自交多边形，肉眼看不出来）；
-2. 产出分区：`faceOval`（下半脸）/ `faceSkin`（整圈脸缘）/ `forehead`（与 68 点眉高线闭合）/
-   左右眼 / 左右眉 / 鼻（`FACE_NOSE ∪ {19, 94}`，官方集合缺 68 点鼻底两点）/ 内外唇 / `teeth`；
-3. 几何自检：点数 ≥ 3、面积 > 0、且与同语义 68 点多边形面积比在 `[0.3, 4]`，不合格就**不产出该区域**，
-   调用方回落 68 点多边形 —— 索引表写错时的表现是「少一个区域」，而不是「静默错蒙版」。
-
-`PORTRAIT_FACES_VERSION` 仍为 **2**：版本校验保证老缓存（带 `regions` 的那版）会重新检测。
-
-**仍缺**：模型的下载源（见下节许可闸门）。在此之前用户只能手动放置两个 ONNX。
-
-**许可证闸门（必须先行确认）**：模型必须可商用、可再分发。候选：MediaPipe Face Mesh（Apache-2.0，需 TFLite→ONNX 转换并自测精度）、PIPNet 68/98 点（Apache-2.0）。**排除**：InsightFace `2d106det`（非商用研究许可）、YOLO11n-face 派生（AGPL-3.0，与包内 YOLO 同源但风险更高 —— 现有 YOLO 权重的 AGPL 风险见第 6 节末的许可提示）。确认后把仓库 URL、版本、许可证与 SHA-256 一并写进 fetch 脚本注释与本文件。
-
-## 12. 跨平台本地离线 OCR 服务（`localOcrService.ts`）与 WebP 容错解码
-
-在游戏 UI 图层拆分（`image.layerSplit` 的 `ui` 模式）中，除云端 VLM OCR 外，系统内置了**零外部 NPM 原生依赖、零额外安装包体积**的跨平台本地离线 OCR 服务（`src/main/services/localOcrService.ts`，IPC 通道 `ocr:recognize-local`）：
-
-| 平台        | 原生引擎                                                  | 运行机制与特点                                                                                                                                       |
-| ----------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Windows** | `Windows.Media.Ocr.OcrEngine` (WinRT)                     | 通过 PowerShell 调用 Windows 10/11 系统内置 WinRT OCR API（`TryCreateFromUserProfileLanguages()`），原生输出行文本及每个词的 `(X, Y, Width, Height)` |
-| **macOS**   | Apple `Vision.framework` (`VNRecognizeTextRequest`)       | 首次调用时用 `/usr/bin/swiftc` 将内置 Swift 脚本编译为 `os.tmpdir()` 下的原生二进制缓存，开启 `.accurate` 识别级与自动语言检测（中/英/日/韩）        |
-| **Linux**   | 系统 `tesseract` CLI（`--psm 11 -l chi_sim+eng/eng tsv`） | 自动探测 `tesseract --list-langs` 并解析 TSV 词级坐标（`parseTesseractTsvToOcrLines`），无环境时优雅降级返回空列表，绝不抛错中断拆层流水线           |
-
-### 词级聚类与控件回填管线（`src/shared/graph/uiControlSpec.ts`）
-
-1. **同行邻近词聚类（`clusterOcrLineWordsIntoBoxes`）**：按阅读顺序扫描同一行的单词框，对间距不超过字高 `1.35×` 的相邻词合并（CJK 相邻字符零空格拼接，ASCII 单词自动保留空格），生成紧致 `LocalOcrTextBox`（归一化 `0..1` 坐标）。
-2. **父子排他匹配（`matchOcrBoxesToControlRect`）**：将 OCR 文本框匹配到 16 类 UI 控件框时，自动排除落在子控件（`enclosedChildren`）内部的文字，避免父级 `panel` / `modal-dialog` 把内部按钮的文字重复吞并。
-3. **字芯与描边色彩双采样（`estimateUiControlTextStyleFromRgba`）**：基于自适应色差掩码区分背景、字芯主色（`color`）与 1px 邻域环带描边（`strokeColor` / `strokeWidth`），最终写入 PSD 的原生 `TySh` 可编辑文本图层与 Unity / Godot / HTML5 界面代码。
-4. **伪装后缀 WebP 透明容错（`src/renderer/src/features/yolo/api.ts`）**：当资产文件扩展名为 `.png`/`.jpg` 但文件头实际为 `RIFF....WEBP` 时，`yoloService.ts` 在 `utilityProcess` 解码前或报错含 `webp image` 时自动由渲染层通过 `filePathToRawImage()`（Chromium 原生 WebP 解码）转换为 `YoloImageInputRaw` 重试，彻底消除伪装 WebP 报错。
+- `tests/ortSession.test.ts` — GPU Execution Provider（CUDA / DirectML / CoreML）优先级探测与 CPU 自动回退
+- `tests/localModelMigrate.test.ts`、`tests/bundledModelFiles.test.ts` — 模型目录迁移与随包 `.onnx` 体积/完整性门禁
+- `tests/yoloCatalog.test.ts`、`tests/yoloCutout.test.ts`、`tests/imageDecoderJpegLimits.test.ts` — YOLO 目录、抠图合成与大图解码边界
+- `tests/faceMesh.test.ts`、`tests/yoloFaceModels.test.ts`、`tests/portraitFaceWiring.test.ts`、`tests/portraitLiveEngine.test.ts` — BlazeFace 锚点、468→68 映射与 4 频段小波人像管线
+- `tests/sam2Catalog.test.ts`、`tests/sam2Unzip.test.ts`、`tests/mattingCatalog.test.ts` — SAM 2.1 与高精度抠图模型目录及解包校验
+- `tests/stage2dPoseSolve.test.ts`、`tests/stage2dAutoPart.test.ts` — 2D 立绘 YOLO-Pose + Alpha 剪影骨骼求解与自动拆件
+- `tests/uiComponentLibrarySplit.test.ts`、`tests/uiPreciseSplit.test.ts`、`tests/uiAtlasCompose.test.ts` — 离线 OCR 控件文字回填、九宫格识别与 UI 图集组装

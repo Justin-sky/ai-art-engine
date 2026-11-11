@@ -49,29 +49,29 @@
         { url: 'manual-workflow.en.html', label: 'Manual · Workflow' },
         { url: 'manual-production.en.html', label: 'Manual · Production' },
         { url: 'manual-reference.en.html', label: 'Manual · Reference' },
-        { url: 'guide-video.en.html', label: 'Video Guide' },
-        { url: 'guide-short-video.en.html', label: 'Short Video' },
+        { url: 'guide-video.en.html', label: 'Video & Remake' },
+        { url: 'guide-short-video.en.html', label: 'Short Drama' },
         { url: 'guide-comfyui.en.html', label: 'ComfyUI' },
         { url: 'guide-newapi.en.html', label: 'NewAPI' },
-        { url: 'guide-mcp.en.html', label: 'MCP Setup' },
-        { url: 'guide-gameplay.en.html', label: 'Playable HTML' },
+        { url: 'guide-mcp.en.html', label: 'MCP Server' },
+        { url: 'guide-gameplay.en.html', label: 'Playable HTML5' },
         { url: 'developers.en.html', label: 'Developer Docs' }
       ]
     : [
         { url: 'index.html', label: '首页' },
         { url: 'quickstart.html', label: '快速上手' },
         { url: 'manual.html', label: '使用手册' },
-        { url: 'manual-setup.html', label: '手册 · 工程与设置' },
-        { url: 'manual-workspace.html', label: '手册 · 工作区与资产库' },
-        { url: 'manual-workflow.html', label: '手册 · 一键工作流与节点图' },
-        { url: 'manual-production.html', label: '手册 · 剧本、成片与导演台' },
+        { url: 'manual-setup.html', label: '手册 · 工作区与设置' },
+        { url: 'manual-workspace.html', label: '手册 · 资产库与 AI 对话' },
+        { url: 'manual-workflow.html', label: '手册 · 节点图与游戏工作台' },
+        { url: 'manual-production.html', label: '手册 · 漫剧、时间线与导演台' },
         { url: 'manual-reference.html', label: '手册 · 参考与故障排查' },
-        { url: 'guide-video.html', label: '视频生成指南' },
-        { url: 'guide-short-video.html', label: '短视频教程' },
+        { url: 'guide-video.html', label: '视频与逆向复刻' },
+        { url: 'guide-short-video.html', label: 'AI 漫剧 / 短剧教程' },
         { url: 'guide-comfyui.html', label: 'ComfyUI 教程' },
         { url: 'guide-newapi.html', label: 'NewAPI 教程' },
         { url: 'guide-mcp.html', label: 'MCP 接入' },
-        { url: 'guide-gameplay.html', label: '可玩 HTML' },
+        { url: 'guide-gameplay.html', label: '可玩 HTML5' },
         { url: 'developers.html', label: '开发者文档' }
       ]
 
@@ -227,29 +227,46 @@
     }
 
     var terms = q.split(/\s+/).filter(Boolean)
+    // 若用户输入连续中文与英文混合（如“游戏UI拆层”或“漫剧五阶段”）且无空格，自动拆分为中英文词块 / 双字切分兜底
+    if (terms.length === 1 && /[\u4e00-\u9fff]/.test(q) && q.length >= 4) {
+      var mixed = q.match(/[a-z0-9_.-]+|[\u4e00-\u9fff]+/g)
+      if (mixed && mixed.length > 1) terms = mixed
+    }
     var scored = []
-    for (var i = 0; i < entries.length; i++) {
-      var e = entries[i]
-      var title = e.title.toLowerCase()
-      var body = e.body.toLowerCase()
-      var score = 0
-      var matched = true
-      for (var j = 0; j < terms.length; j++) {
-        var t = terms[j]
-        var inTitle = title.indexOf(t) >= 0
-        var inBody = body.indexOf(t) >= 0
-        if (!inTitle && !inBody) {
-          matched = false
-          break
+    function scoreTerms(tokenList) {
+      var out = []
+      for (var i = 0; i < entries.length; i++) {
+        var e = entries[i]
+        var title = e.title.toLowerCase()
+        var body = e.body.toLowerCase()
+        var score = 0
+        var matched = true
+        for (var j = 0; j < tokenList.length; j++) {
+          var t = tokenList[j]
+          var inTitle = title.indexOf(t) >= 0
+          var inBody = body.indexOf(t) >= 0
+          if (!inTitle && !inBody) {
+            matched = false
+            break
+          }
+          score += inTitle ? 12 : 0
+          score += inBody ? 3 : 0
+          if (inBody) {
+            var count = body.split(t).length - 1
+            score += Math.min(count, 5)
+          }
         }
-        score += inTitle ? 12 : 0
-        score += inBody ? 3 : 0
-        if (inBody) {
-          var count = body.split(t).length - 1
-          score += Math.min(count, 5)
-        }
+        if (matched) out.push({ entry: e, score: score })
       }
-      if (matched) scored.push({ entry: e, score: score })
+      return out
+    }
+    scored = scoreTerms(terms)
+    if (!scored.length && terms.length === 1 && /^[\u4e00-\u9fff]{4,}$/.test(q)) {
+      var bigrams = []
+      for (var b = 0; b < q.length - 1; b += 2) bigrams.push(q.slice(b, b + 2))
+      if (q.length % 2 === 1) bigrams.push(q.slice(-2))
+      terms = bigrams
+      scored = scoreTerms(terms)
     }
     scored.sort(function (a, b) {
       return b.score - a.score

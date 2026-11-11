@@ -1,441 +1,252 @@
-# 让 AI 助手直接操作 AiArtEngine（MCP 接入指南）
+# AI Art Engine MCP 服务与 102 工具完整规范（v8.9.1）
 
-## 这是什么？
-
-AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议"，即 AI 助手调用你本机工具的标准方式）。接入后，**Claude Code、Codex 等 AI Agent 就可以直接操作你的工程**，而不用你手动点界面。应用内的 **AI 对话面板**（工作区左侧「◈」按钮）也通过这套同一套工具集运行——它在聊天里 `@` 引用资产并让 Agent 调用下列工具，行为与外部 Agent 完全一致。
-
-能帮你做什么，举几个例子（对话里直接说就行）：
-
-- 「列出我最近的工程」→ `project_list`
-- 「打开工程 `demo`，用 `shortDrama` 模板规划一条工作流并落盘」→ `workflow_plan` + `workflow_commit`
-- 「把剧本里第 3 段改成……并更新资产」→ `asset_read_file` + `asset_write_text`
-- 「把 `D:\art\icons` 里的图标导入工程，新建个 IconPacks 文件夹整理好」→ `folder_create` + `asset_import`，再让用户在对话产物卡里挑 IconPacks 文件夹点「保存到资产库」
-- 「把这段语音转写成字幕底稿，再打包成资产包发给同事」→ `transcribe_audio` + `asset_package_export`
-- 「把 2D 舞台那套骨骼装配导成 Spine 包，部件要独立透明页」→ `stage2d_spine_export`
-- 「把角色差分图体检一遍，白边和光晕清理干净再用」→ `asset_qc` + `asset_qc_fix`
-- 「把这条口播里的停顿静默剪掉，再导出成片」→ `transcribe_audio` + `timeline_rough_cut` + `timeline_export`
-- 「把这 5 张分镜图铺到视频轨、每张 3 秒，台词按转写铺成字幕」→ `timeline_edit`
-- 「铺完了，让我看看画面对不对」→ `timeline_preview`
-- 「录制一个图片生成节点的使用教程」→ `screen_record_*` + `tutorial_compose`（技能 `tutorial-recording`）
-  - 讲**音效/音乐**的教程记得每步带 `steps[].sfxRelativePath`：把该步生成的音频铺到 sfx 轨，
-    否则成片里只有口播、观众听不到被演示的那个声音
-- 「这个 SVG 矢量图标 / 矢量动画画成什么样了？」→ `render_svg`
-- 「生成一张标题图 / 一段口播音频，存进工程」→ `generate_image` / `generate_speech`
-- 「刚才提交的视频生成好了吗？」→ `task_status` / `video_job_get`
-- 「在 Blender 里把这几个 Cube 拼成一个底座，做完截张图给我看」→ `execute_blender_code` + `get_viewport_screenshot`
-- 「Blender 里调好的角色导出成 GLB 存进资产库」→ `export_scene` + `asset_import`
-
-一句话：**应用负责干活，Agent 负责发指令，全程不离开你的对话窗口。**
+> 线上图文接入教程见官网：[guide-mcp.html](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)（[English](https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html)）。本文档为 `v8.9.1` 服务端架构、安全门禁与 **全部 102 个实时工具（`/mcp` 93 个 + `/mcp/blender` 9 个）** 的权威技术规范。
 
 ---
 
-## 特色能力：Blender MCP Server（让 AI 直接操作 Blender）
+## 1. 概述与设计范式
 
-> 本机 Blender 跑着，AI 就能在对话里搭场景、写材质、截图自查、导出 GLB —— **出站直连 addon，不需要 uv / Python / 子进程**。
+AI Art Engine 桌面端内置基于 **Model Context Protocol (MCP)** 的本机双向工具服务（核心实现位于 `src/main/services/mcpServerService.ts`、`src/shared/mcpProtocol.ts` 与 `src/main/services/blenderMcpService.ts`）：
 
-这一组工具挂在同一服务的另一个端点 `/mcp/blender`，**默认开启**（设置 → MCP → Blender 工具集），共 9 个工具（详见 [§⑥ Blender 工具集](#⑥-blender-工具集可选需要本机-blender)）：
+- **内外同源架构**：外部编程 Agent（Claude Code、Cursor、Codex、Windsurf 等）与应用内 **◈ AI 对话面板**（DeepSeek Harness `dsh`）调用的是**完全同一套 MCP 端点与工具实现**。
+- **节点图为唯一生成底座**：所有图像、视频、语音、音乐、3D 模型与空间世界的生成及加工，统一通过 **强类型 DAG 节点图**（`graph_node_types` 自省 → `graph_edit` 编排或 `workflow_use_installed` 装载模板 → `task_run` 拓扑执行 → `task_status` 跟踪）完成，确保画布状态、资产血缘、缓存复用与 Undo/Redo 历史 100% 一致。`graph_*` 与 `director_stage_*` 均为一等公民核心工具。
+- **全工作区零配置直控**：配合运行时参数自省（`introspection.ts`）、深层点路径智能补丁（`smartPatch.ts`）与焦点上下文总线（`surfaceRegistry.ts`），任何画布节点、Dive 子工作台（UI 拆层、Machinations 数值沙盘、漫剧五阶段、2D 骨骼、3D 导演台、小波人像、6 栏时间线）均可由一句话精准操控。
 
-- **直接驱动 Blender** — `execute_blender_code` 在 Blender 进程内执行 Python（完整访问 bpy / bmesh / mathutils），`get_viewport_screenshot` 抓视口画面回给多模态客户端，`export_scene` 出 GLB / GLTF / FBX / OBJ / USD / STL
-- **双 addon 兼容** — 同时支持**社区方案** [blender-mcp](https://github.com/ahujasid/blender-mcp) 的 `addon.py` 与**官方方案** [Blender Lab「MCP Server」](https://projects.blender.org/lab/blender_mcp) 扩展；两种后端下工具名、入参、输出结构**完全一致**，模型侧无感
-- **零额外依赖** — 不装 uv、不起 Python 子进程、不改 Blender 配置：应用主动出站连 addon 的 `localhost:9876` 监听端口
-- **应用内对话 + 外部 Agent 同源** — 工作区左侧 ◈ AI 对话面板与 Claude Code / Codex 等外部 Agent 走**同一套** Blender 工具集；面板的 Ask / Plan 模式同样约束 Blender 工具 —— 它不是绕过面板模式的侧门
+### 典型对话指令与工具映射示例
 
-**典型闭环**：
-
-```
-get_scene_info   看清现状
-       ↓
-execute_blender_code   写 bpy 建模 / 调材质 / 摆相机
-       ↓
-get_viewport_screenshot   截图自查（多模态客户端直接看到画面）
-       ↓
-export_scene   出 GLB / GLTF / FBX …
-       ↓
-asset_import   进 Cache/imports/（临时缓存）
-       ↓
-save_project_asset（用户点「保存到资产库」）   入 Assets/<folder>/
-```
-
-对话里这样说就行：「在 Blender 里把这几个 Cube 拼成一个底座，做完截张图给我看，调好后导出 GLB 入库」。
+- 「列出最近的工作区并打开 `cyber-drama`，看看 Git 改了哪些文件」→ `project_list` + `project_open` + `project_git_status` + `project_git_diff`
+- 「在当前画布建一个 21 题材漫剧工作台并运行，跑完告诉我进度」→ `graph_node_types` + `graph_edit` + `task_run` + `task_status`
+- 「把 3D 导演台里的林小满切成端坐姿态，主光调成暖金色，切到 85mm 特写机位」→ `director_stage_read` + `director_stage_edit`
+- 「搜一下官方技能市场的古画复活技能并装上，把种子拓扑并入当前画布」→ `skill_search` + `skill_install` + `workflow_use_installed`
+- 「用本地离线 OCR 提取这张游戏截图里的所有文字框，再用 SAM2 分割中间的按钮」→ `vision_local_ocr` + `vision_local_yolo`
+- 「往数值沙盘插入抽卡软保底积木，把第 60 步出金期望反推配平并导出 Unity C# 脚本」→ `machinations_building_blocks` + `machinations_studio`
+- 「拆解这条参考短视频的四轴视听结构，再去剪掉时间线静默段并导出成片」→ `semantic_analyze_video` + `semantic_timeline_read` + `timeline_rough_cut` + `timeline_export`
+- 「在 Blender 里用 `bpy` 搭一座低多边形浮空岛，截视口图给我看，确认后导成 GLB 入工程缓存」→ `get_scene_info` + `execute_blender_code` + `get_viewport_screenshot` + `export_scene` + `asset_import`
 
 ---
 
-## 快速开始（5 分钟跑通）
+## 2. 传输架构、鉴权与模式门禁
 
-前置条件：已安装并启动 AiArtEngine 桌面应用（工具服务随应用启动，退出即关闭）。
+```text
+┌──────────────────────┐  MCP (stdio)  ┌──────────────────────────┐  HTTP POST  ┌───────────────────────────────┐
+│ Claude Code / Cursor │──────────────▶│ resources/mcp-bridge.mjs │────────────▶│ AI Art Engine 主进程          │
+│ Codex / Windsurf     │◀──────────────│ (或 scripts/mcp-bridge)  │◀────────────│ 127.0.0.1:43110 (/mcp &      │
+└──────────────────────┘               └──────────────────────────┘             │ /mcp/blender) + Token + 闸门  │
+                                                                                └───────────────────────────────┘
+```
 
-接入有**两种方式，任选其一**：
+### 2.1 Streamable HTTP 服务端与 stdio 隧道桥
 
-|              | 方式 A：stdio 桥                               | 方式 B：HTTP 直连                 |
-| ------------ | ---------------------------------------------- | --------------------------------- |
-| 一句话       | Claude Code 帮你拉起一个桥脚本，桥再转发给应用 | 客户端直连应用的工具服务          |
-| 需要 Node.js | 是（18+）                                      | 否                                |
-| 适用         | 本机日常使用（推荐）                           | 客户端不支持 stdio、或不想装 Node |
-| 端点/命令    | `scripts/mcp-bridge.mjs`                       | `http://127.0.0.1:43110/mcp`      |
+| 组件                    | 说明                                                                                                                                                                                                                        |
+| :---------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **监听地址与端口**      | 严格绑定本机回环 `127.0.0.1`（拒绝局域网/公网连入）。默认端口 `43110`，被占用时自动顺延探测 `43110–43119`；单次请求体上限 `8 MB`。                                                                                          |
+| **HTTP 路由**           | `GET /health`（无鉴权健康探针）、`POST /mcp`（93 个核心工具，JSON-RPC 请求回 `200`、通知回 `202`）、`POST /mcp/blender`（9 个 Blender 实时建模工具）、`POST /mcp/ext/<id>`（反向代理已注册的第三方 MCP 服务）。             |
+| **stdio 纯隧道桥**      | 源码位于 `scripts/mcp-bridge.mjs`，安装包内置于 `<安装目录>/resources/mcp-bridge.mjs`（见 `electron-builder.yml` `extraResources`）。桥脚本**只做字节流转发、不维护协议与工具定义**，确保升级应用后工具 Schema 永远零漂移。 |
+| **连接凭证 `mcp.json`** | 应用启动绑定端口后自动写入 `<userData>/mcp.json`（Windows 为 `%APPDATA%\aiartengine\mcp.json`），结构为 `{ port, token, pid, version }`。**Token 跨重启持久保留**；如需轮换密钥，删除该文件重启应用即可重新生成。           |
+| **反向外部 MCP 桥**     | 通过 `src/main/services/externalMcpClient.ts`，应用内 `dsh` 对话面板也可挂载用户自定义的任意外部 `stdio` 或 `http` MCP 服务（在「技能市场 → MCP」或「设置 → MCP 工具服务」配置）。                                          |
 
-### 方式 A：stdio 桥（推荐）
+### 2.2 并发闸门与审计日志
 
-1. 启动 AiArtEngine 应用。
-2. 在工程根目录执行下面命令，向 Claude Code 注册这个 MCP server（`<仓库绝对路径>` 换成实际路径）：
+- **同步长任务并发闸门（`AsyncSemaphore`）**：`task_run`、`decide`、`tutorial_compose` 三个重负载同步阻塞工具共享并发信号量（默认上限 `3`，可通过环境变量 `AIAE_MCP_GEN_LIMIT` 覆盖），防止多路并发压垮渲染进程或打爆云端配额。
+- **全量落盘审计（`mcp-audit.jsonl`）**：所有工具调用（含被权限门禁拦截的越权请求）均以时间安全比对鉴权后追加记录至 `<userData>/logs/mcp-audit.jsonl`（记录时间戳、工具名、200 字符截断参数摘要、耗时与结果，单文件满 `5 MB` 自动滚动为 `.1`，自动剔除图片 Base64 载荷）。
 
-   ```bash
-   claude mcp add aiartengine -- node <仓库绝对路径>/scripts/mcp-bridge.mjs
-   ```
+### 2.3 `Agent (Craft) / Plan / Ask` 请求级模式门禁（`src/shared/mcpModeAccess.ts`）
 
-   > 开发场景用仓库内脚本；安装包里也内置了一份，位于 `<安装目录>/resources/mcp-bridge.mjs`。
+应用内 AI 对话面板顶部的三种工作模式并非单纯的提示词约束，而是随每次运行通过 HTTP 请求头 `X-AIArt-Mode`（线协议取值为 `craft` / `plan` / `ask`）与 `X-AIArt-Run-Id` 强制执行的**工具面硬门禁**（同时约束 `/mcp` 与 `/mcp/blender`）：
 
-3. 新开一个 Claude Code 会话（注册后需重启会话生效），然后直接说：
-   「列出我的工程，打开最近的一个，告诉我里面有哪些资产」。
+| 面板模式（线协议值）         | `tools/list` 可见范围                         | `tools/call` 放行规则                                                                                                                                                  |
+| :--------------------------- | :-------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Agent / Craft**（`craft`） | 全部工具（`read` + `write` + `generate`）     | 全量放行（默认执行模式）。                                                                                                                                             |
+| **Plan**（`plan`）           | 确认前仅暴露只读工具（`read`，含 `ask_user`） | 用户通过 `ask_user` 确认分步方案前，任何 `write` / `generate` 调用均被直接拦截并返回引导文案；确认「继续」后，同一轮运行自动解锁写与生成权限（点击「取消」保持锁定）。 |
+| **Ask**（`ask`）             | 空列表（隐藏全部 MCP 工具）                   | 拒绝一切 MCP 工具调用，强制模型仅以纯文本解答问题。                                                                                                                    |
+| **外部客户端**（无模式头）   | 全部已启用工具                                | 不携带 `X-AIArt-Mode` 头时视为用户在外部宿主显式授权，不受面板模式开关影响。                                                                                           |
 
-> **stdio 桥也可走设置面板**：设置 → **MCP 工具服务** → **stdio 桥** Tab 可视化配置 —— 命令（默认仍是 `node` + 仓库内 / 安装包内置桥脚本路径）、桥端口（默认桥 HTTP 监听端口）、Blender addon 的 `BLENDER_HOST` / `BLENDER_PORT` 透传、`safe mode` 默认开；改完即时落盘不需重启应用，外部 Agent 重新注册即可生效。开发场景用仓库内 `scripts/mcp-bridge.mjs`；安装包内置在 `<安装目录>/resources/mcp-bridge.mjs`。
-
-### 方式 B：HTTP 直连（无需 Node.js）
-
-1. 启动 AiArtEngine 应用。
-2. 找到应用的连接信息文件 `mcp.json`（Windows 在 `%APPDATA%\aiartengine\mcp.json`），里面是 `{ port, token, pid, version }`。
-3. 注册（把 `<token>` 换成文件里的 token）：
-
-   ```bash
-   claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer <token>"
-   ```
-
-   > 端口默认是 43110；如果被占用，应用会依次尝试 43110–43119，用实际端口替换即可。
-
-4. 新开会话验证（同上）。
-
-### 怎么确认接通了？
-
-会话里问一句：「调用一下 `app_status`，看下当前版本和打开的工程」。有正常返回就说明通了；返回报错看文末[常见问题](#常见问题排查)。
+> 工具副作用分为三级：`read`（只读查询、抽帧预览、离线 OCR/YOLO、状态检查）、`write`（修改工程/画布/时间线/资产/安装技能；未显式登记为 `read` 或 `generate` 的工具默认按 `write` 安全兜底）、`generate`（直接消耗云端模型/ASR/TTS 额度或执行不可逆重型构建，包括 `decide`、`transcribe_audio`、`gameplay_build`、`tutorial_compose`、`semantic_analyze_video`、`game_one_sentence_create`、`game_ui_suite_create`）。
 
 ---
 
-## 原理：消息是怎么走的
+## 3. 快速接入（Claude Code / Cursor / Codex）
 
-```
-┌────────────────┐  MCP(stdio)   ┌────────────────────┐   HTTP    ┌────────────────────────┐
-│ Claude Code    │──────────────▶│ mcp-bridge.mjs     │──────────▶│ AiArtEngine 应用        │
-│ Codex 等 Agent │◀──────────────│（纯隧道，只转发）    │◀─────────│ 127.0.0.1 工具服务      │
-└────────────────┘               └────────────────────┘           └────────────────────────┘
-```
-
-- **方式 A** 走完整条链路：Agent 拉起桥 → 桥把消息原样 POST 到应用的 `/mcp` 端点。
-- **方式 B** 跳过桥，Agent 直连应用的 `/mcp` 端点。
-
-关键点：**桥不做任何协议处理**，只负责转发（stdin 一行进、stdout 一行出）。协议语义（版本协商、工具清单、错误码）全部由应用内的 `src/shared/mcpProtocol.ts` 实现。好处是——**工具清单和协议版本永远跟应用同步，升级应用不会出现"桥和协议对不上"**。
-
-### 两个 mcp.json，别搞混
-
-这是最容易踩坑的地方，有两个同名文件、职责完全不同：
-
-|        | 应用侧 `mcp.json`                        | 项目侧 `.mcp.json`                                                                         |
-| ------ | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
-| 位置   | `%APPDATA%\aiartengine\mcp.json`         | **你运行 Claude Code 的项目根目录**（或其中的 `.claude/` 子目录），不是 ai-art-engine 仓库 |
-| 属于谁 | AiArtEngine 应用                         | Claude Code 的项目配置                                                                     |
-| 内容   | 连接信息 `{ port, token, pid, version }` | 声明"如何启动 aiartengine 这个 MCP server"                                                 |
-| 谁写   | 应用启动自动写、退出自动删               | 你手动写，可提交进 git 共享给团队                                                          |
-| 你要做 | **不要手改**                             | 可选，团队共享时有用                                                                       |
-
-**为什么设计成两个文件？** token 和端口是动态的（重启可能变化），放应用侧由程序维护；`.mcp.json` 是静态声明，告诉 Claude Code"这个 server 用哪条命令/哪个地址拉起来"。桥（或直连）正是靠读应用侧的 `mcp.json` 才找到工具服务的。
-
-**`.mcp.json` 需要手动创建吗？** 需要——**没有任何程序会自动生成它**，用法是新建一个名为 `.mcp.json` 的文本文件，填入下面的模板内容。但**大多数场景不用创建**：
-
-- **单人使用**：直接执行 `claude mcp add aiartengine -- node <桥脚本实际路径>`，Claude Code 会自动写入本机配置（`~/.claude.json`），效果相同、无需建任何文件；
-- **团队共享**：才值得手动创建 `.mcp.json` 并提交进 git，成员克隆项目即用。
-
-两种方式二选一，无需同时做。
-
-> 团队共享配置示例（`.mcp.json`，stdio 版，放在**你跑 claude 的项目根目录**，`args` 里的路径换成 ai-art-engine 桥脚本的实际位置）：
->
-> ```json
-> {
->   "mcpServers": {
->     "aiartengine": {
->       "command": "node",
->       "args": ["C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs"]
->     }
->   }
-> }
-> ```
->
-> HTTP 版（无需 Node.js，token 取自应用侧 mcp.json）：
->
-> ```json
-> {
->   "mcpServers": {
->     "aiartengine": {
->       "type": "http",
->       "url": "http://127.0.0.1:43110/mcp",
->       "headers": { "Authorization": "Bearer <应用侧 mcp.json 里的 token>" }
->     }
->   }
-> }
-> ```
-
-### token 持久复用
-
-应用侧 `mcp.json` 里的 token **跨重启保持不变**，所以配置一次就能长期用。要重置（比如怀疑泄露）：删除 `mcp.json` 后重启应用，会生成新 token。
-
-### 反向桥：让 dsh（应用内对话面板）直连 stdio MCP server
-
-「正向桥」是把 Claude Code 等外部 Agent 通过 stdio 桥 / HTTP 连进来；**反向桥**反过来 —— 应用内 ◈ AI 对话面板（DeepSeek Harness / dsh）也能注册并消费**任意 stdio MCP server**（不再局限于连回应用自己的 `/mcp`）：
-
-- **典型场景**：Blender addon 等只暴露 stdio 协议的 MCP server，不再需要先开 socket 端口；dsh 注册一条 `claude mcp add --transport stdio ...` 之类的命令后，AI 对话里说「在 Blender 里把…做完截张图」即可直接驱动
-- **配置入口**：设置 → **MCP 工具服务** → **stdio 桥** Tab 同样的区域，可加多组外部 stdio server 入口（每组：名称 / 启动命令 / 工作目录 / 环境变量）；与 Blender stdio 桥共用一份配置存储
-- **协议层**：反向桥在 dsh 进程内 fork stdio 子进程、转 MCP 帧、复用既有 mcp-client 实例；协议错误 / 子进程崩溃与正向桥共用同一套日志（`<userData>/logs/mcp-audit.jsonl`）
-- **安全**：仅限本机回环 + token 鉴权；外部 stdio server 不会自动获得应用侧 `/mcp` 的写权限，Ask / Plan 模式对反向桥的工具同样只读
-
----
-
-## 可用工具清单
-
-按用途分六组，按需查阅（第 ⑥ 组需要本机 Blender，且挂在另一个端点上）：
-
-### ① 工程与资产（探索、读写你的工程）
-
-| 工具                                               | 作用                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 前置条件                                                     |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `project_list`                                     | 最近工程路径列表                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 无                                                           |
-| `project_open`                                     | 打开一个工程                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 应用运行中                                                   |
-| `project_create`                                   | 新建工程                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 应用运行中                                                   |
-| `project_memory_read`                              | 读取当前工程的 Agent 记忆（`.aiartengine/memory.md`，跨会话偏好的完整 Markdown）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 已打开工程                                                   |
-| `project_memory_append`                            | 向项目记忆指定分类追加一条偏好（style / camera / character / other），下一轮对话自动注入                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 已打开工程                                                   |
-| `project_memory_write`                             | 整体覆盖写入项目记忆（Markdown，用于整理 / 重建）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 已打开工程                                                   |
-| `voice_profile_list`                               | 列出角色音色档案（角色 → 音色 id / 克隆参考音频）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 已打开工程                                                   |
-| `voice_profile_upsert`                             | 新建 / 更新角色音色档案（character + voice 或 referenceAudio + description）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 已打开工程                                                   |
-| `voice_profile_delete`                             | 删除指定角色音色档案                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 已打开工程                                                   |
-| `asset_list`                                       | 列出当前工程的资产                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 已打开工程                                                   |
-| `asset_read_file`                                  | 按相对路径读取工程内文本文件                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 已打开工程                                                   |
-| `asset_write_text`                                 | 更新文本资产（剧本/备注），界面同步刷新                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 已打开工程                                                   |
-| `folder_create`                                    | 新建资产库文件夹，返回 `folderId`（供 `asset_create` / `generate_*` 归档、`save_project_asset` 入库位置挑选用）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 已打开工程                                                   |
-| `folder_move`                                      | 把文件夹搬到另一父目录（省略 / null 即移回资产库根目录）；新父目录不能是 folderId 自身或任意子孙；磁盘目录与所有 descendant asset 的 relativePath 一起搬移；同名冲突自动追加 " 2" / " 3"                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 已打开工程                                                   |
-| `asset_create`                                     | 新建资产（剧本 / 策划案 / 世界观 / 分镜 / 子图 / 自由画布 / 图片 / 视频 / 声音 / 2D 动作），界面同步出现                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 已打开工程                                                   |
-| `asset_import`                                     | 把本机绝对路径的媒体文件收入工程的临时缓存 `Cache/imports/`（图片（含 PSD / SVG 矢量图）/ 视频 / 音频 / 3D 模型 / 剧本文本，单次上限 50 条；SVG 归图片资产，预览读原文件，可直接接 `svg.anim` 烘焙），返回逐条结果与跳过原因；**不直接入库**——对话流产物卡上的「保存到资产库」按钮由用户决定是否真正入 `Assets/<folder>/` 并由 `save_project_asset` 完成登记。**只收编工程外的本机素材**：工程内任意路径（含 `Assets/`、`Cache/`、`Output/`）整单拒绝；生成产物要入库由用户在对话产物卡点「保存到资产库」决定，已入库资产用 `asset_list` / `asset_read` 引用                                                                                 | 已打开工程                                                   |
-| `asset_rename`                                     | 重命名资产                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 已打开工程                                                   |
-| `asset_move`                                       | 把资产移动到指定文件夹（省略 `folderId` 即移回资产库根目录，媒体文件随目录搬移）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 已打开工程                                                   |
-| `asset_delete`                                     | 从资产库移除资产（默认拒绝删除仍被引用的资产，`force: true` 强制）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 已打开工程                                                   |
-| `transcribe_audio`                                 | 把工程内音频 / 视频转写成带时间戳的分段文本（台词表 / 字幕底稿）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 已打开工程                                                   |
-| `audio_separate`                                   | 人声 / 伴奏分离，两条音轨落 `Cache/Separated/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 已打开工程                                                   |
-| `extract_video_frames`                             | 视频**按时间均匀抽帧并落盘**为工程内图片，返回相对路径清单（可当参考图喂给生成工具）。`count` 默认 4、上限 24（给 1 取首帧）。依赖 ffmpeg，缺失时返回空数组                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 已打开工程 + ffmpeg                                          |
-| `grab_video_frames`                                | 视频**按指定时间点取画面并随响应回给客户端**（不落盘）—— agent 做视觉判断的正路：甄别时间段发生了什么、找可用镜头、印证字幕与画面对不对得上。一次最多回 6 张，超出会丢弃并说明。依赖 ffmpeg                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 已打开工程 + ffmpeg                                          |
-| `detect_video_keyframes`                           | 列出视频**关键帧时间点**（秒），用于挑切点附近再做精确取帧。ffprobe 级轻量操作，不逐帧解码                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 已打开工程 + ffprobe                                         |
-| `analyze_video_beats`                              | 对视频抽帧做**逐帧目标检测**，产出人 / 物出现的时间段（beat tags）并**写回资产 meta**。用于按"谁在什么时候出现"粗剪。**只吃视频资产 id**；依赖 ffmpeg + 检测模型，跳过时返回 `status: skipped` + `error` / `install` 而非抛错                                                                                                                                                                                                                                                                                                                                                                                                                | 已打开工程 + ffmpeg + 检测模型                               |
-| `storage_upload`                                   | 上传工程内媒体到对象存储，返回可分享的公网 / 预签名 URL                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 已打开工程，且已配置对象存储                                 |
-| `asset_package_export`                             | 导出 `.aipackage` 交付包（可选带依赖与生成缓存；无界面链路需给绝对 `targetPath`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 已打开工程                                                   |
-| `asset_package_import`                             | 导入 `.aipackage` 交付包（可按 guid 选子集），界面素材库同步刷新                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 已打开工程                                                   |
-| `stage2d_spine_export`                             | 把 2D 舞台的骨骼装配导出成 Spine 骨架包（部件透明页 + `skeleton.json` + `.atlas`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 已打开工程，且应用的界面已打开                               |
-| `asset_qc`                                         | 图片资产「引擎就绪」体检：抠图漏底 / 边缘白边 / 碎屑 / 贴边 / 空图 / 尺寸 / 命名（只读，不写盘）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 已打开工程，且应用的界面已打开                               |
-| `asset_qc_fix`                                     | 去边缘污染返工（去白边 / 光晕），产出新资产落 `Assets/QC/<原名>/`，附修复前后对比                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 已打开工程，且应用的界面已打开                               |
-| `timeline_read`                                    | 读剧本资产的成片时间线：片段（轨道 / 起止秒 / 取段起点 / 字幕 / 音量 / 转场）、设置、总时长，可按轨过滤                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 已打开工程                                                   |
-| `timeline_rough_cut`                               | 智能粗剪：按配音转写挤掉静默并全线前移（ripple），字幕 / 音乐轨跟随；默认只回计划                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 已打开工程（`apply: true` 时还需该剧本的时间线编辑器已关闭） |
-| `timeline_export`                                  | 时间线合成 MP4（拼接 / 转场 / 画中画 / 混音 / 烧字幕 / 水印）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 已打开工程，且系统可用 ffmpeg（无界面链路需传 `targetPath`） |
-| `timeline_edit`                                    | 时间线增删改：铺素材上轨 / 改音量·转场·字幕文本 / 删片段 / 用转写重建字幕                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 已打开工程（`apply: true` 时还需该剧本的时间线编辑器已关闭） |
-| `timeline_preview`                                 | 看成片画面：按导出同一条滤镜图渲染几张静帧（可均匀抽 / 定点抽），画面随响应回给多模态客户端                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 已打开工程，且系统可用 ffmpeg                                |
-| `screen_record_start` / `step` / `stop` / `status` | 录制应用自己的窗口（非桌面）：步骤时间戳写入 `alignment`；成片落 `Cache/Videos`（不自动进资产库）。HUD 只烧短 `title`；口播与字幕交给 `tutorial_compose`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 已打开工程 + ffmpeg；写操作需 Craft / Plan 确认后            |
-| `ui_bounds` / `ui_click`                           | 按 `data-tutorial-id` 查控件矩形 / 在中心派发真实点击（高亮与二期菜单路径教程）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 应用界面已打开；`ui_bounds` 只读                             |
-| `tutorial_compose`                                 | 教学视频一键合成：录屏 + alignment + 每步 narration → 旁白铺轨（**顺序排布，不重叠**；口播比步骤间隔长时顺延并在 `narrationShiftedSec` 回报）+ 可选 `steps[].sfxRelativePath` 把**被演示的音效**铺到 sfx 轨 → 导出 `Cache/Videos`（不自动进资产库）；对话流出预览卡                                                                                                                                                                                                                                                                                                                                                                          | 已打开工程 + 语音模型（未给 `voiceRelativePath` 时）+ ffmpeg |
-| `render_svg`                                       | 看矢量画面：内联 SVG 或工程内 `.svg` 用应用自己的引擎栅格化（静态出一帧，带动画按时间轴逐帧烘焙，最多回 4 帧），不落盘、不需要浏览器                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 已打开工程，且应用的界面已打开                               |
-| `graph_edit`                                       | 全能节点图、Dive 子工作台与 Inspector 编辑操作批：支持 `node_add`/`node_update`/`node_upsert`/`node_delete`、`edge_add`/`edge_delete`、一键预设 `apply_preset`、节点组 `group_add`/`group_update`/`group_delete`、自动排版 `auto_layout` 以及坐标/尺寸/锁定（`x, y, w, h, locked`）；`params` 原生支持**深层点路径与数组选择器**（如 `portraitRetouch.skinSmoothing`、`comicPage.panels[0].caption`、`filmStoryboard.shots[index=2].sound`、`filmCast.characters[name=林小满].outfit`）、顶层简写路由、中英文口语别名与 JSON-string 透明解包合并；省略 `assetId`/`nodeId` 时自动绑定当前打开/下钻的焦点目标；教学录屏请传 `openEditor: true` | 已打开工程                                                   |
-| `director_stage_edit`                              | 3D 导演台（Director Stage）全量场景与角色操控：支持演员/道具/几何白模增删、显隐（`visible: false/true`）、位移/旋转/缩放、56 根骨骼欧拉角旋转、全身/手势/视线姿态预设、多光源颜色与强度、环境预设、机位切换与运镜轨迹录制；省略 `assetId`/`nodeId` 时自动定位当前打开的导演台 Dive 宿主                                                                                                                                                                                                                                                                                                                                                      | 已打开工程，且应用的界面已打开                               |
-
-### ② 工作流：规划 → 落盘 → 运行
-
-| 工具                    | 作用                                                                                                                                                                                                                                                             | 前置条件                           |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `workflow_list_presets` | 行业模板列表（id + 标题）                                                                                                                                                                                                                                        | 应用运行中                         |
-| `workflow_plan`         | 自然语言 → 工作流方案预览（走应用已配置的文本模型，耗时可能数十秒）                                                                                                                                                                                              | 已打开工程 + 文本模型              |
-| `workflow_commit`       | 把方案落盘为宿主资产，界面同步出现（`plan` 也可手写从而跳过 `workflow_plan`；节点 `params` 按类型声明的键校验，未声明的键会被忽略并列在返回的 `warnings` 里；`imageModel` / `videoModel` 等可显式指定生成模型）                                                  | 已打开工程                         |
-| `folder_list`           | 列出资产库文件夹（generate_* 的 folderId 来源）                                                                                                                                                                                                                  | 已打开工程                         |
-| `graph_node_types`      | 可添加节点类型清单（typeId / 名称 / 分类 / 端口 / 能力说明 / 零配置自省的 `editablePaths`、`shorthandMap`、`presets`、`diveKind` / 可选默认参数），即 `graph_edit` 建节点的白名单，供 Agent 自发现所有节点与深层可调参数；新注册节点自动被运行时自省引擎反射暴露 | 应用运行中                         |
-| `graph_read`            | 读取宿主资产图结构（节点 id / 类型 / 标题 + 连线），graph_edit 前置                                                                                                                                                                                              | 已打开工程                         |
-| `graph_icon_refine`     | 单枚图标精修回炉：按整版画风重画某一枚（hint / prompt 可指定），写回同源打包节点的逐枚覆盖并默认重跑打包（耗时较长：一次生图 + 一次打包重跑；调用期间任务列表与素材库资产卡片角标可见运行中活动）                                                                | 已打开工程，且该图未在编辑器中打开 |
-| `task_run`              | 运行已落盘的工作流（整图拓扑序执行，输出写回资产），返回 `mcpTaskId`                                                                                                                                                                                             | 已打开工程 + 应用界面运行          |
-| `task_status`           | 按 `mcpTaskId` 查运行状态（running / done / error / stopped）                                                                                                                                                                                                    | 应用运行中                         |
-
-### ③ 内容生成（图片 / 视频 / 3D / 语音 / 音乐 / 决策）
-
-| 工具                               | 作用                                                                                                                                                                                                                                                                                                                                                                                                                                | 前置条件                                                  |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `generate_image`                   | 文生图 / 图生图，落盘 `Cache/Images`（不自动进资产库），返回工程内相对路径                                                                                                                                                                                                                                                                                                                                                          | 已打开工程 + 图片模型                                     |
-| `generate_video`                   | 提交视频生成，落盘 `Cache/Videos`（异步，用 `video_job_*` 跟踪；不自动进资产库）                                                                                                                                                                                                                                                                                                                                                    | 已打开工程 + 视频模型                                     |
-| `generate_model3d`                 | 文生 3D / 图生 3D，产出几何 GLB 落 `Cache/Models`（异步；不自动进资产库）；**不含加工** —— 蒙皮 / 拆件 / 加工见下面三个工具                                                                                                                                                                                                                                                                                                         | 已打开工程 + 3D 模型                                      |
-| `rig_model3d`                      | 给现有 3D 模型绑骨架（云端 Rigging API），产物落 `Cache/Models`（不自动进资产库）。**只有 Meshy 与 Tripo 提供该能力**。返回 `taskId`，做动画重定向时要把它作为 `providerTaskId` 传回。源模型给 `assetId` 或 `modelUrl`                                                                                                                                                                                                              | 已打开工程 + Meshy / Tripo                                |
-| `segment_model3d`                  | 把模型拆成部件，产物落 `Cache/Models`（不自动进资产库），返回**部件名清单**（可用于部件补全）与 `taskId`。两种模式：`mesh`（网格分割，默认，可给粒度）与 `smart`（智能分割，可用 `hint` 点名要拆哪些部件）。两套粒度枚举**不通用**（网格 `simple/balanced/detailed`，智能 `coarse/medium/fine`）                                                                                                                                    | 已打开工程 + Meshy / Tripo                                |
-| `post_process_model3d`             | 3D 后续加工，按 `op` 分流：`rigCheck`（**免费**，查能否绑骨 + 推荐骨架，**无产物**）、`retopology`（重拓扑，可选目标面数 / 四边面 / 烘焙贴图）、`meshComplete`（部件补全，`partNames` 点名）、`retarget`（动画重定向，动作 id 用 `list_model3d_animations` 查，**必须传绑骨任务的 `providerTaskId`**）、`convert`（格式转换 GLTF/FBX/USDZ/OBJ/STL/3MF）、`texture`（重绘贴图）。**能力按供应商矩阵过滤**（Tripo 8 项 / Meshy 5 项） | 已打开工程 + 对应 3D 供应商                               |
-| `list_model3d_animations`          | 列出 3D 供应商可用的预设动作（Meshy 动作库），供 `retarget` 选动作；可按 `search` 过滤。只读、不产生费用、不写资产                                                                                                                                                                                                                                                                                                                  | 已打开工程 + Meshy                                        |
-| `generate_speech`                  | 台词转 MP3，落盘 `Cache/Voices`（不自动进资产库）                                                                                                                                                                                                                                                                                                                                                                                   | 已打开工程 + 音频模型（如 ElevenLabs / OpenAI / MiniMax） |
-| `generate_dialogue`                | 多说话人对话：一段「说话人: 台词」的对白**一次合成**为单个音频（ElevenLabs `POST /v1/text-to-dialogue`），落盘 `Cache/Voices`（不自动进资产库）。`voices` 传说话人→音色映射、`voice` 作兜底；缺音色会报出**第几段、哪个说话人**。整段合成而非逐句拼接，为的是保住语气连贯                                                                                                                                                           | 已打开工程 + 支持对话端点的提供商（ElevenLabs）           |
-| `generate_sound_effect`            | **音效本身**（不是台词）：描述要写成声音的样子（「雨落在铁皮屋顶上」），走 ElevenLabs `POST /v1/sound-generation`，落盘 `Cache/Sfx`（不自动进资产库）。`loop` 生成可无缝循环（环境音必开，否则长循环接缝有咔嗒声）、`durationSeconds` 0.5–30、`promptInfluence` 0–1（默认 0.3）                                                                                                                                                     | 已打开工程 + ElevenLabs（该端点只有它实现）               |
-| `generate_music`                   | 按情绪 / 场景描述生成 BGM 并落盘 `Cache/Music`（同步；不自动进资产库），返回 `relativePath` / `durationMs`，可铺到时间线 music 轨；走**音乐模态**（设置页「音乐」页签）：ElevenLabs `music_v2_5` / MiniMax `music-3.0` / 百炼 `fun-music-v1` / OpenRouter（Google Lyria 3）                                                                                                                                                         | 已打开工程 + 音乐模型（如 `music-3.0`）                   |
-| `generate_world`                   | 文生世界 / 图生世界 / 多图生世界 / 视频生世界（World Labs Marble，四档：`marble-1.1` / `marble-1.1-plus` 与上一代 `marble-1.0` / `marble-1.0-draft`），产出可漫游世界的 GLB 网格落 `Cache/Models`（约 5 分钟；不自动进资产库）；本地 / 相对路径的参考**默认上传 World Labs 托管存储**（不占用对象存储配额，上传失败才回退对象存储）。返回值含 `spatialWorldId`，是下游导出的入口                                                    | 已打开工程 + 空间世界模型                                 |
-| `export_spatial_world`             | 把世界导出成可编排产物 —— **世界的唯一出口**（世界端口严格同类型，不导出就拿不到网格）。`mesh`（默认）出 HQ 网格 GLB 并登记为模型资产（可接 3D 加工 / 导演台），可选带贴图（约 60 万面）或顶点色（约 100 万面）；`splats` 出 PLY 泼溅，落在世界产物同目录同名文件、**不登记资产**。两者都**单独计费**；mesh 是异步服务，**最长约 1 小时**、限速 4 次/小时。**只想浏览不必导出** —— 世界自带的 `.spz` 已能直接看                     | 已打开工程 + 空间世界模型 + 世界 id                       |
-| `decide`                           | 用决策模型对给定状态做类型化判定（noul / choice / score），返回带概率、可直接分支的结论；不落盘、不写资产                                                                                                                                                                                                                                                                                                                           | 已打开工程 + 决策模型（OpenRouter / TypeSafe 直连）       |
-| `video_job_list` / `video_job_get` | 查询异步视频生成任务的状态                                                                                                                                                                                                                                                                                                                                                                                                          | 应用运行中                                                |
-
-`decide` 的入参：多行 `questions`（每行 `问题名 | noul|choice|score | 问题 | 判定说明`，`#` / `//` 开头的行是注释；choice 的选项与 score 的有序量表用 `;` 分隔，可写 `值:说明`）+ `state` 或 `assetId` / `assetIds`（把工程内文本资产按顺序拼成待判定的状态），可选阈值 `noulYesThreshold` / `choiceMinConfidence` / `scoreMin`、`model`、`providerInstanceId`；返回每条问题的答案与可直接分支的结论（noul → 是概率、choice → 选中项 + 置信度、score → 加权分位 + 各档概率），**不写资产**。属生成类工具（Ask 不返回，Plan 在用户确认计划前不返回）。
-
-**与图节点「决策判定」（`decisions.judge`）的分工**：两者调同一个决策模型，但代价差一个数量级 ——
-
-|            | `decide` 工具                                    | `decisions.judge` 节点                                                                                                                     |
-| ---------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| 何时用     | Agent 现在就要一个判定（自己决策 / 把关 / 分类） | 把判定**留在图里**：可复跑、用户在画布与 Inspector 上看得到概率条                                                                          |
-| 代价       | 一次调用                                         | `graph_edit` 建节点 + 连线，再 `task_run` **跑整张图**（可能连带重跑上游生图等昂贵节点；已完成节点走缓存，但没有「只跑这一个节点」的入口） |
-| 结果怎么回 | 直接回给 Agent                                   | `graph_read({ includeParams: true })` 读 `node.params.decisionVerdicts`，或用户自己看 Inspector                                            |
-
-Agent 两条路都够得着：`decisions.judge` 随 `graph_node_types` 自动可见（与 `graph_edit` 同一白名单），其 `description` 里也写了这条分工。
-
-### ④ 可玩 HTML（一句话小游戏，程序化资产生成）
-
-交付物是一个**纯 Node + esbuild 工程**（不落资产文件）：agent 写 `src/**`，宿主负责 cook，`dist/single.html` 交给系统默认程序（通常是浏览器）打开，产物不自包含时退回应用内试玩沙盒窗口。所有美术与音频都由生成的代码合成（几何 / Canvas 贴图 / WebAudio 音效 / 种子关卡），因此零素材下载、零 API 计费、同种子可复现。
-
-| 工具                       | 作用                                                                                                                                                                                                                                                                   | 前置条件                     |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `gameplay_prepare_project` | 落下宿主脚手架（`package.json` / `build.mjs` / `index.template.html` / `src/core/{rng,palette,registry}.js` / `src/assets/**` / `src/main.js` 样例），返回 `projectRelativeDir` 与文件清单；传 `projectRelativeDir` 则续写既有工程                                     | 已打开工程                   |
-| `gameplay_build`           | 后台 cook：`npm install` + `node build.mjs` → 单文件 `dist/single.html`；立即返回 `jobId`（**由宿主跑 npm，agent 不要自己跑**）。成功后自动在资产库登记 / 更新一个 `gamePlay` 资产，对话流出一张卡，「试玩」按钮用浏览器打开；**并跑一次试玩门禁**（隐藏窗口真跑几秒） | 已打开工程 + 本机 Node / npm |
-| `gameplay_job_status`      | 轮询作业：`ready` / `building` / `done` / `error` + 日志尾部 + 产物路径与体积 + **试玩门禁报告 `smoke`**；省略 `jobId` 列出全部作业                                                                                                                                    | 应用运行中                   |
-
-**试玩门禁（`smoke`）**：cook 成功 ≠ 能跑。门禁把 `dist/single.html` 用 `file://` 在隐藏窗口里载入（与「试玩」按钮同一条路径）真跑约 3 秒，采 5 帧算亮度与指纹，给出：
-
-- `errors`：未捕获异常 / 加载失败（ES 模块、相对引用这类「浏览器里白屏」会在这里现形）/ 渲染进程崩溃 / 无响应 / 整屏黑（采样最亮一帧的平均亮度 ≤ 8）/ 一帧都没渲染；
-- `warnings`：画面静止（多帧指纹完全相同 → rAF 可能已停，也可能在等输入）、截图不可用；
-- `metrics`：`frames` / `distinctFrames` / `minLuma` / `maxLuma` / `averageLuma` / `durationMs`。
-
-`smoke.ok === false` 时按 `errors` 改代码再 `gameplay_build` 一次即可（重复构建复用同一条作业与同一个资产）。门禁**不自动改代码**，也不额外消耗模型额度。
-
-装配约定写在内置技能 `gameplay-proc-assets` 里（资产层目录、`defineAsset` 契约、禁止 `Math.random`、Canvas 贴图与 WebAudio 配方、工具流程）。典型三步：
-
-```
-gameplay_prepare_project({ mode: "3d" })      →  { projectRelativeDir, files }
-（用自己的文件工具写 src/assets/** 与 src/game/**）
-gameplay_build({ projectRelativeDir })        →  { jobId, status: "building" }
-gameplay_job_status({ jobId })                →  { status: "done", buildHtmlRelativePath, bytes }
-```
-
-### ⑤ 环境查询
-
-| 工具          | 作用                                                                                                       | 前置条件   |
-| ------------- | ---------------------------------------------------------------------------------------------------------- | ---------- |
-| `app_status`  | 版本、当前工程、资产数量                                                                                   | 应用运行中 |
-| `models_list` | 已启用的模型提供商与各模态勾选模型（含 OpenRouter 的 `decisions` 决策模型，`decide` 用；**不含任何密钥**） | 无         |
-
-### ⑥ Blender 工具集（可选，需要本机 Blender）
-
-这一组工具**不在 `/mcp` 主工具集里**，而是挂在同一服务的另一个端点 `/mcp/blender`（「设置 → MCP → Blender 工具集」默认开启；关掉后该端点直接回 403，主工具集不受影响）。外部 Agent 想拿到它，需要**再注册一个 MCP server**：
+### 方式 A：stdio 桥接（推荐，自动感知端口与持久 Token）
 
 ```bash
-claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender --header "Authorization: Bearer <应用侧 mcp.json 里的 token>"
+# 安装包用户（路径指向安装目录下的 resources/mcp-bridge.mjs）
+claude mcp add aiartengine -- node "<安装目录>/resources/mcp-bridge.mjs"
+
+# 源码开发用户
+claude mcp add aiartengine -- node "<仓库绝对路径>/scripts/mcp-bridge.mjs"
 ```
 
-应用内的 AI 对话面板自动带上（内部为 dsh 注册第二个 mcp-client 实例），你在对话里说「用 Blender ……」即可。
+### 方式 B：Streamable HTTP 直连（无需本机安装 Node.js）
 
-前置条件：**Blender 正在运行，且已启用 MCP addon**。支持两种 addon，在「设置 → MCP → Blender 工具集」里选择对应类型（两种线协议互不兼容，选错会表现为连接超时或「连接已重置」）：
+从 `<userData>/mcp.json` 读取 `port`（默认 `43110`）与 `token`：
 
-- **社区方案（默认）**：[blender-mcp](https://github.com/ahujasid/blender-mcp) 项目的 `addon.py`，在 Blender 的 Edit → Preferences → Add-ons 里安装启用；
-- **官方方案**：Blender 扩展平台上的 [Blender Lab「MCP Server」](https://projects.blender.org/lab/blender_mcp) 官方扩展，安装后在其偏好设置里启动服务。
+```bash
+# 注册 93 工具主端点
+claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp \
+  --header "Authorization: Bearer <token>"
 
-本应用会**主动出站连接** addon 的监听端口（两种 addon 默认都是 `localhost:9876`），不需要在 Blender 侧填任何地址，也不需要 uv / Python / 子进程；两种后端下的工具名称、入参与输出结构保持一致。
+# 可选：注册 9 工具 Blender 实时建模端点
+claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender \
+  --header "Authorization: Bearer <token>"
+```
 
-| 工具                       | 作用                                                                                                                                                                                                           | 前置条件         |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| `get_scene_info`           | 场景概览：场景名、对象 / 材质数量、前若干对象的名称 · 类型 · 位置                                                                                                                                              | Blender 运行中   |
-| `get_world_state_snapshot` | 完整快照：几何 / 关系 / 动画摘要、当前帧与帧范围、FPS、选中对象、激活相机与灯光                                                                                                                                | Blender 运行中   |
-| `get_object_info`          | 单个对象详情（网格对象带顶点 / 边 / 面数与世界包围盒）                                                                                                                                                         | Blender 运行中   |
-| `get_viewport_screenshot`  | 3D 视口截图，**画面随响应回给多模态客户端**（离屏抓帧，失败回退窗口抓屏）                                                                                                                                      | Blender 界面可见 |
-| `execute_blender_code`     | 在 Blender 进程内执行 Python（可完整访问 bpy），`print` 原样返回，报错带异常类型与 traceback                                                                                                                   | Blender 运行中   |
-| `export_scene`             | 把场景（或选中对象 / 指定对象）导出为 glb / gltf / fbx / obj / usd / stl，**回传 3D 资产的主力出口**（后续由 Agent 调 `asset_import` 入工程缓存，再由用户在对话产物卡点「保存到资产库」入 `Assets/<folder>/`） | Blender 运行中   |
-| `describe_node_type`       | 查节点类型（如 `ShaderNodeTexImage`）的端口与可设属性，写着色器 / 几何节点脚本前先问它                                                                                                                         | Blender 运行中   |
-| `bpy_api_lookup`           | 在运行中的 Blender 里查 bpy API（操作符 / 类型 / 属性 / 函数），参数名与默认值来自真实 RNA                                                                                                                     | Blender 运行中   |
-| `get_addon_status`         | addon 版本 / 协议版本 / 能力清单 / Blender 版本，用来判断「连不上」是没启用、版本不匹配还是 Blender 没开                                                                                                       | Blender 运行中   |
-
-典型闭环：`get_scene_info` 看清现状 → `execute_blender_code` 逐步建模 / 调材质 → `get_viewport_screenshot` 自查画面 → `export_scene` 导出 → `asset_import` 入工程缓存（产出对话产物卡 + 「保存到资产库」按钮）→ 用户在弹窗里挑文件夹与命名 → 真正入 `Assets/<folder>/`，拿到 assetId 才能被工作流节点引用。
+> **环境变量覆盖**：桥脚本支持 `AIAE_MCP_CONFIG`（自定义 `mcp.json` 路径）或 `AIAE_MCP_PORT` + `AIAE_MCP_TOKEN`（最高优先级直连覆盖）。注意区分应用自动维护的 `%APPDATA%\aiartengine\mcp.json` 与团队项目根目录手写的 `.mcp.json`。
 
 ---
 
-## 安全设计
+## 4. 全部 102 个实时工具完整清单（`93` `/mcp` + `9` `/mcp/blender`）
 
-- 工具服务**只监听 `127.0.0.1`**（本机回环），外部机器无法访问。
-- 除健康检查外，所有请求必须带 `Authorization: Bearer <token>`。
-- 文件读写被限制在工程根目录内，无法越权访问其他路径。唯一例外是 `asset_import`：它按你（或你授权的 Agent）给出的**绝对路径**读取工程外文件并复制进工程，不接受目录扫描，单次最多 50 条。
-- 密钥类信息（`models_list` 等）**不对外暴露**。
-- **对话面板的模式是硬约束，不是提示词**：面板上的 Ask / Plan / Craft 随每次运行经请求头（`X-AIArt-Mode` / `X-AIArt-Run-Id`）下发，服务端据此收窄可用工具——**Ask 不返回任何工具**、任何调用一律被拒；**Plan 在用户确认计划前只返回只读工具**，写 / 生成类调用被拒（用户经 `ask_user` 选「继续」后，本条消息内放行）；**Craft 不限制**。工具分级与文案见 `src/shared/mcpModeAccess.ts`（read / write / generate 三级，未登记的工具按 write 处理），被拦下的调用同样写入审计日志。**外部 Agent（stdio 桥 / HTTP 直连）不带这两个头，不受任何模式限制**——模式绑在请求上而不是服务上，所以面板切模式不会影响你挂到其他客户端的用法。注意这条约束只覆盖**本应用的这套工具集**：dsh 自带的原生工具（文件读写、执行命令、网络、子 agent 等）不经 MCP，不在其内，仍由 persona 与系统级沙箱约束。
-- 全部工具调用追加写入审计日志 `<userData>/logs/mcp-audit.jsonl`（时间 / 工具 / 参数摘要 / 耗时 / 结果，参数超 200 字符截断，单文件 5MB 滚动），可回查 Agent 触发的每次生成与写入。
-- **Blender 工具集受同一套模式约束**：它挂在同一个服务、共用同一个 token，请求同样带 `X-AIArt-Mode` / `X-AIArt-Run-Id`——Ask 下整组不返回、Plan 下只返回只读那几个（`get_scene_info` / `get_world_state_snapshot` / `get_object_info` / `get_viewport_screenshot` / `describe_node_type` / `bpy_api_lookup` / `get_addon_status`），`execute_blender_code` 与 `export_scene` 属 write 会被拒并记入审计日志。它不会成为绕过面板模式的侧门。
-- **`execute_blender_code` 不再做词法护栏**：脚本可使用完整 Python / bpy（含 `class` / `lambda` / `open` 等）。写入兜底仍是上一条模式约束——Ask / Plan 下整组只读，写入调用被拒。
-- **截图走一次性临时文件**：`get_viewport_screenshot` 让 Blender 写到系统临时目录里的一个一次性文件，应用读回后立即删除；画面只随 MCP 响应回给多模态客户端，不落工程、不进审计日志（base64 不写盘）。
+### 4.1 系统状态、多工程工作区、Git 与定时任务（14 个）
+
+| 工具名                  |  权限   | 功能与关键参数说明                                                                                               | 前置条件     |
+| :---------------------- | :-----: | :--------------------------------------------------------------------------------------------------------------- | :----------- |
+| `app_status`            | `read`  | 查询应用版本、当前打开工作区路径与名称、资产总数。                                                               | 应用运行中   |
+| `models_list`           | `read`  | 列出已启用的模型提供商与各模态（文本/图片/视频/音频/音乐/3D/空间世界/决策）勾选模型清单，**不含任何 API 密钥**。 | 无           |
+| `storage_status`        | `read`  | 查询当前激活的对象存储配置状态（S3 / 阿里云 OSS / 腾讯云 COS / 火山 TOS，不含密钥）。                            | 无           |
+| `project_list`          | `read`  | 返回最近打开的工作区/工程根目录列表。                                                                            | 无           |
+| `project_open`          | `write` | 按磁盘绝对路径 `path` 打开已有工作区（兼容 `workspace.json` 与历史 `project.json`）。                            | 应用运行中   |
+| `project_create`        | `write` | 在指定目录新建工作区（写入 `workspace.json` 并初始化 `Assets/`、`Output/`、`.aiartengine/` 目录树）并切换打开。  | 应用运行中   |
+| `project_memory_read`   | `read`  | 读取当前工作区的跨会话 Agent 长期记忆（`.aiartengine/memory.md`）。                                              | 已打开工程   |
+| `project_memory_write`  | `write` | 整体覆盖写入 `.aiartengine/memory.md`（用于整理归档工程全局偏好）。                                              | 已打开工程   |
+| `project_memory_append` | `write` | 向项目记忆指定分类（`style` / `camera` / `character` / `other`）追加一条创作偏好，后续轮次自动注入上下文。       | 已打开工程   |
+| `project_git_status`    | `read`  | 只读查询当前工程 Git 仓库状态（分支名、仓库根、已修改/新增/删除/未跟踪文件清单及增删行数统计）。                 | 已打开工程   |
+| `project_git_diff`      | `read`  | 只读读取工程内指定相对路径 `path` 相对于 `HEAD` 的统一 Diff（未跟踪新文件自动合成全文新增 Diff）。               | 已打开工程   |
+| `schedule_list`         | `read`  | 列出当前会话所有待触发的定时提醒与周期自动化任务（`id`、`summary`、`cron` / `fireAt`、`nextFireAt`、剩余次数）。 | 应用运行中   |
+| `schedule_delete`       | `write` | 按 `scheduleId`（及可选 `sessionId`）取消并移除待触发的定时提醒或周期任务。                                      | 应用运行中   |
+| `ask_user`              | `read`  | 向对话面板弹出单选/多选/自由输入确认卡并等待用户答复；Plan 模式靠此工具提交方案并在用户点「继续」后解锁写权限。  | 对话面板在场 |
+
+### 4.2 资产库、交付包、音色档案、质检与 Spine/SVG（21 个）
+
+| 工具名                 |  权限   | 功能与关键参数说明                                                                                                                                                                    | 前置条件              |
+| :--------------------- | :-----: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :-------------------- |
+| `asset_list`           | `read`  | 列出当前工作区资产库中的全部资产元数据（`id`、名称、类型、所属文件夹、相对路径）。                                                                                                    | 已打开工程            |
+| `asset_read_file`      | `read`  | 按工程内相对路径读取文本文件内容（剧本、配置、JSON、代码等，禁止越出工程根）。                                                                                                        | 已打开工程            |
+| `asset_write_text`     | `write` | 更新文本类资产正文并实时广播刷新编辑器界面。                                                                                                                                          | 已打开工程            |
+| `asset_create`         | `write` | 新建工程资产（自由画布、剧本、策划案、世界观、分镜、子图、图片、视频、声音、2D 动作等），重名自动递增去重。                                                                           | 已打开工程            |
+| `asset_import`         | `write` | 将工程外部本机绝对路径媒体（含 PNG/JPG/WebP/PSD/SVG、视频、音频、3D 模型、文本，单次 ≤50 条）考入 `Cache/imports/` 并在对话流生成带「保存到资产库」按钮的产物卡（拒绝工程内部路径）。 | 已打开工程            |
+| `asset_rename`         | `write` | 按 `assetId` 重命名资产。                                                                                                                                                             | 已打开工程            |
+| `asset_move`           | `write` | 将资产移动到目标 `folderId`（省略或传 `null` 移回资产库根目录，物理文件随目录原子搬移）。                                                                                             | 已打开工程            |
+| `asset_delete`         | `write` | 从资产库移除资产登记（默认拦截仍被其他画布/资产引用的条目并返回引用方，传 `force: true` 可强制出库）。                                                                                | 已打开工程            |
+| `folder_list`          | `read`  | 列出资产库文件夹树结构与 `folderId`。                                                                                                                                                 | 已打开工程            |
+| `folder_create`        | `write` | 新建资产库文件夹（支持父目录嵌套），返回 `folderId`。                                                                                                                                 | 已打开工程            |
+| `folder_move`          | `write` | 将文件夹及其子孙资产整体迁移至新父目录（防环校验，同名冲突自动追加序号）。                                                                                                            | 已打开工程            |
+| `asset_package_export` | `write` | 将选定资产（可选含依赖链与生成缓存）打包导出为跨工程 `.aipackage` 文件（无界面调用需传绝对 `targetPath`）。                                                                           | 已打开工程            |
+| `asset_package_import` | `write` | 从本机绝对路径 `packPath` 导入 `.aipackage` 资产包（支持按 GUID 挑选子集）并刷新素材库。                                                                                              | 已打开工程            |
+| `storage_upload`       | `write` | 将工程内媒体上传至当前已启用的对象存储桶，返回公网或预签名访问 URL。                                                                                                                  | 已打开工程 + 对象存储 |
+| `voice_profile_list`   | `read`  | 列出当前工程的角色音色档案表（角色名 → 音色 ID / 克隆参考音频与说明）。                                                                                                               | 已打开工程            |
+| `voice_profile_upsert` | `write` | 新建或更新角色音色档案（供漫剧工作台与配音节点跨集保持角色声线一致）。                                                                                                                | 已打开工程            |
+| `voice_profile_delete` | `write` | 删除指定角色的音色档案。                                                                                                                                                              | 已打开工程            |
+| `asset_qc`             | `read`  | 图片资产「引擎就绪」像素级体检：检查抠图漏底、半透明白边、孤立碎屑、主体贴边、空图与尺寸规范（纯只读不改盘）。                                                                        | 已打开工程 + 界面在场 |
+| `asset_qc_fix`         | `write` | 自动执行边缘去污染反混合修复（消除半透明白边与背景光晕），新资产落盘至 `Assets/QC/<原名>/` 并附前后对比。                                                                             | 已打开工程 + 界面在场 |
+| `stage2d_spine_export` | `write` | 将画布 `stage.2d` 节点的 2D 骨骼与部件装配烘焙导出为标准 Spine 2D 工程包（`skeleton.json` + `.atlas` + 独立部件透明图集）。                                                           | 已打开工程 + 界面在场 |
+| `render_svg`           | `read`  | 使用应用内置栅格化管线将内联 SVG 代码或工程内 `.svg` 渲染为静帧或逐帧动画快照（最多随 MCP 响应内联回传 4 帧供多模态视觉自查，不落盘、无需外部浏览器）。                               | 已打开工程 + 界面在场 |
+
+### 4.3 DAG 节点图、3D 导演台、任务执行与技能市场（18 个）
+
+| 工具名                    |    权限    | 功能与关键参数说明                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 前置条件              |
+| :------------------------ | :--------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------- |
+| `graph_node_types`        |   `read`   | 查询全量可添加节点类型清单（`typeId`、分类、端口定义、`NodeCapabilityDef` 用法说明，以及由 `introspection.ts` 自动反射的 `editablePaths`、`shorthandMap`、`presets`、`diveKind`）。                                                                                                                                                                                                                                                                                   | 应用运行中            |
+| `graph_read`              |   `read`   | 读取指定或当前焦点画布的完整拓扑结构（节点列表、连线、分组框；`includeParams: true` 返回完整参数）。                                                                                                                                                                                                                                                                                                                                                                  | 已打开工程            |
+| `graph_edit`              |  `write`   | 全工作区画布、Dive 子工作台与 Inspector 统一编辑操作批：支持 `node_add` / `node_update` / `node_upsert` / `node_delete`、`edge_add` / `edge_delete`、`apply_preset`、`group_add` / `group_update` / `group_delete`、`auto_layout` 及节点几何/锁定属性；`params` 原生支持深层点路径、数组条件选择器（如 `filmCast.characters[name=林小满].outfit`）、JSON-string 透明解包与中英文口语别名自愈；省略 `assetId` 时自动绑定当前打开画布（未打开画布则自动新建自由画布）。 | 已打开工程            |
+| `graph_icon_refine`       |  `write`   | 九宫格图标包（`image.iconPack`）单枚图标定点回炉重绘：保持整套画风一致重画指定格位并自动重跑切分抠底打包。                                                                                                                                                                                                                                                                                                                                                            | 已打开工程            |
+| `director_stage_read`     |   `read`   | 读取当前打开（或指定 `assetId` + `nodeId`）的 3D 导演台（`director.stage`）完整状态：角色白模/3D 模型/几何体/灯光、机位与 Cinemachine 配置、天空与地面环境、动画时间轴及视口着色模式。                                                                                                                                                                                                                                                                                | 已打开工程 + 界面在场 |
+| `director_stage_edit`     |  `write`   | 实时操控 3D 导演台：支持对象增删改查、显隐锁定、位移/旋转/缩放、56 根人形骨骼 FK/IK 微调、38 种全身/手势/视线姿态预设、24 种内置程序化动作片段切换与多段序列编排（`skeletonClips`）、多光源与全景天光、Cinemachine 跟拍机位、AI 场面调度与分镜白模预演抓拍。                                                                                                                                                                                                          | 已打开工程 + 界面在场 |
+| `task_run`                |  `write`   | 按拓扑序运行指定画布（整图或目标节点子集），支持后台无头打开画布宿主、上游指纹缓存复用与容错降级，返回 `mcpTaskId`（受并发闸门保护）。                                                                                                                                                                                                                                                                                                                                | 已打开工程 + 界面在场 |
+| `task_status`             |   `read`   | 按 `mcpTaskId` 查询节点图运行进度、各节点状态与产出路径（终态报告保留 10 分钟）。                                                                                                                                                                                                                                                                                                                                                                                     | 应用运行中            |
+| `video_job_list`          |   `read`   | 列出异步视频生成作业队列及状态摘要。                                                                                                                                                                                                                                                                                                                                                                                                                                  | 应用运行中            |
+| `video_job_get`           |   `read`   | 按作业 ID 查询单条异步视频生成任务的状态、进度与落盘路径。                                                                                                                                                                                                                                                                                                                                                                                                            | 应用运行中            |
+| `list_model3d_animations` |   `read`   | 查询 3D 供应商（Meshy 动作库）可用的预设骨骼动画列表（支持 `search` 关键词过滤，供 `model.retarget` 节点选型）。                                                                                                                                                                                                                                                                                                                                                      | 已打开工程 + Meshy    |
+| `decide`                  | `generate` | 调用决策模型对多行结构化问题（`noul` 二元概率 / `choice` 多选置信度 / `score` 量表加权分）做类型化概率判定，直接返回可分支结论而不写资产（与持久化在画布里的 `decisions.judge` 节点互补）。                                                                                                                                                                                                                                                                           | 已打开工程 + 决策模型 |
+| `skill_list`              |   `read`   | 列出本机已安装的全部技能包（含官方市场 `wf-*` 技能、GitHub 直装 Claude Code 技能、工作区 `.claude/skills` 与个人自定义技能），可选附带 `SKILL.md` 正文。                                                                                                                                                                                                                                                                                                              | 无                    |
+| `skill_search`            |   `read`   | 按关键词联网联合检索 Claude Code 精选技能库、AI Art Engine 官方技能市场（`ai-art-engine-skills`）与 GitHub 公开 `SKILL.md` 仓库。                                                                                                                                                                                                                                                                                                                                     | 应用运行中            |
+| `skill_inspect_github`    |   `read`   | 只读预检任意 GitHub 仓库/子目录/`SKILL.md` 链接，返回发现的技能清单、文件数及是否包含 `scripts/` 可执行脚本。                                                                                                                                                                                                                                                                                                                                                         | 应用运行中            |
+| `skill_install`           |  `write`   | 从 GitHub `url` 或官方市场 `marketId` 原子安装技能至 `$DSH_HOME/skills/`（默认跳过 `scripts/`，仅在用户经 `ask_user` 明示同意且传 `allowScripts: true` 时落盘脚本），返回完整 `SKILL.md` 指令供当轮立即生效。                                                                                                                                                                                                                                                         | 应用运行中            |
+| `skill_uninstall`         |  `write`   | 按技能名卸载已安装的技能包（市场条目同步清理对应工作流模板记账）。                                                                                                                                                                                                                                                                                                                                                                                                    | 应用运行中            |
+| `workflow_use_installed`  |  `write`   | 加载已安装或市场技能的工作流种子拓扑，支持三种模式：`seed`（一键落入种子节点与连线）、`merge`（保留当前画布既有节点增量混搭多个技能并汇聚同一 `output.timeline`）、`blueprint`（纯只读返回蓝图 JSON 与 `SKILL.md` 指南）。                                                                                                                                                                                                                                            | 已打开工程            |
+
+### 4.4 本地视觉、音频处理、视频逆向取证与成片时间线 NLE（15 个）
+
+| 工具名                   |    权限    | 功能与关键参数说明                                                                                                                                                                         | 前置条件                       |
+| :----------------------- | :--------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------- |
+| `vision_local_ocr`       |   `read`   | 调用跨平台系统原生离线 OCR（Windows WinRT / macOS Vision / Linux Tesseract）提取工程图片中的全部文字与紧致包围盒坐标，零云端额度消耗。                                                     | 已打开工程                     |
+| `vision_local_yolo`      |   `read`   | 调用独立 `utilityProcess` 中的本地 ONNX 视觉引擎，支持 `task: "status" \| "detect" \| "segment" \| "pose" \| "face" \| "sam2"`（含 `useMatting: true` 高精抠图与 SAM 2.1 点/框提示分割）。 | 应用运行中（推理需已打开工程） |
+| `transcribe_audio`       | `generate` | 将工程内音频或视频音轨语音转写为带起止秒数时间戳的分段台词/字幕底稿。                                                                                                                      | 已打开工程 + ASR/本地 Whisper  |
+| `audio_separate`         |  `write`   | 对音频/视频执行人声（干声）与伴奏 BGM 音轨分离，产物落盘 `Cache/Separated/`。                                                                                                              | 已打开工程                     |
+| `extract_video_frames`   |  `write`   | 按时间均匀抽取视频序列帧（`count` 默认 4、上限 24）并落盘为工程缓存图片，返回相对路径列表。                                                                                                | 已打开工程 + FFmpeg            |
+| `grab_video_frames`      |   `read`   | 按指定时间点抓取最多 6 张视频画面帧并随 MCP 响应直接内联回传给多模态客户端（不写资产库，专供 Agent 视觉审片）。                                                                            | 已打开工程 + FFmpeg            |
+| `detect_video_keyframes` |   `read`   | 基于 `ffprobe` 轻量提取视频关键帧（I 帧）秒级时间点列表，无需逐帧解码。                                                                                                                    | 已打开工程 + FFprobe           |
+| `analyze_video_beats`    |  `write`   | 对视频抽帧执行目标检测，产出人物/物体出现区间（beat tags）并写回视频资产元数据。                                                                                                           | 已打开工程 + FFmpeg + 检测模型 |
+| `semantic_analyze_video` | `generate` | 对视频执行 `rea-video` 四轴逆向取证拆解（GB 45438/C2PA 容器溯源、切镜与运镜取证、11 类制作方式贝叶斯判定、多轨声音分析与复刻单元规划），生成 `Semantic/<id>/` 与 `report.md`。             | 已打开工程 + FFmpeg            |
+| `semantic_timeline_read` |   `read`   | 读取 `Semantic/<timelineId>/timeline.json` 的完整四轴拆解结论、制作占比、生成/本地复刻单元（`G1`/`K1`）、逐镜证据、台词与角色实体表。                                                      | 已打开工程                     |
+| `timeline_read`          |   `read`   | 读取成片时间线（`output.timeline` / 剧本时间线）的轨道片段、创意特效/滤镜/转场配置、总时长与画幅设置。                                                                                     | 已打开工程                     |
+| `timeline_rough_cut`     |  `write`   | 基于配音轨转写自动剔除停顿静默段并全轨涟漪前移（默认 `apply: false` 先回预览计划；`apply: true` 写盘前需关闭对应时间线编辑器）。                                                           | 已打开工程                     |
+| `timeline_export`        |  `write`   | 将多轨时间线通过 FFmpeg 滤镜链（含 120+ 特效/转场/LUT、画中画、多轨混音闪避、TD-PSOLA 调音歌唱、字幕烧录）合成为高清 `.mp4` 成片并在对话流生成视频预览卡。                                 | 已打开工程 + FFmpeg            |
+| `timeline_edit`          |  `write`   | 对成片时间线执行片段增删改、字幕按转写重建、批量轨道特效/滤镜/转场/12 维调色更新（`batchUpdate`）及一键套用 12 款成片剪辑模板（`applyTemplate`）。                                         | 已打开工程                     |
+| `timeline_preview`       |   `read`   | 复用与 `timeline_export` 完全同源的 FFmpeg 滤镜图定点渲染成片预览静帧，直接通过 MCP image content 回传给多模态客户端检视画面。                                                             | 已打开工程 + FFmpeg            |
+
+### 4.5 网页图文视频抓取与自动化录屏教程合成（10 个）
+
+| 工具名                 |    权限    | 功能与关键参数说明                                                                                                                                                                | 前置条件                       |
+| :--------------------- | :--------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------- |
+| `web_extract_article`  |   `read`   | 在主进程内启动本地无头 Chromium 渲染技术文章或动态网页（掘金/知乎/公众号/Medium 等），自动触发懒加载滚动，提取结构化 Markdown 并将原位架构图/配图下载至 `Cache/imports/`。        | 已打开工程                     |
+| `web_fetch_video`      |  `write`   | 按影视/小品名场面关键词（`query`）检索或直接解析 B 站 BV 号 / 链接 / MP4 URL（`url`），下载并按 `startSec` / `maxDurationSec` 无损截取高清素材至 `Cache/imports/`。               | 已打开工程                     |
+| `screen_record_start`  |  `write`   | 启动针对应用自身窗口（非全桌面）的教学录屏会话，支持 HUD 标题提示与光标高亮。                                                                                                     | 已打开工程 + FFmpeg + 界面在场 |
+| `screen_record_step`   |  `write`   | 在录屏过程中打下步骤对齐锚点（写入 `alignment` 时间轴）、更新 HUD 短标题/字卡并可联动高亮目标控件。                                                                               | 录屏进行中                     |
+| `screen_record_wait`   |  `write`   | 录屏期间阻塞等待指定条件达成（如 `until: "graph-idle"` 等待节点图运行完毕且预览贴图上屏；空闲段自动编码压缩封顶约 2 秒）。                                                        | 录屏进行中                     |
+| `screen_record_stop`   |  `write`   | 结束窗口录屏并将帧序列编码为 `Cache/Videos/` 下的 MP4，返回压缩后时间轴精确对齐的 `alignment` 清单。                                                                              | 录屏进行中                     |
+| `screen_record_status` |   `read`   | 查询当前是否有进行中的窗口录屏会话及已录帧数状态。                                                                                                                                | 应用运行中                     |
+| `ui_bounds`            |   `read`   | 按 `data-tutorial-id` 只读查询应用界面控件的屏幕矩形坐标，用于教学步骤定位。                                                                                                      | 界面在场                       |
+| `ui_click`             |  `write`   | 按 `data-tutorial-id` 在目标界面控件中心派发真实交互点击，驱动自动化功能演示录屏。                                                                                                | 界面在场                       |
+| `tutorial_compose`     | `generate` | 将录屏视频、`alignment` 步骤时间轴与每步 `narration` 口播文案（自动 TTS 合成且顺序不重叠排布）及可选演示音效 `sfxRelativePath` 一键合成为带字幕的教学成片 MP4（受并发闸门保护）。 | 已打开工程 + FFmpeg            |
+
+### 4.6 游戏工业化生产、可玩 HTML5 与 Machinations 数值沙盘（15 个）
+
+| 工具名                          |    权限    | 功能与关键参数说明                                                                                                                                                                                                                                                                                                                                       | 前置条件                       |
+| :------------------------------ | :--------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------- |
+| `gameplay_prepare_project`      |  `write`   | 为自定义 2D/3D 可玩 HTML5 游戏生成纯 Node + esbuild 工程脚手架（确定性随机种子、调色板、程序化资产注册表），返回 `projectRelativeDir`。                                                                                                                                                                                                                  | 已打开工程                     |
+| `gameplay_build`                | `generate` | 后台编译单文件 `dist/single.html` 并在资产库登记 `gamePlay` 资产，同时自动在隐藏窗口真跑 3 秒执行 5 帧亮度与帧差分**无头冒烟门禁（`smoke`）**。                                                                                                                                                                                                          | 已打开工程 + Node/npm          |
+| `gameplay_job_status`           |   `read`   | 查询可玩 HTML5 构建作业进度、体积、日志尾部及无头冒烟报告 `smoke`（未捕获异常、黑屏、死帧告警）。                                                                                                                                                                                                                                                        | 应用运行中                     |
+| `game_tile_pbr_process`         |  `write`   | 2D/3D 贴图与 UI 本地工程化算子：C1 无缝平铺贴图、单图派生 PBR 通道（Normal OpenGL/DirectX、Roughness、Height、AO、Metallic、glTF ORM）、UI 九宫格切线检测、Wang-16 / Blob-47 Auto-Tile 掩码与 2D 碰撞多边形（Hurtbox/Hitbox）提取。                                                                                                                      | 已打开工程 + 界面在场          |
+| `game_audio_variants`           |  `write`   | 游戏音频工程化后处理：`sfx_variants` 模式裁切首尾静音实现 0ms 瞬发响应并按音高/速度/明暗度批量派生防听觉疲劳音效变体；`bgm_loop` 模式以相位连续交叉淡化生成无缝循环 BGM。                                                                                                                                                                                | 已打开工程 + FFmpeg            |
+| `game_bundle_export`            |  `write`   | 将工程内精灵、瓦片、UI 九宫格、PBR、3D GLB、Spine 骨骼包与音频按 `godot` / `unity`（自动生成保 GUID 的 `.meta`）/ `cocos` / `web` 规范增量导出至 `Output/GameBundles/`，附 `game-asset-manifest.json` 与引擎导入脚本。                                                                                                                                   | 已打开工程                     |
+| `game_data_table_generate`      |  `write`   | 生成全品类游戏结构化数值配表（角色/技能/道具/DBG 卡牌/波次/AVG 分支对白树 JSON + RFC-4180 CSV）并自动抽取 `zh-CN` / `en-US` / `ja-JP` 多语言 `localization.csv` 落盘 `Assets/GameData/`。                                                                                                                                                                | 已打开工程                     |
+| `game_level_map_generate`       |  `write`   | 基于 `bsp_dungeon`（地牢）/ `cellular_cave`（洞穴）/ `platformer_course`（横版跳跃）/ `arena_waves`（割草竞技场）程序化生成 Wang-16 自动瓦片地图与实体点位，导出标准 Tiled `.tmj` 与 ASCII 预览至 `Assets/GameLevels/`。                                                                                                                                 | 已打开工程                     |
+| `game_shader_particle_generate` |  `write`   | 一键导出 8 款跨引擎核心游戏 Shader（受击闪白、余烬溶解、像素外描边、2D 水波、CRT 扫描线、全息故障、植被风摆、稀有度扫光，同步生成 Godot `.gdshader` / Unity `.shader` / WebGL `.glsl`）与 8 款 GPU 粒子预设至 `Assets/GameShaders/`。                                                                                                                    | 已打开工程                     |
+| `game_systems_graph_generate`   |  `write`   | 构建带 DAG 无环校验的天赋技能树、合成配方、任务成就链、敌人/Boss AI 有限状态机（附 Mermaid 状态图）及 AngelCode BMFont `.fnt` 暴击跳字位图字体清单。                                                                                                                                                                                                     | 已打开工程                     |
+| `game_one_sentence_create`      | `generate` | 将一句话游戏需求转化为完整可运行画布工作流（主角/怪物/地砖生图自动去底 → 关卡地图 → AI/程序化 BGM+SFX → 60fps 五大品类 HTML5 可玩沙盒）。                                                                                                                                                                                                                | 已打开工程                     |
+| `game_ui_suite_create`          | `generate` | 将一句话全套游戏 UI 需求构建为 8 屏游戏界面画布工作流，支持 `ai_generate`（`asset.gameSystem → ui.split → ui.gen → image.layerSplit`）与 `atlas_compose`（`ui.componentLib → ui.atlasCompose` 图集确定性分层拼装）双模式及 8 大美术母题预设。                                                                                                            | 已打开工程                     |
+| `game_playable_preview_compile` |  `write`   | 自动发现工程内主角/怪物/地砖精灵并内联为零依赖单文件可玩 HTML5 微缩沙盒（支持 `survivor` 肉鸽割草与 `platformer` 横版跳跃切换），输出至 `Assets/GamePlayable/`。                                                                                                                                                                                         | 已打开工程                     |
+| `machinations_building_blocks`  |  `write`   | 检索、预览或向画布 `game.economy` 节点无冲突拼装 **59 款** Machinations 标准数值积木（`op: "list" \| "search" \| "insert" \| "create_doc"`，自动重映射重名变量、包裹分组框并执行拓扑健康自愈）。                                                                                                                                                         | 应用运行中（写画布需打开工程） |
+| `machinations_studio`           |  `write`   | 对 `game.economy` 节点运行 Machinations Studio 高阶算子：`quick_fix`（一键自动修复饥饿/死锁/爆仓/通胀）、`goal_seek`（单变量目标求解）、`curve_solve`（单/双锚点曲线拖拽逆向反推配平与动态公式合成）、`parameter_sweep`（一维敏感度扫描）、`matrix_2d`（二维正交参数热力矩阵）与 `export`（导出 Godot GDScript / Unity C# / Mermaid / 矢量 SVG / CSV）。 | 应用运行中（写盘需打开工程）   |
+
+### 4.7 Blender 实时建模桥 `/mcp/blender`（9 个）
+
+这一组工具挂载在独立端点 `http://127.0.0.1:43110/mcp/blender`（「设置 → MCP 工具服务 → Blender 工具集」默认开启），由主进程主动出站直连本机 Blender Addon 监听端口（默认 `localhost:9876`，无需安装 `uv` 或额外 Python 子进程），同时兼容社区 [blender-mcp](https://github.com/ahujasid/blender-mcp) `addon.py` 与官方 [Blender Lab MCP Server](https://projects.blender.org/lab/blender_mcp) 扩展：
+
+| 工具名                     |  权限   | 功能与关键参数说明                                                                                                                                | 前置条件         |
+| :------------------------- | :-----: | :------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------- |
+| `get_scene_info`           | `read`  | 获取当前 Blender 场景概览：场景名、对象与材质计数、核心对象名称/类型/空间坐标。                                                                   | Blender 运行中   |
+| `get_world_state_snapshot` | `read`  | 获取完整世界快照：几何层级关系、动画帧范围与当前帧、FPS、激活相机与灯光配置。                                                                     | Blender 运行中   |
+| `get_object_info`          | `read`  | 查询单个 Blender 对象详情（网格顶点数/边数/面数、材质槽与世界包围盒）。                                                                           | Blender 运行中   |
+| `get_viewport_screenshot`  | `read`  | 截取 Blender 3D 视口画面并随 MCP 响应直接回传多模态客户端做视觉自检（经系统临时文件读取后立即销毁，不污染工程与审计日志）。                       | Blender 窗口可见 |
+| `execute_blender_code`     | `write` | 在 Blender 进程内执行任意 Python 脚本（完整访问 `bpy` / `bmesh` / `mathutils`），捕获 `stdout` 并在异常时返回完整 traceback（串行队列保序执行）。 | Blender 运行中   |
+| `export_scene`             | `write` | 将当前场景、选中对象或指定对象导出为 `glb` / `gltf` / `fbx` / `obj` / `usd` / `stl`（随后可接 `asset_import` 收编入工程缓存）。                   | Blender 运行中   |
+| `describe_node_type`       | `read`  | 查询 Blender 着色器或几何节点类型（如 `ShaderNodeBsdfPrincipled`）的输入输出插槽与可设属性。                                                      | Blender 运行中   |
+| `bpy_api_lookup`           | `read`  | 从运行中的 Blender RNA 实时反射查询 `bpy` 操作符、类型、属性签名与默认值。                                                                        | Blender 运行中   |
+| `get_addon_status`         | `read`  | 查询当前连接的 Blender 版本、MCP Addon 类型、协议版本与可用能力清单，用于连接诊断。                                                               | Blender 运行中   |
 
 ---
 
-## 当前限制
+## 5. 关键使用边界与排障速查
 
-- **`task_run` 依赖应用界面进程**：请保持应用运行；同一张图重复触发会按「进行中任务」去重。
-- **资产分类**：`generate_*` 与 `workflow_commit` 支持 `folderId`（资产库文件夹，`folder_list` 查询）与
-  `outputDir`（工程内相对输出目录，缺省按类型 Assets/Generated/* 或 Cache/Videos）。
-- **删除是「出库」不是物理删除**：`asset_delete` 与界面删除同口径——只移除资产元数据（含缩略图登记），源媒体文件仍保留在工程目录内；
-  被其他资产 / 节点引用时默认拒绝并回传引用来源，确认无影响后传 `force: true` 强制。资产名重复时 `asset_create` 会自动去重命名。
-- **无界面链路不走系统对话框**：`asset_package_export` 必须传绝对路径 `targetPath`（自动补 `.aipackage`、自动建父目录），
-  `asset_package_import` 必须传绝对路径 `packPath`；界面上两者仍走「另存为 / 打开」对话框，两条链路互不影响。
-- **媒体路径边界**：`transcribe_audio` / `audio_separate` / `storage_upload` 只接受 `assetId` 或工程内相对路径，
-  绝对路径与含 `..` 的路径会被直接拒绝（`asset_import` 是唯一允许读工程外文件的工具，且只复制进工程）。
-- **渲染层能力需要界面在场**：`stage2d_spine_export` / `asset_qc` / `asset_qc_fix` / `render_svg`
-  要跑 canvas（`render_svg` 只是不落盘），作业由界面进程执行——应用没开界面（或界面版本过旧）时会明确报错，
-  不会静默产出空壳结果；导出骨架包沿用「图编辑器打开时拒绝」的保护，避免导出编辑器里未落盘的旧装配。
-- **质检只读、返工不覆盖原件**：`asset_qc` 逐像素判完只回报告，不写盘也不改资产；`asset_qc_fix` 只修「边缘白边残留」
-  这一项安全缺陷（按反混合公式去掉半透明边缘里的背景色），产出新资产落 `Assets/QC/<原名>/`，原件保留可回溯。
-  抠图漏底（镂空可能是刻意设计）、主体贴边、命名只报告不自动改——改画布会动到所有下游引用，改名请走 `asset_rename`。
-- **时间线写入要避开编辑器**：`timeline_rough_cut` 与 `timeline_edit` 的 `apply` 都会重写剧本资产的时间线，而时间线编辑器
-  在界面里打开时一律拒绝写入——编辑器内存态与它的自动保存会把远端改动覆盖掉（与 `graph_edit` 同一保护口径），
-  先关掉时间线再让 Agent 改。两个工具默认都是 `apply: false`：先看计划 / 报告，确认了再落盘。
-  另外粗剪只依据**配音轨**的转写，配音轨之外的时间段（空镜、纯音乐）不会被剪。
-- **时间线编辑按片段 id 定位**：`timeline_edit` 的 `update` / `remove` 都要 id，从 `timeline_read` 拿；
-  粗剪会切分片段并改名（`clip-1` → `clip-1~2`），所以重排之后要重新读一次 ids。
-  单条指令失败不会中断其余指令，原因逐条回在 `failures` 里（id 找不到、时长 ≤ 0 等），
-  返回的 `addedClipIds` / `removedClipIds` 是后续编辑的抓手。
-- **工具能回图片，旧客户端只是看不到**：`timeline_preview` 与 `render_svg` 的画面以 MCP image content 随响应回给客户端，
-  多模态客户端（Claude Desktop / Codex 等）能直接看到；纯文本客户端只会读到时间点列表与说明、或 SVG 的尺寸与帧信息，
-  不会报错——图放在结果的旁路字段里，不混进文本结果，也不会被审计日志记下 base64。
-  预览与 `timeline_export` 走**同一条 ffmpeg 滤镜图**，所以「预览看到的就是成片」，不是另画一套近似预览；
-  代价是它要真渲染：时间点越靠后解码越久（抽几帧比导出一次便宜得多，但不是瞬时）。
-  `render_svg` 同理走 `svg.anim` 同一条逐帧烘焙链（静态 SVG 只出 1 帧），但只回前 4 帧——多模态通道按体积计价，
-  1024 边长一帧就有数百 KB，要完整序列请走 `svg.gen` → `svg.anim` 出图。
-- **沙箱里起不了本机浏览器，视觉自查用 `render_svg`**：shell 命令跑在 dsh 的 Windows ACL 沙箱里（受限令牌），
-  Chromium 在该令牌下建不出自己的 mojo IPC 命名管道，会崩在 `0x80000003` 并由系统在应用之外弹出模态「应用程序错误」框，
-  而命令照样失败（`--no-sandbox` 也救不了：失败点在 mojo 管道，不在 Chromium 自己的沙箱开关）。
-  应用侧已在两处收口：persona 明说禁用（含换写法），运行体则在所有 shell 进程的必经点
-  （`LocalSubprocessRuntime.spawn` / `spawnTerminal`）按 argv 拒绝这类命令并回同一条原因。
-  所以「矢量 / HTML 产物长什么样」请调 `render_svg`；要看资产化产物就走 `svg.gen` → `svg.anim` 出图后再读。
-  真需要真浏览器（比如交互调试）时，停下来让用户在应用外跑，不要尝试提权或绕过沙箱。
-- **写节点参数会被校验，不可用的参考图不会静默留下**：`workflow_commit` 与 `graph_edit` 共用一套参考图参数口径
-  （`styleImages` / `styleImagesUseGlobal` / `styleReferenceSubject` / `characterRefs`）——风格图条目须带 `libraryId`
-  或 `data:` 开头的 `dataUrl`，角色引用须带 `imageUrl`（只写名字解析不出参考图，需要先在节点检查器里绑定角色），
-  不可解析的条目会被丢弃并逐条列进返回的 `warnings`；`graph_edit` 按**合并后**的值校验，本次改动无法生效时
-  保留节点原值。写完计划 / 编辑后请看一眼 `warnings`，不要只看「成功」。
-- **低频参数透传**：`generate_*` 工具支持 `extraParams` 对象，把底层生成输入的全部字段
-  （如图片 `seed` / `quality`、视频 `resolution` / `lastFrameImageUrl`）合并进生成请求；
-  显式传参优先于透传值，内部回写绑定字段（graphBinding）会被自动剥离。`outputDir` / `folderId`
-  会被剔除——对话生成产物一律落缓存目录，不会经透传参数被写进 `Assets/` 直接入库。
-- **3D 蒙皮等加工不在 MCP 工具里**：`generate_model3d` 只出几何 GLB，`rig` / `rigType` / `rigAnimation` 等入参
-  自 6.4.1 起已移除（传了会在提交前明确报错）。蒙皮、绑骨检查、动画重定向、模型拆分、部件补全、重拓扑、贴图、
-  格式转换这 8 类加工一律走**节点图**（`model.rigSkin` / `model.rigCheck` / `model.retarget` / `model.segment` /
-  `model.meshComplete` / `model.retopology` / `model.texture` / `model.convert`，供应商在卡片里选，能力按供应商
-  矩阵过滤），由用户在画布上编排；外部 Agent 可用 `graph_edit` 增删这些节点与连线。上游是否支持某项加工与
-  3D 模型提供商一致，可用 `models_list` 查已启用的 3D 提供商。
-- **并发闸门**：`generate_image` / `generate_speech` / `generate_music` / `decide` / `workflow_plan` 同时最多 3 个（可用环境变量 `AIAE_MCP_GEN_LIMIT` 调整），排队超限直接返回错误；`generate_video` / `generate_model3d` 提交即返回，不受闸门限制。
-- **取消粒度**：客户端断开连接，或发送 `notifications/cancelled`，会中止进行中的长任务（如 `workflow_plan` 在两次模型调用之间）；单次模型调用内部不可中断。
-- **状态报告有 TTL**：`task_status` 的成功/失败终态保留 10 分钟后自动清理，过期查询返回「未知任务 id」。
-- **环境变量覆盖**：`AIAE_MCP_CONFIG` 指定应用侧 mcp.json 路径；`AIAE_MCP_PORT` + `AIAE_MCP_TOKEN` 直接指定端口与 token（优先于文件）。
-- **Blender 工具集需要 Blender 进程在场**：addon 是 socket 服务端，Blender 一关，这一组工具全部失败（错误会明确说是「连不上 addon」而不是含糊的超时）；应用不负责启动 Blender，也没有无界面模式——`get_viewport_screenshot` 连窗口可见性都有要求（最小化时抓不到画面，离屏抓帧失败会回退窗口抓屏）。连接状态在设置面板里每 4 秒刷新一次，`get_addon_status` 可随时查 addon 版本与协议版本。
-- **一次只跑一条 Blender 命令**：addon 的 socket 协议是「一条命令一个 JSON 帧」，没有请求 id，所以应用侧对命令做了串行化（前一条没回完，后一条排队）。批量操作请在一条 `execute_blender_code` 里写完，而不是并发发多条。
+1. **工程路径沙箱隔离**：除 `asset_import` 允许按显式绝对路径将工程外部媒体拷入 `Cache/imports/`（及 `asset_package_export` / `asset_package_import` 的 `.aipackage` 绝对路径）外，所有文件读写与媒体工具严格限制在当前打开的工作区根目录内，任何含 `..` 的越界路径一律拒绝。
+2. **编辑器打开态保护**：`timeline_rough_cut` 与 `timeline_edit` 在 `apply: true` 写盘时，若对应剧本的时间线编辑器正在前台打开会拒绝覆盖（防止内存脏态回写冲掉 Agent 改动）；默认 `apply: false` 可随时安全预览方案。而 `graph_edit` 与 `director_stage_edit` 已通过内存宿主桥（`mcpGraphLiveCanvas.ts` / `directorStageHosts.ts`）支持对当前打开的画布与 3D 导演台实时热更新。
+3. **沙箱内视觉自检请用内置渲染工具**：应用内 `dsh` 的终端命令运行在受限安全沙箱中，不支持在命令沙箱内直接拉起外部 Chromium 进程。Agent 检视 SVG/矢量动画请调 `render_svg`，检视视频与成片请调 `grab_video_frames` / `timeline_preview`，抓取外部网页图文请调主进程托管的 `web_extract_article`，校验可玩 HTML5 请看 `gameplay_build` / `gameplay_job_status` 返回的 `smoke` 报告。
 
----
-
-## 常见问题排查
-
-| 现象                     | 原因                                                         | 解决                                                                                                                                                                               |
-| ------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 报错「未找到 mcp.json」  | 应用没启动，或应用侧 mcp.json 被删                           | 先启动 AiArtEngine；或用 `AIAE_MCP_CONFIG` 指定路径                                                                                                                                |
-| 返回 401「未授权」       | token 对不上（应用重启过换了？配置过期？）                   | 删除 mcp.json 重启应用拿新 token，重新注册                                                                                                                                         |
-| 连不上 / ECONNREFUSED    | 端口被占用，实际端口不是 43110                               | 看应用侧 mcp.json 里的 `port`，换成实际端口                                                                                                                                        |
-| 注册后工具不出现         | 注册后需新开会话                                             | 重启 Claude Code 会话                                                                                                                                                              |
-| 工具报错「请先打开工程」 | 对应工具需要已打开工程                                       | 先调用 `project_open`                                                                                                                                                              |
-| 生成长任务卡住不动       | 模型调用耗时（`workflow_plan` 可数十秒）                     | 等待；超时想中断可断开连接或发 `notifications/cancelled`                                                                                                                           |
-| Blender 工具报「连不上」 | Blender 没开 / addon 没启用 / 端口不是 9876 / addon 类型选错 | 确认 Blender 正在运行、对应 MCP addon 已启用；改过 addon 端口或换了 addon 类型（社区 addon.py ↔ 官方 Blender Lab 扩展）就在「设置 → MCP → Blender 工具集」同步，再点「应用并重连」 |
-| Blender 工具根本没出现   | 没注册 `/mcp/blender`，或设置里关了                          | 按上面方式 B 再注册一个 server（端点带 `/blender` 后缀），或到设置面板勾上「启用」                                                                                                 |
+| 常见报错 / 现象                             | 原因定位                                                        | 解决办法                                                                                                          |
+| :------------------------------------------ | :-------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| `未找到 mcp.json` / `ECONNREFUSED`          | AI Art Engine 桌面端未启动，或端口顺延后直连写死了旧端口        | 启动桌面应用；优先改用 `mcp-bridge.mjs` 自动读取实际端口，或核对 `%APPDATA%\aiartengine\mcp.json` 中的 `port`。   |
+| HTTP `401 Unauthorized`                     | 请求头缺少 `Authorization: Bearer <token>` 或重置过 `mcp.json`  | 从最新 `mcp.json` 复制 `token` 更新外部 Agent 配置并重开会话。                                                    |
+| 工具列表为空或提示 `Ask 模式不提供任何工具` | 应用内对话面板处于 `Ask` 模式，或 `Plan` 模式尚未确认方案       | 在对话面板底部将模式切回 `Agent (Craft)`，或在 `Plan` 模式的确认卡点击「继续」。                                  |
+| Blender 工具报连接失败 / 超时               | Blender 未打开、未启用 MCP Addon，或社区版/官方扩展协议类型选反 | 确认 Blender 已开启 Addon 监听（默认 `9876`），在「设置 → MCP 工具服务 → Blender 工具集」选对协议类型并点击重连。 |

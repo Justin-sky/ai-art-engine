@@ -19,24 +19,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>Workspaces &amp; Settings · Manual (v8.9.1) — BYOK Models, Local ONNX, S3, 102-Tool MCP &amp; Web Search | AI Art Engine</title>
     <meta
       name="description"
-      content="Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app."
+      content="AI Art Engine (AIArtEngine) v8.9.1 Manual Vol. 1: multi-project workspaces (workspace.json + project.json), Zero-Key Instant Demo in AI Chat, 30+ BYOK model providers, offline ONNX vision &amp; OCR, S3-compatible storage, 102-tool MCP server, and active web search &amp; extraction."
     />
-    <title>Projects & settings · Manual — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI Art Engine settings, AIArtEngine model providers, workspace.json multi-project, Zero-Key Instant Demo, local ONNX vision, S3 object storage, 102 MCP tools, AI Chat web search"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:title" content="Projects & settings · Manual — AIArtEngine" />
-    <meta property="og:description" content="Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app." />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta property="og:title" content="Workspaces &amp; Settings · Manual (v8.9.1) — AI Art Engine" />
+    <meta
+      property="og:description"
+      content="Manage multi-project workspaces (workspace.json + project.json), configure 30+ BYOK providers, offline ONNX vision, S3 storage, the 102-tool bi-directional MCP server, and live web search."
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Projects & settings · Manual — AIArtEngine" />
-    <meta name="twitter:description" content="Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app." />
+    <meta name="twitter:title" content="Workspaces &amp; Settings · Manual (v8.9.1) — AI Art Engine" />
+    <meta
+      name="twitter:description"
+      content="Manage multi-project workspaces (workspace.json + project.json), configure 30+ BYOK providers, offline ONNX vision, S3 storage, the 102-tool bi-directional MCP server, and live web search."
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
@@ -49,7 +61,61 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "Workspaces & Settings · AI Art Engine v8.9.1 Manual (Vol. 1)",
+            "description": "Reference for AI Art Engine v8.9.1 multi-project workspaces (workspace.json + project.json), Zero-Key Instant Demo, 30+ cloud and local model providers, offline ONNX vision models, S3-compatible object storage, the 102-tool MCP server, and active web search & extraction.",
+            "inLanguage": "en",
+            "url": "https://justin-sky.github.io/ai-art-engine/manual-setup.en.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/manual-setup.en.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://justin-sky.github.io/ai-art-engine/index.en.html"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Manual",
+                "item": "https://justin-sky.github.io/ai-art-engine/manual.en.html"
+              },
+              {
+                "@type": "ListItem",
+                "position": 3,
+                "name": "Workspaces & Settings",
+                "item": "https://justin-sky.github.io/ai-art-engine/manual-setup.en.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#manual">Skip to content</a>
@@ -119,53 +185,60 @@
         <h2>Table of contents</h2>
         <ol>
           <li class="toc-group">Basics</li>
-          <li><a href="#home">3. Home &amp; projects</a></li>
+          <li><a href="#home">3. Home &amp; workspaces</a></li>
           <li><a href="#settings">4. Settings</a></li>
+          <li><a href="#local-vision">Local vision (offline ONNX)</a></li>
           <li><a href="#object-storage-s3">Amazon S3–compatible (Yandex example)</a></li>
+          <li><a href="#web-search">4.6 Web search &amp; extraction</a></li>
 
           <li class="toc-group">Manual chapters</li>
-          <li><a href="manual.en.html">Overview & core concepts</a></li>
-          <li><a href="manual-workspace.en.html">Workspace & asset library</a></li>
-          <li><a href="manual-workflow.en.html">One-Click Workflow & node graph</a></li>
-          <li><a href="manual-production.en.html">Script, timeline & director stage</a></li>
-          <li><a href="manual-reference.en.html">Reference & troubleshooting</a></li>
+          <li><a href="manual.en.html">Overview &amp; core concepts</a></li>
+          <li><a href="manual-workspace.en.html">Workspace, AI Chat &amp; assets</a></li>
+          <li><a href="manual-workflow.en.html">One-Click Workflow &amp; node graph</a></li>
+          <li><a href="manual-production.en.html">AI Drama, NLE &amp; director stages</a></li>
+          <li><a href="manual-reference.en.html">Reference &amp; troubleshooting</a></li>
         </ol>
       </aside>
 
       <article class="manual" id="manual">
         <header class="manual-hero">
           <p class="eyebrow">Manual · Setup</p>
-          <h1>Projects & settings</h1>
+          <h1>Workspaces &amp; settings</h1>
           <p class="lede">
-            Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app.
+            Create and open multi-project workspaces (<code>workspace.json</code> + <code>project.json</code>), launch the Zero-Key Instant Demo, and configure general preferences, BYOK model providers, offline ONNX vision, S3 object storage, extensions, the 102-tool MCP server, and live web search. Walk through this volume first when setting up the app.
           </p>
         </header>
 
         <section id="home">
-          <h2>3. Home &amp; projects</h2>
-          <h3>Create a project</h3>
+          <h2>3. Home &amp; multi-project workspaces</h2>
+          <h3>Create a workspace</h3>
           <ol>
-            <li>Click <strong>New Project</strong>.</li>
-            <li>Fill in the <strong>project name</strong>.</li>
-            <li>Click <strong>Browse</strong> to choose the <strong>storage directory</strong>.</li>
-            <li>Click <strong>Create</strong> to enter the workspace.</li>
+            <li>On the home page, click <strong>New Workspace</strong> (or “New Project”).</li>
+            <li>Fill in the <strong>workspace / project name</strong>.</li>
+            <li>Click <strong>Browse</strong> to choose a local <strong>storage directory</strong> (an empty folder is recommended).</li>
+            <li>Click <strong>Create</strong> to enter the canvas workspace.</li>
           </ol>
-          <h3>Open a project</h3>
+          <p>
+            v8.9.1 organizes work into multi-project <strong>Workspaces</strong>: <code>workspace.json</code> indexes multiple projects inside the workspace root while each project maintains its own <code>project.json</code> manifest for graphs and assets. Once inside a workspace, expand the <strong>left sidebar of the right-hand <code>◈ AI Chat</code> panel</strong> at any time to create or switch projects on the fly or inspect/edit files directly in the embedded workspace file editor.
+          </p>
+          <div class="tip">
+            <strong>⚡ Zero-Key Instant Demo:</strong> Before configuring any API keys, open the right-hand <strong><code>◈ AI Chat</code></strong> panel inside any workspace and click <strong>“⚡ Zero-Key Instant Demo”</strong> to run a live Xianxia RPG Equipment UI decomposition + 3D Exploded Layer Split → native editable <code>TySh</code> <code>.psd</code> / Unity UGUI / Godot 4 pipeline completely locally.
+          </div>
+          <h3>Open a workspace / project</h3>
           <ul>
-            <li>Click <strong>Open Project</strong> and pick <code>project.json</code> inside the project directory.</li>
-            <li>Or click a path in the <strong>Recent projects</strong> list.</li>
+            <li>Click <strong>Open Workspace / Open Project</strong> and select <code>workspace.json</code> or <code>project.json</code> inside the directory.</li>
+            <li>Or click any entry in the <strong>Recent workspaces</strong> list on the home page.</li>
           </ul>
-          <h3>Recent projects</h3>
+          <h3>Recent workspaces</h3>
           <ul>
-            <li>The list shows project paths you opened recently.</li>
+            <li>The list shows workspace and project paths you opened recently.</li>
             <li>
               The <strong>×</strong> on the right means “remove from the recent list” — it does
-              <strong>not</strong> delete the project files on disk.
+              <strong>not</strong> delete the workspace files on disk.
             </li>
           </ul>
           <div class="tip">
-            This release has no in-app “Delete project” action. To remove a project entirely, delete its folder
-            in your file manager.
+            There is no destructive in-app “Delete folder” button. To remove a workspace or project permanently, delete its directory in your system file manager.
           </div>
         </section>
 
@@ -829,12 +902,10 @@
             shown. Official installers don't load the “graph plugin sample” demo.
           </p>
 
-          <h3>4.5 MCP tool server</h3>
+          <h3>4.5 MCP tool server (102 tools)</h3>
           <p>
-            The app embeds an MCP tool server for <strong>external AI agents such as Claude Code / Codex</strong>
-            (and the built-in <a href="manual-workspace.en.html#ai-chat">AI chat panel</a>) — plan &amp; commit workflows, run
-            generation, read/write assets and node graphs. See the
-            <a href="guide-mcp.en.html">MCP setup guide</a> for full steps.
+            The app embeds a bi-directional local MCP tool server exposing <strong>102 tools</strong> (<strong>93 core tools</strong> on <code>/mcp</code> + <strong>9 live Blender modeling tools</strong> on <code>/mcp/blender</code>) for <strong>external AI agents such as Claude Code, Cursor, and Codex</strong> as well as the built-in <a href="manual-workspace.en.html#ai-chat">◈ AI Chat panel</a> — letting agents install Skill Marketplace workflows, orchestrate typed DAG node graphs, run Machinations simulations and multimodal generations, read/write workspace assets, and enforce request-level permission scoping via <code>X-MCP-Mode</code> (<code>agent</code> / <code>plan</code> / <code>ask</code>). See the
+            <a href="guide-mcp.en.html">MCP setup guide</a> for full instructions and the complete 102-tool reference.
           </p>
           <ul>
             <li>
@@ -849,41 +920,38 @@
             </li>
             <li>
               <strong>Connect command</strong>: one-click copy of the <code>claude mcp add --transport http …</code>
-              command; run it in a terminal to register the app as a Claude Code MCP server (HTTP direct, no
+              command; run it in a terminal to register the app as a Claude Code MCP server (Streamable HTTP direct, no
               Node.js needed).
             </li>
           </ul>
           <div class="tip">
             The tool server only listens on <code>127.0.0.1</code> loopback and every request needs a Bearer
-            token; file access is confined to the project root; every tool call is appended to the audit log
+            token; file access is confined to the workspace / project root (except <code>asset_import</code>, which copies an explicit external path you provide into the project); every tool call is appended to the audit log
             <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code> (5 MB rolling).
           </div>
           <p>
             The settings panel also lets you <strong>configure the stdio bridge</strong> visually: change the
             bridge command (default is still <code>node</code> + the in-repo <code>scripts/mcp-bridge.mjs</code>
             or the installer's bundled <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>), the bridge
-            HTTP port, the Blender addon host / port passthrough (<code>BLENDER_HOST</code> /
+            HTTP port, and the Blender addon host / port passthrough (<code>BLENDER_HOST</code> /
             <code>BLENDER_PORT</code>). Changes persist immediately;
             external agents just reconnect — no app restart needed.
           </p>
           <p>
             The same panel supports a <strong>“reverse bridge”</strong>: register any external stdio MCP server
-            (such as the Blender addon or any local MCP service) so the in-app ◈ AI chat panel (DeepSeek
-            Harness / dsh) can consume its tools directly — no need to expose a separate socket port. See the
+            (such as the Blender addon or any local MCP service) so the in-app ◈ AI Chat panel (DeepSeek
+            Harness / <code>dsh</code>) can consume its tools directly — no need to expose a separate socket port. See the
             <a href="guide-mcp.en.html">MCP setup guide</a>, reverse-bridge section.
           </p>
           <p>
             Third-party MCP servers (remote HTTP or local stdio commands) can also be added and managed from the
-            <strong>MCP</strong> tab of the <a href="manual-workspace.en.html#marketplace">plugin marketplace</a>.
+            <strong>MCP</strong> tab of the <a href="manual-workspace.en.html#marketplace">Skill Marketplace</a>.
           </p>
-        </section>
 
-        <h3 id="web-search">4.6 Web search</h3>
+          <h3 id="web-search">4.6 Web search &amp; extraction</h3>
           <p>
-            Settings → <strong>Web search</strong> tab configures <strong>multiple providers running side by
-            side</strong>. Deliberately split from the model provider system — fewer adapters, no per-project
-            context injection needed; the module-level registry is sufficient, and it can be migrated to a
-            Cordis plugin cleanly once a flood of third-party search services shows up.
+            Settings → <strong>Web search</strong> tab configures <strong>multiple search providers running side by
+            side</strong> for live web retrieval and content extraction — decoupled from per-project model settings so one global configuration powers every workspace.
           </p>
           <ul>
             <li>
@@ -894,20 +962,17 @@
             <li>
               <strong>Panel actions</strong>: toolbar “Add provider” dropdown → pick a kind → add; each card
               collapses / expands, toggles enable / disable, or removes the instance; a built-in connectivity
-              test prints the raw response or failure reason inline.
+              test prints the live response or failure reason inline.
             </li>
             <li>
-              <strong>Current scope</strong>: the panel is <strong>config only</strong> for now — not yet wired
-              into the in-app AI chat panel or one-click workflow as a web-search tool. Trigger the connectivity
-              test from the panel to verify a provider. The same instance list will be reused when web search
-              becomes an agent tool later.
+              <strong>Actively wired into AI Chat &amp; MCP</strong>: enabled search providers power both the built-in <strong><code>◈ AI Chat</code></strong> harness (<code>dsh</code> native <code>web_search</code> and <code>web_fetch</code> tools for live research, reference gathering, and documentation lookup) and the local <strong>MCP server</strong> (<code>web_extract_article</code> for clean article extraction and <code>web_fetch_video</code> for downloading online reference videos straight into your project).
             </li>
           </ul>
           <div class="tip">
-            Mock always returns the same fixed payload — useful in offline dev and CI to flip the
-            “search available” bit without a real network call. Don't enable it in production (it can fall
-            through when other providers are off, but never replaces real data).
+            Mock always returns the same fixed payload — useful only in offline dev and CI to flip the
+            “search available” flag without a real network call. Keep Mock disabled in production so queries route to your active search providers.
           </div>
+        </section>
 
       </article>
     </div>

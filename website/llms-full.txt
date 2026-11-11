@@ -1,0 +1,108 @@
+# AI Art Engine (AIArtEngine) — Complete Technical & Product Reference (v8.9.1)
+
+> Canonical Origin: https://justin-sky.github.io/ai-art-engine/
+> GitHub: https://github.com/Justin-sky/ai-art-engine
+> License: GPL-3.0 (Free & Open Source)
+> Platforms: Windows (NSIS `.exe`), macOS (Intel `x64` & Apple Silicon `arm64` `.dmg`), Linux (`AppImage`)
+> Architecture: Electron + Vue 3 + TypeScript + Typed Multimodal DAG Graph + DeepSeek Harness (`dsh`) Agent + Local ONNX Vision + HTTP Streamable MCP Server (`127.0.0.1`)
+
+---
+
+## 1. What Problem Does AI Art Engine Solve?
+
+Most generative AI tools stop at flat raster images or isolated 5-second video clips that cannot be directly imported into real game engines, compositors, or NLE timelines without hours of manual slicing, text re-typing, rigging, and re-editing.
+
+**AI Art Engine (`AIArtEngine`)** bridges the last mile between multimodal generation and industrial production:
+
+| Domain | Standard AIGC Output | AI Art Engine Deliverable |
+| :--- | :--- | :--- |
+| **Game UI** | Flat concept PNG with baked-in unreadable text | Layered `.psd` with **native Photoshop `TySh` editable text layers**, clean inpainted 9-slice plates, **Unity UGUI / UI Toolkit `.uxml`**, **Godot 4 `.tscn`**, **HTML5**, plus **UI Atlas Compose (`ui.atlasCompose`)** |
+| **Game Economy & Balance** | Static spreadsheets or prose design docs | **Machinations v2 (`game.economy`)** interactive system-dynamics graph (59 verified blocks), **120fps Bezier curve-drag Goal-Seek solver**, Monte Carlo P10/P50/P90 bands, 2D sensitivity heatmaps, playable HUD card prototype, **Unity C# & Godot GDScript** export |
+| **2D Character Animation** | Static character illustration | Segmented parts with dilated occluded-edge inpainting, AI bone alignment (Alpha morphology + YOLOv8-Pose), IK constraints, baked animations exported as **Spine 2D (`skeleton.json` + `.atlas` + `.png`)** |
+| **AI Comic Drama / Short Film** | Disjointed clips with drifting faces, outfits, and voices | **21-genre (`P01`–`P21`) 5-stage `film.workbench`**: dual-rhythm beat breakdown → 11-point continuity & ≥67% dialogue audit → `#variant` wardrobe/scene/prop/`STYLE01` anchors + cross-episode TTS voice binding → `@1`–`@4` locked batch shoot & Vision QC → finished `.mp4` + release pack |
+| **Viral Video Remake** | Manual frame-by-frame guesswork | **2-node `semantic.analyze` → `semantic.rebuild` (`rea-video`)**: 4-axis audio-visual forensics (WhisperX + PySceneDetect + Librosa + Demucs + 3-frame VLM), clean-plate subtitle removal, lip-sync, kinetic `.ass` subtitles, and side-by-side `compare.mp4` |
+| **Post-Production NLE** | Hardcoded baked MP4 | **6-tab NLE timeline (`output.timeline`)** (120+ effects/transitions/LUTs, DOTween dual-layer keyframes, TD-PSOLA singing synthesis) + **JianyingPro / CapCut editable multi-track draft package** |
+| **3D & Spatial Previz** | Uncontrolled camera angles | **56-bone 3D Director Stage (`director.stage`)**, offscreen `.webm` trajectory white-box video (`@2`), **World Labs Marble 3DGS → `.glb`**, and **9-tool Blender MCP live modeling** |
+| **Playable Prototypes** | Unverified code snippets | Self-contained **`single.html` playable HTML5 games** verified by headless Chromium smoke tests (zero console/page errors + real input simulation + canvas frame-diff validation) |
+| **Workflow Sharing** | Broken JSON files with missing custom nodes | **Workflow-in-PNG (`aiae:graph`)**: every exported PNG embeds its full reproducible DAG; drag the PNG onto the canvas to restore the pipeline |
+
+---
+
+## 2. Core Studios & Node Types
+
+### 2.1 Game UI Production (`image.layerSplit`, `ui.atlasCompose`, `ui.componentLib`)
+- **16 Standard UI Control Classes**: Buttons, 9-slice panels, tabs, badges, item slots, progress bars, sliders, toggles, input fields, currency bars, avatars, icons, dividers, close buttons, scrollbars, decorative frames.
+- **Cross-Platform Offline & Cloud OCR**: Uses native OS OCR (Windows `Windows.Media.Ocr`, macOS `Vision VNRecognizeTextRequest`, Linux `tesseract`) or VLM OCR to extract text content, font size, fill hex color, stroke color/width, and alignment.
+- **Clean Plate Inpainting & 3D Exploded View**: Removes baked text to reconstruct clean 9-slice base plates; inspect Z-depth hierarchy in an interactive Three.js 3D exploded view.
+- **UI Atlas Compose (`ui.atlasCompose`)**: Upload an existing sprite sheet / UI texture atlas (`@1`), automatically slice sprites via connected-component alpha analysis + VLM semantic tagging, and assemble complete game UI screens strictly using your real atlas sprites (zero hallucinated textures).
+- **Exports**: Layered `.psd` (with real `TySh` editable text layers for Photoshop / Photopea), Unity UGUI prefab JSON + UI Toolkit `.uxml`/`.uss`, Godot 4 `.tscn`, HTML5/CSS, and sliced PNG sprite bundles.
+
+### 2.2 Machinations v2 Game Economy & Systems Studio (`game.economy`)
+- **100% Machinations Semantic Alignment**: Pools, Sources, Drains, Converters, Gates (deterministic / probabilistic / skill / condition), Traders, Delays, Queue, Register (`STEP` formulas), End Conditions, Resource Connections, and State Connections (`+2`, `*1.15`, `>10`, `==0`, `*`).
+- **59 Verified Building Blocks**: Ready-to-drop economy, combat, gacha pity, stamina regeneration, battle pass, town builder, roguelike risk/reward, MOBA XP snowball, and auction house patterns.
+- **Simple Macro ↔ Pro Blueprint Lossless Toggle**: Switch between high-level macro cards for rapid design pitches and full Machinations node-edge blueprints without losing state.
+- **120fps Curve-Drag Inverse Goal-Seek Solver (v8.9.1)**: Drag target curve points or the purple Bezier slope diamond (`◆` `shapeCtrl`) directly on the chart at 120fps; the studio inversely solves `k * pow(STEP, p)` or linear progression formulas and highlights affected formulas live.
+- **Monte Carlo & 2D Sensitivity Matrix**: Run multi-seed stochastic simulations with P10 / P50 / P90 shaded bands, 2D parameter sweep heatmaps, and one-click Quick-Fix balance diagnostics (deadlocks, runaway inflation, starvation).
+- **Zero-Code Playable HUD & Engine Code Export**: Playtest your economy immediately as an interactive card/HUD prototype, or export PNG, SVG, CSV telemetry, **Unity C# (`EconomySimulator.cs`)**, and **Godot 4 GDScript (`economy_simulator.gd`)**.
+
+### 2.3 AI Comic Drama (漫剧) 5-Stage Film Workbench (`film.workbench`)
+- **21 Genre Blueprints (`P01`–`P21`)**: Urban Suspense, Xianxia Cultivation, Rebirth Revenge, Cyberpunk Sci-Fi, Ancient Palace Intrigue, Post-Apocalyptic Survival, Sweet Romance, Infinite Flow Horror, Mecha War, Wuxia Jianghu, Campus Youth, Mythic Folklore, Detective Noir, Healing Slice-of-Life, Game Isekai, Historical Epic, Supernatural Exorcism, Sports Competition, Business Tycoon, Pet/Chibi Comedy, Dark Fairy Tale.
+- **Stage 1 — Dual-Rhythm Beat Breakdown**: Enforces `A` (3-second hook) + `B` (escalation/twist cliffhanger) beat density and target shot durations.
+- **Stage 2 — 11-Point AI Director Continuity & Dialogue Audit**: Checks spatial 180-degree axis rules, eyeline match, shot-size progression, and ≥67% spoken dialogue coverage, with one-click targeted rewrite.
+- **Stage 3 — Visual & Vocal Anchors**: Locks character `#variant` turnaround sheets (wardrobe/injury/age states), scene establishing plates, key props, `STYLE01` master style bible, and persistent cross-episode TTS voice profiles.
+- **Stage 4 — `@1`–`@4` Locked Batch Shoot & Vision QC**: Injects character/scene/style anchors into video generation models, automatically inspects generated clips via VLM Vision QC, reshoots failed takes, and caches shot fingerprints so editing a single shot never re-bills locked shots.
+- **Stage 5 — Release Pack & Episode Master**: Generates vertical/horizontal poster covers, viral titles/tags, stitched `.mp4` episodes, and multi-track timeline handoff.
+
+### 2.4 2-Node Forensic Video Breakdown & Remake (`semantic.analyze` → `semantic.rebuild`)
+- **`semantic.analyze` (Forensic Deconstruction)**: Runs local WhisperX word-level ASR + speaker diarization, PySceneDetect shot boundary detection, Librosa BPM/onset beat analysis, Demucs stem separation, and 3-frame strip (`start / mid / end`) VLM cinematography analysis (`SemanticTimelineV1`).
+- **`semantic.rebuild` (1:1 Viral Remake / `rea-video`)**: Extracts clean-plate background anchors (removing burned-in subtitles), batches contiguous shots via dynamic programming (`dpPlanner`) within model duration budgets, synthesizes cloned/bound voices + lip-sync, burns kinetic `.ass` word-highlighted subtitles, and exports both `final.mp4` and a synchronized 2-up `compare.mp4`.
+
+### 2.5 CapCut-Grade Timeline (`output.timeline`), 2D Spine (`stage.2d`), Portrait (`image.portrait`) & 3D Director (`director.stage`)
+- **`output.timeline`**: Multi-track video/audio/subtitle NLE with 6 creative tabs (120+ effects, transitions, LUTs, color wheels/HSL/curves, templates), DOTween dual-layer keyframe easing (`in / loop / out`), TD-PSOLA singing synthesis from musical scores, `.mp4` export, and JianyingPro / CapCut editable draft folder export.
+- **`stage.2d`**: Automatic character part cutting, occluded-edge dilation inpainting, AI bone alignment (Alpha morphology + YOLOv8-Pose), parent-child bones + IK, keyframe animation baking, and Spine 2D (`skeleton.json` + `.atlas` + `.png`) export.
+- **`image.portrait`**: 468-point FaceMesh + 4-band à-trous wavelet frequency-separation retouching (preserving skin pores while smoothing blemishes) + 7 camera/film color sciences (Canon, Fujifilm Classic Neg, Leica Look, Hasselblad Natural Color, Kodak Portra 400, Cinestill 800T, Neutral).
+- **`director.stage`**: 56-bone humanoid rigs, 24 procedural motion clips, 38 pose presets, multi-camera frustum blocking, offscreen `.webm` trajectory white-box video (`@2`), and walkable World Labs Marble 3D Gaussian Splatting worlds exported to `.glb`.
+
+---
+
+## 3. Complete 102-Tool MCP Reference (`127.0.0.1`)
+
+When AI Art Engine is running, it exposes an authenticated HTTP Streamable MCP server on `127.0.0.1` (plus `resources/mcp-bridge.mjs` for `stdio` clients like Claude Code, Cursor, Codex, and Windsurf). Request headers or mode switches enforce `agent` (full read/write), `plan` (read + planning), or `ask` (strict read-only) access control.
+
+### 3.1 Main Engine Endpoint (`/mcp` — 93 Tools)
+
+1. **System, Multi-Project Workspace, Git & Schedules (14 tools)**:
+   `app_status`, `models_list`, `storage_status`, `project_list`, `project_open`, `project_create`, `project_memory_read`, `project_memory_write`, `project_memory_append`, `project_git_status`, `project_git_diff`, `schedule_list`, `schedule_delete`, `ask_user`
+2. **Asset Library, Packages, Voice Profiles, QC & Vector/Spine Prep (21 tools)**:
+   `asset_list`, `asset_read_file`, `asset_write_text`, `asset_create`, `asset_import`, `asset_rename`, `asset_move`, `asset_delete`, `folder_list`, `folder_create`, `folder_move`, `asset_package_export`, `asset_package_import`, `storage_upload`, `voice_profile_list`, `voice_profile_upsert`, `voice_profile_delete`, `asset_qc`, `asset_qc_fix`, `stage2d_spine_export`, `render_svg`
+3. **DAG Node Graph, 3D Director, Task Execution & Skill Marketplace (18 tools)**:
+   `graph_node_types`, `graph_read`, `graph_edit`, `graph_icon_refine`, `director_stage_read`, `director_stage_edit`, `task_run`, `task_status`, `video_job_list`, `video_job_get`, `list_model3d_animations`, `decide`, `skill_list`, `skill_search`, `skill_inspect_github`, `skill_install`, `skill_uninstall`, `workflow_use_installed`
+4. **Local Vision, Audio Separation, Video Forensics & Timeline NLE (15 tools)**:
+   `vision_local_ocr`, `vision_local_yolo`, `transcribe_audio`, `audio_separate`, `extract_video_frames`, `grab_video_frames`, `detect_video_keyframes`, `analyze_video_beats`, `semantic_analyze_video`, `semantic_timeline_read`, `timeline_read`, `timeline_rough_cut`, `timeline_export`, `timeline_edit`, `timeline_preview`
+5. **Web Extraction & Automated Screen-Recorded Tutorials (10 tools)**:
+   `web_extract_article`, `web_fetch_video`, `screen_record_start`, `screen_record_step`, `screen_record_wait`, `screen_record_stop`, `screen_record_status`, `ui_bounds`, `ui_click`, `tutorial_compose`
+6. **Game Production, Playable HTML5 & Machinations Studio (15 tools)**:
+   `gameplay_prepare_project`, `gameplay_build`, `gameplay_job_status`, `game_tile_pbr_process`, `game_audio_variants`, `game_bundle_export`, `game_data_table_generate`, `game_level_map_generate`, `game_shader_particle_generate`, `game_systems_graph_generate`, `game_one_sentence_create`, `game_ui_suite_create`, `game_playable_preview_compile`, `machinations_building_blocks`, `machinations_studio`
+
+### 3.2 Blender Live Bridge Endpoint (`/mcp/blender` — 9 Tools)
+`get_scene_info`, `get_world_state_snapshot`, `get_object_info`, `get_viewport_screenshot`, `execute_blender_code`, `export_scene`, `describe_node_type`, `bpy_api_lookup`, `get_addon_status`
+
+---
+
+## 4. Supported Model Ecosystem (30+ Cloud & Local Providers, BYOK)
+
+- **Aggregators & Relays**: OpenRouter, NewAPI, OneAPI, MagicRouter, ModelScope (魔搭), SiliconFlow, custom OpenAI-compatible endpoints.
+- **LLMs & Multimodal VLMs**: OpenAI (GPT-4o / o3 / GPT-4.1), Anthropic Claude, Google Gemini, DeepSeek (V3 / R1), xAI Grok, Volcengine Ark (火山方舟 Doubao), Alibaba DashScope (通义千问 Qwen), Zhipu GLM, Moonshot Kimi, MiniMax.
+- **Image & Video Generation**: Seedream / Seedance, Kling (可灵), MiniMax Hailuo, Wan (通义万相), Veo, Runway, Luma Dream Machine, Sora-compatible gateways, ComfyUI (API v2 & `comfy-api-proxy`).
+- **Voice, Music & SFX**: ElevenLabs, MiniMax Speech, Volcengine TTS, DashScope CosyVoice, Suno-compatible music endpoints, local WhisperX & Demucs.
+- **3D & Spatial Worlds**: World Labs (Marble 3DGS), Meshy, Tripo, Hyper3D Rodin, Luma Genie, Lux3D, Blender MCP.
+- **Local & Offline Inference**: Ollama, LM Studio, vLLM, ComfyUI, built-in ONNX Runtime (YOLOv8 detect/seg/pose, 468-pt FaceMesh, SAM 2.1, Rembg), native OS offline OCR.
+
+---
+
+## 5. Frequently Asked Questions
+
+- **Is AI Art Engine free and open source?** Yes. Licensed under GPL-3.0, with zero subscription fees or platform markup. All project files live locally on your disk, and you connect your own API keys (BYOK) or local models (Ollama, LM Studio, ComfyUI, ONNX).
+- **Can I try it without any API key?** Yes. Open any workspace, expand `◈ AI Chat`, and click **⚡ Zero-Key Instant Demo (`零 Key 极速体验`)** to watch a live RPG Game UI + 3D Exploded Layer Split → PSD/Unity/Godot pipeline run locally.
+- **How does AI Art Engine differ from ComfyUI?** ComfyUI excels at low-level diffusion sampling graphs; AI Art Engine integrates ComfyUI as one backend while providing 10+ domain Dive studios (Film Workbench, Game UI Layer Split, Machinations v2 Economy, Spine 2D Stage, 3D Director, Multi-Track NLE Timeline) and direct industrial exports (`.psd`, `.uxml`, `.tscn`, Spine `.json`/`.atlas`, CapCut drafts, C#/GDScript, `single.html`).
+- **How does Claude Code or Cursor control AI Art Engine?** Run `claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs` (or connect via Streamable HTTP `http://127.0.0.1:<port>/mcp`) using the Bearer token from Settings → MCP Server.

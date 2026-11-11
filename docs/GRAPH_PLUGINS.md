@@ -1,106 +1,122 @@
-# 节点图插件开发指南
+# 节点图插件与扩展开发指南（v8.9.1）
 
-本文说明如何为 AIArtEngine 内部扩展贡献**节点类型**、**画布作用域（Scope）**、**图策略（Policy）**、**卡片**、**检查器**与**节点原生能力（`NodeCapabilityDef`）**。用户向连线规则见官网手册 [§8 节点图](https://justin-sky.github.io/ai-art-engine/manual-workflow.html#graph)。
+本文说明如何基于 Cordis 运行时为 AI Art Engine 开发与扩展**节点类型（`NodeTypeDefinition`）**、**画布作用域（Scope）**、**图策略（Policy）**、**画布卡片（Card）**、**属性检查器（Inspector）**与**节点原生能力（`NodeCapabilityDef`）**。用户侧连线与节点手册见官网 [工作流与节点图手册](https://justin-sky.github.io/ai-art-engine/manual-workflow.html#graph)。
 
-相关代码：
+---
 
-| 模块                        | 路径                                                                 |
-| --------------------------- | -------------------------------------------------------------------- |
-| 节点类型注册                | `src/shared/graph/registry.ts`                                       |
-| 节点原生能力目录            | `src/shared/graph/nodeCapabilities.ts`                               |
-| 画布 Scope                  | `src/shared/graph/scopes.ts`                                         |
-| 图策略（可添加节点 + 连线） | `src/shared/graph/policy/`、`default.graph-policy.json`              |
-| 图规范化                    | `src/shared/graph/normalize.ts`                                      |
-| 卡片注册                    | `src/renderer/src/graph/cards/registry.ts`                           |
-| 检查器注册                  | `src/renderer/src/inspector/registry.ts`                             |
-| 扩展入口                    | `src/renderer/src/editor/runtime/`（Cordis `Context` + `EditorHub`） |
+## 1. 核心代码映射
 
-## 概念
+| 模块                | 代码路径                                                                                                  | 说明                                                       |
+| ------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| 节点类型注册表      | `src/shared/graph/registry.ts`、`src/shared/graph/builtins.ts`                                            | 内置节点定义、端口声明与类型查询                           |
+| 节点原生能力目录    | `src/shared/graph/nodeCapabilities.ts`                                                                    | 默认系统提示词、指令模板、用法说明与覆盖栈                 |
+| 自省与深层智能补丁  | `src/shared/graph/introspection.ts`、`src/shared/graph/smartPatch.ts`                                     | 零配置向 AI 暴露参数 Schema 并支持点路径/简写补丁          |
+| 画布 Scope          | `src/shared/graph/scopes.ts`、`src/shared/graph/defaultGraph.ts`                                          | 多宿主画布作用域、默认拓扑模板与拖入规则                   |
+| 图策略与端口校验    | `src/shared/graph/policy/`、`src/shared/graph/ports.ts`                                                   | `default.graph-policy.json` 可添加节点白名单与严格类型连线 |
+| 图规范化            | `src/shared/graph/normalize.ts`                                                                           | 加载时 `normalizeScopedGraph()` 结构与边界修复             |
+| 右键菜单分组与画布  | `src/renderer/src/components/NodeGraphEditor.vue`、`src/renderer/src/features/graph/contextMenuGroups.ts` | 右键可添加节点分组、图标去重与影视流水线平铺分组           |
+| 画布卡片注册        | `src/renderer/src/graph/cards/registry.ts`                                                                | `note` / `media` 默认壳与自定义节点卡片匹配                |
+| 属性检查器注册      | `src/renderer/src/inspector/registry.ts`、`src/renderer/src/inspector/defaults.ts`                        | 声明式 Inspector 绑定与回退解析                            |
+| Cordis 编辑器运行时 | `src/renderer/src/editor/runtime/`                                                                        | `Context` + `EditorHub` 插件生命周期与热卸载回滚           |
 
-### 节点角色
+---
 
-统一使用 `asset.*` 类型：
+## 2. 核心概念与命名规范
 
-| 角色     | 标记                        | 说明                      |
-| -------- | --------------------------- | ------------------------- |
-| 资产引用 | `params.assetRef === true`  | 从资产库拖入，仅输出      |
-| 加工节点 | 无 `assetId`、无 `assetRef` | 右键菜单添加，有输入/输出 |
+### 2.1 `v8.9.1` 常用内置节点命名空间
 
-### `category` ≠ `card`（易错）
+扩展或编排节点时，建议对齐现有领域前缀（第三方或实验扩展统一使用 `plugin.*` 前缀）：
 
-`category` 只有三档：`asset` / `output` / `note`。**几乎所有加工/工具节点都必须写 `category: 'note'`**（表示「非资产引用、非输出槽」）。
+| 命名空间前缀              | 代表内置节点 `typeId`                                                                                        | 领域职责                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `asset.*`                 | `asset.image`、`asset.video`、`asset.voice`、`asset.model`、`asset.spatialWorld`                             | 多模态生成节点与工程资产引用节点（通过 `params.assetRef === true` 区分）     |
+| `film.*`                  | `film.workbench`、`film.breakdown`、`film.cast`、`film.shot`、`film.render`、`film.review`                   | 21 流派 5 阶 AI 漫剧与影视制片流水线                                         |
+| `semantic.*`              | `semantic.analyze`、`semantic.rebuild`                                                                       | 取证级爆款视频拆解与跨主体复刻双节点（`rea-video`）                          |
+| `image.*`                 | `image.portrait`、`image.layerSplit`、`image.lighting`、`image.multiAngle`、`image.emotion`、`image.process` | 4 频段小波人像精修、16 类游戏 UI/通用拆层、打光/多机位/10 合 1 图像加工      |
+| `ui.*`                    | `ui.atlasCompose`                                                                                            | 多控件散图打包 Sprite 纹理图集、九宫格导出与 PSD `TySh` / Unity / Godot 组装 |
+| `game.*`                  | `game.economy`                                                                                               | Machinations v2 游戏经济系统建模、Monte Carlo 仿真与反推求解工作台           |
+| `stage.*` / `director.*`  | `stage.2d`、`director.stage`                                                                                 | 2D Spine 立绘拆件绑骨舞台、3D 导演台 56 骨站位/灯光/运镜预演                 |
+| `novel.*` / `script.*`    | `novel.outline`、`script.run`                                                                                | 长篇网文/剧本结构拆解、QuickJS 沙箱脚本计算节点                              |
+| `decisions.*` / `media.*` | `decisions.judge`、`media.review`、`media.rework`                                                            | 结构化概率判定、多维媒体质检与自动返工闭环                                   |
+| `output.*`                | `output.timeline`、`output.image`、`output.video`、`output.director`                                         | 6 轨非线性剪辑成片时间线（含剪映草稿导出）与各画布宿主输出槽                 |
+| `plugin.*`                | `plugin.custom`                                                                                              | 内部实验或外部 Cordis 插件自定义节点命名空间                                 |
 
-`card` 是另一回事——决定画布用哪张壳、双击走什么逻辑：
+### 2.2 节点角色（资产引用 vs 加工生成）
 
-| 场景                      | `category` | `card`      | 说明                                           |
-| ------------------------- | ---------- | ----------- | ---------------------------------------------- |
-| 真正的记事本 / 剧本       | `note`     | `note`      | `GraphNoteCard`，双击开记事本                  |
-| 视频/图像加工、语义工具等 | `note`     | **`media`** | 与 `video.framePull` 同壳；默认尺寸用 ASSET 卡 |
-| 资产生成节点              | `asset`    | `media`     | `asset.image` 等                               |
+| 角色                | 判定标记                    | 行为说明                                                           |
+| ------------------- | --------------------------- | ------------------------------------------------------------------ |
+| **资产引用节点**    | `params.assetRef === true`  | 从左侧资产库拖入画布，仅暴露输出端口供下游消费                     |
+| **加工 / 生成节点** | 无 `assetId`、无 `assetRef` | 从画布右键菜单或 `graph_edit` 添加，兼具输入端口、参数面板与执行器 |
 
-新人与 Agent 常把「category 是 note」抄成 `card: 'note'`，结果菜单分组、卡片样式、双击全错。对照实现：`video.framePull`。注册后还需：
+### 2.3 `category` ≠ `card`（高频易错点）
 
-1. 把 `typeId` 写进 `NodeGraphEditor.vue` 的 `CONTEXT_MENU_RESOURCE_GROUPS`
-2. 补 `graph.types.<typeId>`（中英）
-3. 跑 `tests/graphAddableNodeChrome.test.ts`
+`category` 仅有三档：`asset` / `output` / `note`。**除资产节点与输出槽外，几乎所有加工/工作台/语义工具节点都必须声明 `category: 'note'`**（代表「非资产引用、非输出槽」）。
 
-### 画布 Scope
+而 `card` 决定画布渲染哪套卡片外壳及双击行为，切勿把 `category: 'note'` 机械抄成 `card: 'note'`：
 
-内置 Scope：`workflow`、`shotWorkflow`、`visual`、`screenplayAsset`、`directorAsset`、`scriptAsset`。  
-插件可注册自定义 Scope id（如 `plugin.myCanvas`）。
+| 节点场景                         | `category` | `card`        | 画布表现与参考节点                                                                                                   |
+| -------------------------------- | ---------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 纯文本记事本 / 剧本便签          | `'note'`   | `'note'`      | `GraphNoteCard`，双击打开文本编辑（如 `note.text`）                                                                  |
+| 图像/视频/UI/语义/数值等工具节点 | `'note'`   | **`'media'`** | 标准媒体/工具壳，支持预览缩略图、运行态角标与 Dive 下钻（如 `image.layerSplit`、`semantic.analyze`、`game.economy`） |
+| 多模态生成与资产引用节点         | `'asset'`  | `'media'`     | `asset.image`、`asset.video`、`asset.model` 等                                                                       |
 
-Scope 配置项（`GraphScopeDefinition`）：
+新增内置可添加节点后，还需同步完成三步：
 
-- `persistNode` — 加载时过滤非法节点
-- `output` — 默认/校正输出节点
-- `coerceOutput` — 是否强制校正已有输出
-- 默认节点拓扑见 `DEFAULT_GRAPH_TEMPLATES`（`defaultGraph.ts`），不再用单例列表硬编码连线
-- `createParams` — 右键添加节点时的额外 `params`
-- `dragAssets` — 拖入资产白名单（见下文）
-- `shotCanvasField` — 分镜 `Shot.canvas` 上图 JSON 字段（默认 `graphJson`；`visual` 为 `visualGraphJson`）
-- `hostIdSuffix` — 分镜内多画布时 `graphHostId` 后缀（如 `visual` → `script:…:visual`）
+1. 在 `src/renderer/src/components/NodeGraphEditor.vue` 的 `CONTEXT_MENU_RESOURCE_GROUPS` 登记所属菜单分组（分组图标与影视分组平铺逻辑见 `src/renderer/src/features/graph/contextMenuGroups.ts`）。
+2. 在中英文语言包（`src/renderer/src/i18n/locales/zh-CN.ts` 与 `en-US.ts`）补齐 `graph.types.<typeId>`。
+3. 运行 `npm test -- tests/graphAddableNodeChrome.test.ts tests/contextMenuGroups.test.ts` 验证菜单分组、图标与多语言完整性。
 
-宿主解析：`resolveGraphScope({ assetId, assetType, purpose })`  
-资产类型绑定：`registerGraphScopeHost({ assetType, scope, priority })`  
-分镜持久化：`getScopeShotCanvasField(scope)` / `getScopeHostIdSuffix(scope)`
+---
 
-### 图策略（Policy）与端口连线
+## 3. 画布作用域（Scope）、图策略（Policy）与能力缝
 
-内置文件 [`src/shared/graph/policy/default.graph-policy.json`](../src/shared/graph/policy/default.graph-policy.json) 现主要提供：
+### 3.1 画布 Scope（`src/shared/graph/scopes.ts`）
 
-1. **可添加节点白名单**（`addableNodeTypes`）
+内置 Scope 包括：`workflow`、`shotWorkflow`、`visual`、`screenplayAsset`、`directorAsset`、`scriptAsset`；插件可通过 `ctx.editor.graphScope(...)` 注册自定义作用域（如 `plugin.myCanvas`）。
 
-连线规则与策略无关：
+`GraphScopeDefinition` 关键配置项：
 
-1. 源节点有输出端口、目标节点有输入端口
-2. **两端 `dataType` 必须相同**。单数与复数不互通（`image` 不能进 `images`，`text` 不能进 `texts`；选择节点只收列表）。目录口 `world` / `beat` 不可与 `text` 互通。
+- `persistNode`：加载与规范化时过滤当前作用域不允许持久化的节点。
+- `output` / `coerceOutput`：声明或强制校正当前画布的输出槽节点；新建画布的默认拓扑定义在 `src/shared/graph/defaultGraph.ts`（`DEFAULT_GRAPH_TEMPLATES`）。
+- `createParams`：右键菜单创建节点时附加的默认 `params`。
+- `dragAssets`：控制允许拖入当前画布的资产类型白名单/黑名单（`canScopeAcceptDraggedAsset(scope, assetType)`）。
+- `shotCanvasField` / `hostIdSuffix`：分镜内多画布持久化字段与宿主后缀映射。
 
-端口上会显示类型名。需要接多种上游的节点应声明多个输入口（如导演台编辑：`in-text` / `in-model` / `in-image`）。导演台编辑另有方形输出口 `out-shots`（`images`，站位截图）与 `out-actions`（`videos`，动作录制）。
+### 3.2 图策略与严格端口连线（`src/shared/graph/ports.ts`）
 
-内置 scope 的 `addableNodeTypes` 均为 `["*"]`。插件通过 `ctx.editor.graphPolicy(id, partial)` 合并可添加节点白名单；卸载插件时覆盖层随 Cordis effect 移除。
+内置策略文件 [`src/shared/graph/policy/default.graph-policy.json`](../src/shared/graph/policy/default.graph-policy.json) 定义各 Scope 的 `addableNodeTypes`（内置画布默认为 `["*"]`，插件可通过 `ctx.editor.graphPolicy(id, partial)` 局部覆盖并在卸载时自动回滚）。
 
-### 能力缝（定义 / 提供商 / 消费）
+端口连线遵循**严格类型相等契约**（`canConnectNodes` / `portsCompatible`）：
 
-节点图是唯一执行引擎。一种生成能力只在一处实现，节点只消费：
+1. 源节点具备输出端口（`direction: 'out'`），目标节点具备输入端口（`direction: 'in'`）。
+2. **两端 `dataType` 必须完全一致**：单数与复数绝不互通（`image` 不能连入 `images`，`text` 不能连入 `texts`；集合汇聚/筛选走专用列表端口），领域专用口（`world` / `beat` / `shots`）不与 `text` 混连。
+3. 需要接收多种模态输入的节点应显式声明多输入口（例如 `director.stage` 同时提供 `in-text`、`in-model`、`in-image`，并输出 `out-shots` 与 `out-actions`）。
 
-| 层     | 含义                                       | 代码                                                                                        |
-| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| 定义   | `typeId` + `ports` + `execute`             | `registerNodeType` / `NodeTypeDefinition`                                                   |
-| 提供商 | 文本 / 图 / 视频 / 语音 / 决策判定生成     | `NodeExecuteContext.generateText` / `generateImage` / `generateVideo` / `generateDecisions` |
-| 消费   | 边两端 `dataType` 相同（单数与复数不互通） | `portsCompatible`                                                                           |
+### 3.3 能力缝（定义 / 提供商 / 消费）与 `NodeCapabilityDef`
 
-新节点继续 `registerNodeType`。`execute` **必须**走已注入的 `generate*` 适配器，禁止在 execute 里直连 HTTP。内置的**决策判定**节点（`decisions.judge`）就是这条缝的消费者：上游文本进、`generateDecisions` 出带概率的判定；它只出**文本**口（`out` 人类可读摘要 / `out-all` 历史），完整结论（含各档概率）落在 `node.params.decisionVerdicts` 供 Inspector 与卡片读取 —— 与 `ui.split`（JSON 留自身 params）、`media.review`（PASS/FAIL 回标 `mediaReviewStatus` 供下游读）同属「结构化数据走节点参数」的惯例，不要为结构化结论额外开一条文本口。
+节点图是唯一执行引擎，生成与推理能力严禁在节点 `execute` 内硬编码直连 HTTP，必须走 `NodeExecuteContext` 注入的统一适配器：
 
-执行器可与类型定义分离：插件用 `ctx.editor.executor(typeId, fn)` 覆盖某 typeId 的实现，`fork.dispose()` 后回落到 `NodeTypeDefinition.execute`。引擎查找顺序：覆盖栈 → 类型定义 → `executePassthrough`。内置类型仍由 `ensureBuiltinNodeTypes()` 注册（主进程规范化 / 测试共用），不要把节点类型只挂在渲染进程 Cordis 上。
+| 层次             | 职责                                                     | 核心接口与代码                                                                                 |
+| ---------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **节点定义层**   | 声明 `typeId`、`ports`、`defaultParams` 与默认 `execute` | `registerNodeType`（`src/shared/graph/registry.ts`）                                           |
+| **能力提供商层** | 文本 / 图像 / 视频 / 语音 / 3D / 概率决策生成            | `NodeExecuteContext.generateText` / `generateImage` / `generateVideo` / `generateDecisions` 等 |
+| **执行器覆盖栈** | 插件按 `typeId` 替换或增强执行逻辑，卸载自动回退         | `ctx.editor.executor(typeId, fn)`（`src/shared/graph/execute/registry.ts`）                    |
+| **原生能力目录** | 节点系统提示词、指令预设与输入绑定说明                   | `NodeCapabilityDef`（`src/shared/graph/nodeCapabilities.ts`），由 MCP `graph_node_types` 暴露  |
 
-节点原生能力与提示词预设（系统提示 + 指令 + 用法说明 + 输入绑定说明）走 `NodeCapabilityDef`（`src/shared/graph/nodeCapabilities.ts`），供预设模板（`applyNodeCapability`）写入节点参数并由 MCP `graph_node_types` 直接向 Agent 暴露。插件用 `ctx.editor.nodeCapability(cap)` 登记或覆盖节点能力（底层 `registerNodeCapability` 覆盖栈，后注册优先）；`fork.dispose()` 后回落到内置目录。内置 `BUILTIN_NODE_CAPABILITIES` 在 shared 模块加载时入栈，不要只挂在渲染进程 Cordis 上。
+> **结构化结果落参惯例**：像 `decisions.judge`（完整各档概率写入 `node.params.decisionVerdicts`）、`image.layerSplit`（图层清单与控件树写入节点参数）与 `media.review`（质检状态写入 `mediaReviewStatus`）一样，供 Inspector 与 Dive 工作台消费的结构化元数据应保存在节点 `params` 中，端口保持干净的标准媒体/文本流。
 
-有意的现状（不是漏做）：
+---
 
-- **`applyNodeCapability` 是快照，不是引用**：写入当时的 `generateInstruction` / `generateSystemPrompt`，节点自身不持久化任何 `skillId`；执行层只读节点上的 `generateInstruction` / `generateSystemPrompt`。
-- **画布节点能力不是 Claude Code 技能**：节点的默认系统提示词与连线说明属于画布节点原生能力，不再写成 `.md` 文件混入 `$DSH_HOME/skills`。
+## 4. 零配置 AI 对话自省与深层智能补丁
 
-## 最小扩展示例
+任何通过 `registerNodeType` 或 `ctx.editor.nodeType` 注册的节点，**无需手写额外 MCP 工具胶水代码**，即可自动获得全工作区 AI 对话直控能力：
+
+1. **运行时参数反射（`src/shared/graph/introspection.ts`）**：自动从 `defaultParams()` 提取字段树 `fields`、点路径 `flatPaths`（如 `simConfig.iterations`）与无歧义简写映射 `shorthandMap`；用户选中或双击 Dive 进入该节点时，`src/renderer/src/editor/control/surfaceRegistry.ts` 会将其实时 Schema 注入 Agent 焦点上下文，外部 Agent 也可通过 `graph_node_types` 查询。
+2. **深层非破坏补丁（`src/shared/graph/smartPatch.ts`）**：AI 调用 `graph_edit` 传入点路径、顶层简写或 `snake_case` 字段名时，`mergeSmartNodeParams` 会精准合并至目标嵌套属性，完整保留同级其余配置。
+
+---
+
+## 5. 最小完整 Cordis 插件示例
 
 ```ts
 import type { Context } from '@cordisjs/core'
@@ -115,49 +131,55 @@ export function apply(ctx: Context): void {
   ctx.editor.nodeType({
     typeId: 'plugin.custom',
     category: 'note',
-    label: 'Custom',
-    defaultTitle: 'Custom',
-    defaultSize: { w: 200, h: 120 },
-    sizeLimits: { minW: 120, minH: 80, maxW: 400, maxH: 300 },
-    ports: [{ id: 'out', direction: 'out', dataType: 'text', multiple: true }],
-    defaultParams: () => ({ text: '…' }),
+    label: 'Custom Tool',
+    defaultTitle: 'Custom Tool',
+    defaultSize: { w: 240, h: 160 },
+    sizeLimits: { minW: 160, minH: 120, maxW: 480, maxH: 360 },
+    ports: [
+      { id: 'in', direction: 'in', dataType: 'image', multiple: false },
+      { id: 'out', direction: 'out', dataType: 'image', multiple: true }
+    ],
+    defaultParams: () => ({
+      customConfig: { intensity: 65, mode: 'vivid' }
+    }),
+    presets: [{ id: 'soft', label: '柔和档', description: '降低对比度与边缘锐度' }],
     addable: true,
     inspector: 'note',
     inspectorId: 'plugin.custom.inspector',
-    card: 'note',
+    card: 'media',
     cardId: 'plugin.custom.card',
     execute: executePassthrough
   })
+
   ctx.editor.nodeCapability({
     id: 'plugin.custom.cap',
     kind: 'system',
-    titleZh: '自定义',
-    titleEn: 'Custom',
-    instructionZh: '…',
-    instructionEn: '…'
+    titleZh: '自定义图像滤镜',
+    titleEn: 'Custom Image Filter',
+    instructionZh: '根据输入图像执行自定义风格化处理……',
+    instructionEn: 'Apply custom stylization to the input image...'
   })
+
   ctx.editor.graphScope({
     id: 'plugin.customCanvas',
-    output: { kind: 'image', title: 'Custom output' },
+    output: { kind: 'image', title: 'Custom Output' },
     dragAssets: { allowTypes: ['image'] }
   })
-  ctx.editor.graphScopeHost({
-    assetType: 'model',
-    scope: 'plugin.customCanvas',
-    priority: 200
-  })
+
   ctx.editor.graphPolicy(name, {
     scopes: {
       'plugin.customCanvas': {
-        addableNodeTypes: ['plugin.custom', 'note.text', 'text.plain']
+        addableNodeTypes: ['plugin.custom', 'asset.image', 'note.text']
       }
     }
   })
+
   ctx.editor.inspector({
     id: 'plugin.custom.inspector',
     nodeTypeId: 'plugin.custom',
     component: MyNodeInspector
   })
+
   ctx.editor.graphCard({
     id: 'plugin.custom.card',
     order: 5,
@@ -167,102 +189,24 @@ export function apply(ctx: Context): void {
 }
 ```
 
-启动时由 `startEditorRuntime()` 创建 Cordis `Context`，再 `ctx.plugin(yourPlugin)`。卸载 `fork.dispose()` 会回滚上述全部注册。覆盖已有节点的执行器用 `ctx.editor.executor(typeId, fn)`，不必替换整份 `nodeType`。额外或覆盖节点能力用 `ctx.editor.nodeCapability(cap)`。
+仓库内参考骨架与演示：
 
-## 节点类型字段
+- 独立插件最小模板：[`examples/graph-extension/`](../examples/graph-extension/README.md)
+- 应用内可运行演示扩展：`src/renderer/src/editor/extensions/graphDemo/`（正式安装包默认不挂载，本地调试可调用 `registerGraphDemoExtension()`；销毁 `fork.dispose()` 自动回滚全部节点、策略、卡片与能力覆盖）
 
-| 字段                        | 说明                                                                                                          |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `typeId`                    | 唯一 id，建议 `plugin.*` 前缀                                                                                 |
-| `addable`                   | 全局是否可添加；具体出现在哪些画布由 `graphPolicy.addableNodeTypes` 决定                                      |
-| `inspector` / `inspectorId` | 检查器种类或显式绑定                                                                                          |
-| `card` / `cardId`           | **勿与 `category` 混用**：工具节点用 `media`；仅真正记事本用 `note`（见上文）                                 |
-| `presentation`              | 备注类卡片 i18n 键（`badgeKey` 等）                                                                           |
-| `execute`                   | 节点执行器；缺省透传。可另用 `ctx.editor.executor(typeId, fn)` 覆盖                                           |
-| `paramSchema`               | 可选：对特定参数路径补充枚举值、数值范围或说明（缺省由 `introspection.ts` 自动从 `defaultParams()` 反射）     |
-| `presets`                   | 可选：声明该节点支持的一键预设列表（`{ id, label, description? }`），自动注入 `graph_node_types` 与焦点上下文 |
+---
 
-默认检查器解析见 `src/renderer/src/inspector/defaults.ts`。  
-默认卡片 id：`studio.graph.note` / `studio.graph.media`。
+## 6. 回归测试清单
 
-## 零配置 AI 对话自省与深层智能补丁（Introspection & SmartPatch）
+修改或新增节点插件机制后，请运行以下 Vitest 套件（`npm test`）：
 
-所有通过 `registerNodeType`（或 `ctx.editor.nodeType`）注册的节点，**无需编写任何额外的 MCP 工具胶水代码**，即可自动接入全工作区 AI 对话直控体系：
-
-1. **自动参数树与简写发现（`src/shared/graph/introspection.ts`）**：
-   - 运行时调用 `defaultParams()` 自动反射出完整字段树 `fields`、扁平点路径列表 `flatPaths`（如 `myConfig.intensity`）以及无歧义顶层简写映射 `shorthandMap`（如 `intensity -> myConfig.intensity`）。
-   - 当用户在画布上选中或双击下钻（Dive）进你的节点时，`surfaceRegistry.ts` 会自动将该节点的实时可编辑 Schema 注入 AI 上下文窗口；外部 Agent 也可通过 `graph_node_types` 直接查询。
-2. **深层点路径与模糊别名自动路由（`src/shared/graph/smartPatch.ts`）**：
-   - AI 在 `graph_edit` 中无论是传点路径（`"myConfig.scanlineDensity": 80`）、顶层简写（`"scanlineDensity": 80`）还是 `snake_case`（`"scanline_density": 80`），`mergeSmartNodeParams` 都会自动路由到嵌套对象并保留同级未修改字段。
-
-## 拖入资产规则
-
-`dragAssets` 配置：
-
-```ts
-dragAssets: {
-  enabled: false,                    // 禁止一切拖入
-  allowTypes: ['screenplay'],        // 白名单
-  allowTypes: 'all',                 // 允许全部（可配合 denyTypes）
-  denyTypes: ['script']              // 黑名单
-}
-```
-
-判断 API：`canScopeAcceptDraggedAsset(scope, assetType)`
-
-内置规则：
-
-| Scope          | 拖入                                                     |
-| -------------- | -------------------------------------------------------- |
-| 所有内置 Scope | 允许全部资产；资产编辑器仍拒绝拖入当前正在编辑的资产自身 |
-
-## 连线
-
-1. 源节点须有输出端口、目标节点须有输入端口（结构检查，`getNodePorts`）
-2. **两端端口 `dataType` 必须相同**（单数与复数不互通；目录口 `world` / `beat` 无通配）
-
-API：`canConnectNodes(source, target, { sourcePort?, targetPort? })`。多输入口时需指定 `targetPort`（或由 `findCompatibleInPort` 按类型自动匹配）。
-
-文本类上游（如 `text.plain`）只能连到 `text` 输入口；执行时文本合并到节点 `notes`。
-
-## 检查器匹配
-
-声明式字段（`InspectorDefinition`）：
-
-- `nodeTypeId` — 精确匹配
-- `nodeInspectorKind` + `nodeAssetRef` — 按种类匹配（资产引用/加工）
-
-## 子组件读取 Scope
-
-```ts
-import { useGraphScope } from '@/composables/useGraphScope'
-
-const graphScope = useGraphScope()
-const scopeDef = getGraphScopeDefinition(graphScope.value)
-```
-
-由 `NodeGraphEditor` 通过 `provide('graphScope')` 注入。  
-分镜内多画布请传入 `scope` prop（如 `shotWorkflow` / `visual`）。
-
-## 图数据
-
-加载时经 `normalizeScopedGraph()` 规范化（`src/shared/graph/normalize.ts`）。  
-不再维护独立的 `typeId` 迁移层；持久化数据应直接使用当前 `asset.*` 等内置 id。
-
-## 示例模板
-
-仓库内 `examples/graph-extension/` 提供插件骨架；**可运行演示**在 `src/renderer/src/editor/extensions/graphDemo/`，正式包默认不加载，本地可调用 `registerGraphDemoExtension()`。
-
-## 测试
-
-- `tests/graphScopes.test.ts` — Scope、宿主、拖入白名单
-- `tests/graphPolicy.test.ts` — 图策略加载、通配、合并
-- `tests/graphCards.test.ts` — 卡片注册表解析（`cardId` / `card` 种类）
-- `tests/graphPorts.test.ts` — 连线
-- `tests/nodeCapabilities.test.ts` — `NodeCapabilityDef` 目录、`applyNodeCapability`、覆盖栈回滚
-- `tests/graphExecutorRegistry.test.ts` — 执行器覆盖栈
-- `tests/cordisEditor.test.ts` — Cordis `nodeType` / `executor` / `nodeCapability` 注册与回滚
-- `tests/inspectorMatch.test.ts` / `inspectorDefaults.test.ts` — 检查器
+- `tests/graphScopes.test.ts` — 画布 Scope、宿主绑定与拖入资产白名单
+- `tests/graphPolicy.test.ts` — 图策略加载、通配符匹配与插件覆盖回滚
+- `tests/graphCards.test.ts` — 画布卡片注册表解析（`cardId` 与 `card` 种类优先级）
+- `tests/graphPorts.test.ts` — 端口严格类型相等与多输入口自动匹配
+- `tests/graphSkills.test.ts`、`tests/graphCapabilitySeams.test.ts` — `NodeCapabilityDef` 节点原生能力目录、预设应用与覆盖栈回滚
+- `tests/graphExecutorRegistry.test.ts` — 节点执行器覆盖栈与默认回退
+- `tests/cordisEditor.test.ts` — Cordis `nodeType` / `executor` / `nodeCapability` 生命周期注册与回滚
+- `tests/graphAddableNodeChrome.test.ts`、`tests/contextMenuGroups.test.ts` — 可添加节点的菜单分组、图标去重与多语言检查
+- `tests/inspectorMatch.test.ts`、`tests/inspectorDefaults.test.ts` — 属性检查器精确与按类匹配
 - `tests/universalWorkspaceControl.test.ts` — 新注册节点零配置自省、深层点路径/简写补丁与焦点上下文注入
-
-运行：`npm test`（`vitest.config.ts` 已配置 `@shared` 别名）

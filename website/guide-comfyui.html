@@ -19,24 +19,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>ComfyUI 接入教程（API v2、comfy-api-proxy 与本地工作流）— AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine 教程：接入 ComfyUI API 2，本机安装 comfy-api-proxy，用 workflow 出图、视频与声音。"
+      content="AI Art Engine (AIArtEngine) v8.9.1 ComfyUI 接入完整指南：通过本机 comfy-api-proxy（8189 端口）或云端 Comfy Cloud 对接 ComfyUI API v2（POST /api/v2/jobs），导出 API 格式 workflow 驱动本地生图、MiniMax H3 视频与声音生成。"
     />
-    <title>ComfyUI 接入教程 — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="ComfyUI接入教程, ComfyUI API v2, comfy-api-proxy, Comfy Cloud, 本地ComfyUI工作流, Save API Format, MiniMax H3视频生成, AI Art Engine"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="ComfyUI 接入教程 — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine 教程：接入 ComfyUI API 2，本机安装 comfy-api-proxy，用 workflow 出图、视频与声音。" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="ComfyUI 接入教程（API v2、comfy-api-proxy 与本地工作流）— AI Art Engine" />
+    <meta
+      property="og:description"
+      content="本机部署 comfy-api-proxy 或连接 Comfy Cloud，通过 ComfyUI API v2 将任意 API 格式 workflow 变成 AI Art Engine 节点图中的生图、MiniMax H3 视频与音频模型。"
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="ComfyUI 接入教程 — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine 教程：接入 ComfyUI API 2，本机安装 comfy-api-proxy，用 workflow 出图、视频与声音。" />
+    <meta name="twitter:title" content="ComfyUI 接入教程（API v2、comfy-api-proxy 与本地工作流）— AI Art Engine" />
+    <meta
+      name="twitter:description"
+      content="通过 comfy-api-proxy 与 ComfyUI API v2 在 AI Art Engine v8.9.1 中接入本地 workflow 出图、MiniMax H3 视频与音频。"
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html" />
@@ -49,7 +61,55 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "ComfyUI 接入教程（API v2、comfy-api-proxy 与本地工作流）— AI Art Engine",
+            "description": "AI Art Engine v8.9.1 ComfyUI 接入指南：介绍 comfy-api-proxy 本地代理安装、API 格式 workflow 导出规范、MiniMax H3 开源视频模型参数对齐与 Comfy Cloud 云端配置。",
+            "inLanguage": "zh-CN",
+            "url": "https://justin-sky.github.io/ai-art-engine/guide-comfyui.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/guide-comfyui.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "首页",
+                "item": "https://justin-sky.github.io/ai-art-engine/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "ComfyUI 接入教程",
+                "item": "https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#manual">跳到正文</a>
@@ -127,7 +187,7 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · ComfyUI</p>
+          <p class="eyebrow">Guide · v8.9.1 · ComfyUI API v2</p>
           <h1>ComfyUI 接入教程</h1>
           <p class="lede">
             本软件只走 <strong>ComfyUI API 2</strong>（<code>POST /api/v2/jobs</code>）。

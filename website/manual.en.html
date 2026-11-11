@@ -19,24 +19,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>User Manual (v8.9.1) — Game UI PSD/Atlas, Machinations v2, 5-Stage AI Drama &amp; 102-Tool MCP | AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine manual: projects, settings, AI chat and skills, the plugin marketplace, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts."
+      content="AI Art Engine (AIArtEngine) v8.9.1 Complete User Manual: multi-project workspaces, Zero-Key Instant Demo, 102-tool MCP server, 24h scheduled automations, Game UI native TySh PSD &amp; ui.atlasCompose, Machinations v2 120fps curve-drag Goal-Seek, 21-genre 5-stage AI Comic Drama, rea-video forensic remake, and CapCut-grade NLE."
     />
-    <title>Manual — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI Art Engine manual, AIArtEngine documentation, Game UI TySh PSD, ui.atlasCompose, Machinations v2 economy simulation, 5-stage AI comic drama, rea-video forensic remake, 102 MCP tools, CapCut draft export"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:title" content="Manual — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine manual: projects, settings, the plugin marketplace, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts." />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta property="og:title" content="User Manual (v8.9.1) — Complete AI Art Engine Reference" />
+    <meta
+      property="og:description"
+      content="5-volume AI Art Engine v8.9.1 reference: Game UI TySh PSD &amp; sprite-atlas compose, Machinations v2 120fps Goal-Seek, 21-genre 5-stage AI Comic Drama, 2-node rea-video remake, 102-tool MCP, and 24h automations."
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Manual — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine manual: projects, settings, the plugin marketplace, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts." />
+    <meta name="twitter:title" content="User Manual (v8.9.1) — Complete AI Art Engine Reference" />
+    <meta
+      name="twitter:description"
+      content="5-volume AI Art Engine v8.9.1 reference: Game UI TySh PSD &amp; sprite-atlas compose, Machinations v2 120fps Goal-Seek, 21-genre 5-stage AI Comic Drama, 2-node rea-video remake, 102-tool MCP, and 24h automations."
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
@@ -49,12 +61,84 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
-  
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "AI Art Engine v8.9.1 User Manual — Multimodal AI Studio & Production Asset Reference",
+            "description": "Complete operating reference for AI Art Engine v8.9.1 covering core concepts, multi-project workspaces, Game UI TySh PSD & sprite-atlas compose, Machinations v2 studio, 21-genre 5-stage AI Comic Drama, rea-video forensic remake, 102-tool MCP server, and the 5-volume chapter map.",
+            "inLanguage": "en",
+            "url": "https://justin-sky.github.io/ai-art-engine/manual.en.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/manual.en.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://justin-sky.github.io/ai-art-engine/index.en.html"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Manual",
+                "item": "https://justin-sky.github.io/ai-art-engine/manual.en.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+
     <script>
       // The manual is split by chapter: forward old manual.en.html#anchor links to the right page
       ;(function () {
-        var pages = {"manual-setup.en.html":["home","settings","web-search"],"manual-workspace.en.html":["workspace","ai-chat","skills","marketplace","assets"],"manual-workflow.en.html":["ai-workflow","agent-pipeline","graph","graph-tasks","game-economy","host"],"manual-production.en.html":["script-beat","timeline","canvas","director"],"manual-reference.en.html":["package","shortcuts","troubleshooting","update"]}
+        var pages = {
+          'manual-setup.en.html': ['home', 'settings', 'object-storage-s3', 'local-vision', 'web-search'],
+          'manual-workspace.en.html': ['workspace', 'ai-chat', 'skills', 'marketplace', 'schedules', 'assets'],
+          'manual-workflow.en.html': [
+            'ai-workflow',
+            'agent-pipeline',
+            'graph',
+            'graph-tasks',
+            'layer-split',
+            'atlas-compose',
+            'game-economy',
+            'video-remake',
+            'host'
+          ],
+          'manual-production.en.html': [
+            'script-beat',
+            'film-workbench',
+            'timeline',
+            'canvas',
+            'frame2d',
+            'portrait',
+            'director'
+          ],
+          'manual-reference.en.html': ['package', 'shortcuts', 'troubleshooting', 'update']
+        }
         var id = decodeURIComponent(location.hash.slice(1))
         if (!id) return
         for (var file in pages) {
@@ -137,11 +221,11 @@
           <li><a href="#chapters">Chapter map</a></li>
 
           <li class="toc-group">Manual chapters</li>
-          <li><a href="manual-setup.en.html">Projects & settings</a></li>
-          <li><a href="manual-workspace.en.html">Workspace & asset library</a></li>
-          <li><a href="manual-workflow.en.html">One-Click Workflow & node graph</a></li>
-          <li><a href="manual-production.en.html">Script, timeline & director stage</a></li>
-          <li><a href="manual-reference.en.html">Reference & troubleshooting</a></li>
+          <li><a href="manual-setup.en.html">Workspaces &amp; settings</a></li>
+          <li><a href="manual-workspace.en.html">Workspace, AI Chat &amp; assets</a></li>
+          <li><a href="manual-workflow.en.html">One-Click Workflow &amp; node graph</a></li>
+          <li><a href="manual-production.en.html">AI Drama, NLE &amp; director stages</a></li>
+          <li><a href="manual-reference.en.html">Reference &amp; troubleshooting</a></li>
         </ol>
       </aside>
 
@@ -150,41 +234,49 @@
           <p class="eyebrow">Manual · Overview</p>
           <h1>Manual</h1>
           <p class="lede">
-            The complete operating reference for AI Art Engine <strong>8.0</strong>, organized into six parts by workflow. This page covers preparation and core concepts; everything else is under “Manual chapters” below or in the sidebar. Wording follows the in-app UI — switch the app to English under Settings → General → Language. Video walkthroughs are on <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Bilibili</a>.
+            The complete operating reference for AI Art Engine <strong>v8.9.1</strong>, organized into this overview plus five chapter volumes by workflow. This page covers preparation, flagship v8.9.1 capabilities, and core concepts; everything else lives under “Manual chapters” below or in the sidebar. Wording follows the in-app UI — switch the app to English under Settings → General → Language. Video walkthroughs are on <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Bilibili</a>.
           </p>
         </header>
 
         <div class="entry-cards" aria-label="Quick paths">
           <a class="entry-card" href="quickstart.en.html">
             <strong>First time here?</strong>
-            <span>Zero-Key instant demo &amp; 3-minute quickstart</span>
+            <span>Try the Zero-Key Instant Demo in ◈ AI Chat &amp; 5-minute quickstart</span>
           </a>
           <a class="entry-card" href="#concepts">
             <strong>Learn a few concepts</strong>
-            <span>Host assets, Film Workbench, anchor sheets &amp; production deliverables</span>
+            <span>Multi-project workspaces, host assets, 5-stage Film Workbench &amp; engine deliverables</span>
           </a>
           <a class="entry-card" href="guide-short-video.en.html">
-            <strong>Short drama pipeline</strong>
-            <span>Film Workbench: breakdown, review, cast &amp; batch shoot</span>
+            <strong>21-genre 5-stage AI drama</strong>
+            <span>Film Workbench: breakdown, 11-point audit, cast/voice, shoot &amp; release pack</span>
           </a>
           <a class="entry-card" href="manual-reference.en.html#troubleshooting">
             <strong>Something broken?</strong>
-            <span>Diagnose by symptom: balance, wiring, consistency</span>
+            <span>Diagnose by symptom: balance, port types, MCP &amp; consistency</span>
           </a>
         </div>
 
         <section id="intro">
           <h2>1. Overview &amp; preparation</h2>
           <p>
-            AIArtEngine is an agent-native multimodal AI studio and production asset engine for games, short drama, comics, advertising and e-commerce.
-            Beyond flat images and clips, it directly ships <strong>layered editable PSDs (with native <code>TySh</code> text layers)</strong>, <strong>Unity / Godot 4 / HTML5 UI code</strong>, <strong>Spine 2D skeleton packages</strong>, <strong>CapCut / Jianying multi-track NLE drafts</strong> and <strong>playable HTML5 games</strong>.
-            Projects and media live in a local directory you choose; text / image / video / audio generation
-            runs through the model providers you configure (OpenRouter, OpenAI, DeepSeek, Zhipu, Kimi, xAI,
+            AI Art Engine (AIArtEngine) is a local-first, agent-native multimodal AI desktop studio and production asset engine for game development, AI comic dramas / short dramas, viral video remakes, advertising and e-commerce. In <strong>v8.9.1</strong>, beyond flat images and clips, it compiles AI outputs directly into engine-ready production assets:
+          </p>
+          <ul>
+            <li><strong>Game UI Layer Split &amp; Sprite-Atlas Compose</strong> (<code>image.layerSplit</code> + <code>ui.atlasCompose</code> + <code>ui.componentLib</code>): 16 UI control classes, offline/online OCR fill+stroke extraction, 9-slice clean-plate inpainting, 3D exploded preview, real sprite-atlas UI composition, and one-click export to <strong>editable <code>.psd</code> with native <code>TySh</code> text layers</strong> plus <strong>Unity UGUI/UXML, Godot 4 <code>.tscn</code>, and HTML5</strong> code.</li>
+            <li><strong>Machinations v2 Game Economy Studio</strong> (<code>game.economy</code>): 100% Machinations semantic alignment across 59 verified building blocks, lossless Simple Macro ↔ Pro Blueprint toggle, <strong>120fps Bezier slope diamond (<code>◆</code>) &amp; direct curve-drag inverse Goal-Seek formula solver (<code>k * pow(STEP, p)</code>)</strong>, Monte Carlo P10/P50/P90 bands, 2D sensitivity heatmaps, and zero-code playable HUD card prototypes.</li>
+            <li><strong>21-Genre, 5-Stage AI Comic Drama / Short Drama Workbench</strong> (<code>film.workbench</code>): ships <code>P01</code>–<code>P21</code> genre archetypes across a 5-stage closed loop (① A+B dual-rhythm beat breakdown → ② 11-point continuity &amp; ≥67% dialogue audit → ③ <code>#variant</code> wardrobe / scene / prop / <code>STYLE01</code> anchors &amp; cross-episode TTS voice binding → ④ <code>@1</code>–<code>@4</code> locked batch shoot &amp; Vision QC → ⑤ Cover/Title release pack &amp; full episode <code>.mp4</code>).</li>
+            <li><strong>2-Node Forensic Viral Video Remake</strong> (<code>rea-video</code>: <code>semantic.analyze</code> → <code>semantic.rebuild</code>): combines WhisperX word-level ASR, PySceneDetect cuts, Librosa BPM/beats, Demucs vocal/BGM stems, and 3-frame VLM camera forensics to strip burned-in subtitles and render a 1:1 split-screen comparison remake (<code>compare.mp4</code>).</li>
+            <li><strong>102-Tool Bi-Directional MCP Server &amp; 24h Scheduled Automations</strong>: exposes <code>/mcp</code> (93 core tools) and <code>/mcp/blender</code> (9 live Blender modeling tools), paired with built-in <code>◈ AI Chat</code> featuring multi-project workspace switching, native web search, and 24-hour (<code>00:00–23:59</code>) unattended scheduled runs.</li>
+            <li><strong>CapCut-Grade 6-Tab NLE, Spine 2D Rigging &amp; Wavelet Portrait Lab</strong>: 120+ GPU/FFmpeg effects/transitions/LUTs, editable JianyingPro / CapCut draft export, AI-aligned Spine 2D skeleton export, 4-band wavelet skin retouching, and 56-bone 3D Director Stage blocking.</li>
+          </ul>
+          <p>
+            Workspaces and media stay in a local directory you choose (<code>workspace.json</code> + <code>project.json</code>); text / image / video / audio generation
+            runs through your own BYOK model providers (OpenRouter, OpenAI, DeepSeek, Zhipu, Kimi, xAI,
             Google, vLLM, Ollama, LM Studio, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, ModelScope,
-            ComfyUI, MagicRouter, …), and 3D model generation supports Meshy, Tripo, Rodin (Hyper3D), Luma AI,
-            Lux3D and live Blender MCP modeling. Spatial world generation (turning text or reference images into an explorable 3D world)
-            supports World Labs (Marble). Use <strong>One-Click Workflow</strong> to turn a template or a
-            plain-language request into a reusable host asset, or drag any exported <strong>PNG (with embedded <code>aiae:graph</code> workflow metadata)</strong> onto the canvas to restore the full pipeline.
+            ComfyUI, MagicRouter, …); 3D model generation supports Meshy, Tripo, Rodin (Hyper3D), Luma AI,
+            Lux3D and live Blender MCP modeling, while spatial world generation supports World Labs (Marble 3DGS → <code>.glb</code>).
+            Launch pipelines via <strong>One-Click Workflow</strong>, the <strong>Skill Marketplace</strong>, or by dragging any exported <strong><code>aiae:graph</code> recipe PNG</strong> directly onto the canvas.
           </p>
           <figure class="shot">
             <img
@@ -199,21 +291,20 @@
           <h3>First-time setup</h3>
           <ol>
             <li>Install the package for your platform from the <a href="index.en.html#download">download page</a> or GitHub Releases.</li>
-            <li>After launching, open <strong>Settings</strong>, add a model provider with its key, then fetch and tick the models you want.</li>
+            <li>Create a workspace and click <strong>“⚡ Zero-Key Instant Demo”</strong> inside right-hand <code>◈ AI Chat</code> to test Xianxia RPG UI layer splitting with zero API keys; for cloud generation, open <strong>Settings</strong>, add a model provider key, and fetch &amp; tick your models.</li>
             <li>
               (Optional) Under <strong>Object storage</strong> configure Volcengine TOS / Alibaba Cloud OSS /
               Tencent Cloud COS / Amazon S3–compatible (only one can be enabled at a time) so large files such as reference videos can
               be exposed as URLs.
             </li>
             <li>
-              Back on the home page, <strong>create a project</strong> and enter the workspace; try
-              “One-Click Workflow” in the top bar, or create a script / shot the traditional way.
+              Inside your workspace, start from <strong>One-Click Workflow</strong> (e.g. built-in <code>builtin.video-breakdown-remake</code>), install domain bundles from the <strong>Skill Marketplace</strong>, or drag an <code>aiae:graph</code> recipe PNG onto the canvas.
             </li>
           </ol>
           <div class="tip">
             There is no traditional menu bar. The top-left logo returns to the home page; “Settings” opens the
-            settings panel, and <strong>“Marketplace”</strong> sits immediately to its left, opening a separate
-            window (see <a href="manual-workspace.en.html#marketplace">§5.7</a>). Close the settings by clicking the empty overlay or
+            settings panel, and the <strong>“Skill Marketplace”</strong> sits immediately to its left, opening a dedicated
+            window for installing workflows and skills (see <a href="manual-workspace.en.html#marketplace">§5.7 Skill Marketplace</a>). Close Settings by clicking the empty overlay or
             “Back”.
           </div>
         </section>
@@ -221,50 +312,45 @@
         <section id="concepts">
           <h2>2. Core concepts</h2>
           <p>
-            Spend two minutes on the words below and every screen afterwards will make sense. Data in this
-            app is organized as <strong>project → script / host asset → node graph → asset</strong>: the project
-            is the container, the node graph is the workshop, and assets are what comes out of it.
+            Spend two minutes on the terms below and every screen afterwards will make sense. In v8.9.1, data
+            is organized as <strong>Workspace → Multi-Project → Host Asset / Node Graph → Asset</strong>: the workspace and projects
+            are local folder containers, the node graph is the production floor, and assets are the deliverables.
           </p>
 
           <div class="concept-grid">
             <div class="concept-card">
-              <h3>Project</h3>
+              <h3>Workspace &amp; Project</h3>
               <p>
-                Everything that belongs to one piece of work, stored in a <strong>local directory you pick
-                yourself</strong>, with <code>project.json</code> at its root. Media never leaves your
-                machine — copy the whole folder to move to another computer.
+                Stored in a <strong>local directory you choose</strong>, tracked by <code>workspace.json</code> and per-project
+                <code>project.json</code> files. Switch projects or edit files anytime from the <code>◈ AI Chat</code> left sidebar; copy the folder to migrate across machines.
               </p>
-              <span class="concept-meta">See §3 Home &amp; projects</span>
+              <span class="concept-meta">See <a href="manual-setup.en.html#home">§3 Home &amp; workspaces</a></span>
             </div>
 
             <div class="concept-card">
               <h3>Asset</h3>
               <p>
-                The umbrella term for every output and piece of media in a project: scripts, storyboard documents,
-                cast sheets, keyframe images, video, audio, 3D models and host assets. Browse and drag
-                them all from the <strong>asset library</strong>.
+                The umbrella term for every output and piece of media in a project: scripts, storyboards,
+                cast sheets, keyframes, video, audio, 3D models, UI atlases, and host assets — browsed and dragged
+                from the <strong>asset library</strong>.
               </p>
-              <span class="concept-meta">See §6 Asset library</span>
+              <span class="concept-meta">See <a href="manual-workspace.en.html#assets">§6 Asset library</a></span>
             </div>
 
             <div class="concept-card">
-              <h3>Host asset</h3>
+              <h3>Host asset &amp; PNG recipe</h3>
               <p>
-                A <strong>reusable component</strong> produced by One-Click Workflow. The outside exposes
-                only boundary inputs / outputs, while <strong>double-clicking dives into the full inner node
-                graph</strong> for fine-tuning. Build once, reuse across projects.
+                A <strong>reusable black-box component</strong> built via One-Click Workflow or the Skill Marketplace. Double-click to Dive into its inner node graph, or export/drag an <code>aiae:graph</code> recipe PNG to unpack the full pipeline anywhere.
               </p>
-              <span class="concept-meta">See §7 One-Click Workflow</span>
+              <span class="concept-meta">See <a href="manual-workflow.en.html#ai-workflow">§7 One-Click Workflow</a></span>
             </div>
 
             <div class="concept-card">
               <h3>Node graph</h3>
               <p>
-                The canvas where nodes and links describe “input → generate → output”. It is the
-                <strong>shared foundation</strong> of scripts, canvases, the director stage and host
-                assets.
+                The typed DAG canvas describing “input → generate / simulate / decompose → output”, serving as the shared foundation for all Dive workbenches and all 102 MCP tools.
               </p>
-              <span class="concept-meta">See §8 Node graph</span>
+              <span class="concept-meta">See <a href="manual-workflow.en.html#graph">§8 Node graph</a></span>
             </div>
 
             <div class="concept-card">
@@ -273,120 +359,113 @@
                 A node's inlet or outlet. Ports <strong>strictly distinguish singular from plural</strong>:
                 <code>image</code> / <code>images</code>, <code>video</code> / <code>videos</code>,
                 <code>text</code> / <code>texts</code>. Different types never connect, and
-                <strong>singular can't go into plural</strong>. Round ports are usually a single
-                <code>out</code>; square ports are lists (<code>out-all</code>).
+                <strong>singular can't go into plural</strong>. Round ports are single <code>out</code>; square ports are lists (<code>out-all</code>).
               </p>
-              <span class="concept-meta">See §8.1 Add and connect</span>
+              <span class="concept-meta">See <a href="manual-workflow.en.html#graph">§8.1 Add and connect</a></span>
             </div>
 
             <div class="concept-card">
-              <h3>Film Workbench / Shot</h3>
+              <h3>5-Stage Film Workbench</h3>
               <p>
-                <strong>Film Workbench</strong> (<code>film.workbench</code>) chains ① Storyboard Breakdown → ② Director Review → ③ Character &amp; Scene Design → ④ Batch Shoot inside one node and full-screen Dive view, with auto per-shot video duration and single-shot extraction for manual polishing via <strong>Shot</strong> (<code>film.shot</code>).
+                <strong>Film Workbench</strong> (<code>film.workbench</code>) pairs 21 genre archetypes (<code>P01</code>–<code>P21</code>) with a 5-stage Dive loop: ① A+B Beat Breakdown → ② 11-Point Audit → ③ Cast/Scene/TTS Voice → ④ <code>@1</code>–<code>@4</code> Batch Shoot &amp; Vision QC → ⑤ Release Pack &amp; Full MP4.
               </p>
-              <span class="concept-meta">See §8.5 / §9 Script &amp; Film Workbench</span>
+              <span class="concept-meta">See <a href="manual-production.en.html#film-workbench">§9 Film Workbench</a></span>
             </div>
 
             <div class="concept-card">
-              <h3>Anchor image</h3>
+              <h3>Anchor sheets &amp; #variant</h3>
               <p>
-                A <strong>character turnaround or location reference sheet</strong> generated in “Character &amp; Scene Design” (or sliced out of a multi-cell sheet via Image Processing). It is automatically bound as <code>@1</code> / <code>@2</code> to every matching shot during Batch Shoot — the key to keeping a short drama from “changing faces”.
+                Character <code>#variant</code> wardrobes, scenes, props, and <code>STYLE01</code> reference sheets generated in Stage 3 and locked via <code>@1</code>–<code>@4</code> plus cross-episode TTS voices in Stage 4 — eliminating face drift across shots.
               </p>
               <span class="concept-meta">See the <a href="guide-short-video.en.html">Short-Drama Guide</a></span>
             </div>
 
             <div class="concept-card">
-              <h3>Cast &amp; scene settings</h3>
+              <h3>Game UI &amp; Economy Studio</h3>
               <p>
-                Reusable character, scene and prop entries inside the Film Workbench: generate turnaround and environment anchor sheets once and attach them to every matching shot automatically, so you <strong>don't re-describe the same thing in every setup</strong>.
+                <code>image.layerSplit</code> + <code>ui.atlasCompose</code> deliver native <code>TySh</code> <code>.psd</code> and Unity/Godot UI code; <code>game.economy</code> brings Machinations v2 simulation with 120fps curve-drag inverse Goal-Seek.
               </p>
-              <span class="concept-meta">See §11 Free canvas &amp; cast / scene settings</span>
+              <span class="concept-meta">See <a href="manual-workflow.en.html#layer-split">§8 Game UI &amp; Economy</a></span>
             </div>
 
             <div class="concept-card">
-              <h3>Director stage</h3>
+              <h3>3D / 2D Director Stages</h3>
               <p>
-                A 3D stage: place models, light the scene and frame the camera, then
-                <strong>capture blocking shots</strong> or <strong>record motion video</strong>, which come
-                out of the two square ports <code>out-shots</code> / <code>out-actions</code>.
+                <code>director.stage</code> features 56-bone humanoid rigs, 24 procedural motions, 38 pose presets, offscreen <code>.webm</code> trajectory white-box video (<code>@2</code>), and World Labs 3DGS → <code>.glb</code>; <code>stage.2d</code> exports AI-aligned Spine 2D rigs.
               </p>
-              <span class="concept-meta">See §12 Director stage</span>
+              <span class="concept-meta">See <a href="manual-production.en.html#director">§11–12 Canvas &amp; Director</a></span>
             </div>
 
             <div class="concept-card">
-              <h3>Final timeline</h3>
+              <h3>6-Tab Final Timeline</h3>
               <p>
-                A multi-track editing panel: drag node outputs or imported media onto tracks, arrange the
-                order, line up audio, then preview and export the finished film.
+                CapCut-grade multi-track NLE (Media, Effects, Transitions, Filters, Adjust, Templates) with 120+ GPU/FFmpeg effects, DOTween keyframes, TD-PSOLA singing synthesis, and editable JianyingPro / CapCut draft export.
               </p>
-              <span class="concept-meta">See §10 Final timeline</span>
+              <span class="concept-meta">See <a href="manual-production.en.html#timeline">§10 Final timeline</a></span>
             </div>
 
             <div class="concept-card">
               <h3>Asset package <code>.aipackage</code></h3>
               <p>
-                A format that <strong>packages assets together with their dependencies</strong> for export,
-                so you can migrate to another machine or share with collaborators — importing restores
-                everything as it was.
+                An archive format that <strong>packages assets together with their dependency graph</strong> for cross-machine migration or team handoff, restoring everything intact on import.
               </p>
-              <span class="concept-meta">See §13 Asset packages</span>
+              <span class="concept-meta">See <a href="manual-reference.en.html#package">§13 Asset packages</a></span>
             </div>
           </div>
 
-          <h3>2.1 How a short drama actually runs</h3>
-          <p>With the concepts above in place, the closed-loop data flow of the short-drama / film pipeline reads:</p>
+          <h3>2.1 How a 5-stage AI comic / short drama runs</h3>
+          <p>With the concepts above in place, the closed-loop data flow of the v8.9.1 short-drama pipeline reads:</p>
           <ol>
             <li>
-              <strong>Script</strong> (<code>text.plain</code>) → wired into the
-              <strong>Film Workbench</strong> (<code>film.workbench</code>).
+              <strong>Script input</strong> (<code>text.plain</code>) → wired into
+              <strong>Film Workbench</strong> (<code>film.workbench</code>) with one of the 21 genre archetypes (<code>P01</code>–<code>P21</code>).
             </li>
             <li>
-              <strong>① Storyboard Breakdown</strong>: a text model splits the script into a structured shot list (shot size, camera move, per-shot duration, dialogue, keyframe &amp; motion prompts — shot count follows the story) plus a character / location / prop entity table.
+              <strong>① A+B Dual-Rhythm Beat Breakdown</strong>: splits the script into structured A (narrative) + B (emotional reaction) beats with shot sizes, camera moves, durations, dialogue, and cast/scene/prop tables.
             </li>
             <li>
-              <strong>② Director Review</strong>: the AI director reviews every shot against the script and automatically rewrites &amp; re-reviews shots that need work (locked shots are never overwritten).
+              <strong>② 11-Point Continuity &amp; ≥67% Dialogue Audit</strong>: audits every shot across 11 directorial continuity rules and dialogue pacing, auto-rewriting unapproved shots while respecting locked shots.
             </li>
             <li>
-              <strong>③ Character &amp; Scene Design</strong>: batch-generates character turnaround and location environment <strong>anchor sheets</strong> from the entity table (with single-card reruns and fingerprint caching).
+              <strong>③ Cast <code>#variant</code>, <code>STYLE01</code> &amp; TTS Voice Binding</strong>: batch-generates character wardrobe variants, locations, props, and style anchors (with fingerprint caching) and binds persistent cross-episode TTS voices.
             </li>
             <li>
-              <strong>④ Batch Shoot</strong>: automatically binds <code>@1</code>/<code>@2</code> cast &amp; location sheets per shot to generate keyframes (with same-scene continuity and Vision QC auto-reshoots) → batch-renders <strong>shot videos</strong> from those keyframes using each shot's breakdown duration automatically.
+              <strong>④ <code>@1</code>–<code>@4</code> Locked Batch Shoot &amp; Vision QC</strong>: binds <code>@1</code>–<code>@4</code> anchors to render keyframes (with Vision QC auto-reshoots) and batch-shoots multi-cut motion clips with lip-synced dialogue.
             </li>
             <li>
-              <strong>Single-shot polish &amp; final cut</strong>: wire a <strong>Shot</strong> (<code>film.shot</code>) node to polish hero shots through dedicated image / 10-in-1 image-processing / video nodes; drop all shot clips onto the <strong>Final timeline</strong> (or “Video concat”) to export the finished episode.
+              <strong>⑤ Release Pack &amp; Master Export</strong>: generates cover art and viral title copy in Stage 5 and exports the full episode <code>.mp4</code> — or sends clips into the <strong>6-tab Final Timeline</strong> for CapCut draft export.
             </li>
           </ol>
           <div class="tip">
-            This flow ships as the “Film pipeline” and “Film · single-shot polish” templates: pick either in
-            <strong>One-Click Workflow</strong> and all of the above is generated for you — no manual
-            wiring. See the <a href="guide-short-video.en.html">Short-Drama Guide</a> and the
+            Install the <code>short-drama</code> bundle from the <strong>Skill Marketplace</strong> or generate it via
+            <strong>One-Click Workflow</strong> with zero manual wiring. See the <a href="guide-short-video.en.html">Short-Drama Guide</a> and
             <a href="quickstart.en.html">Quickstart</a> for the full walkthrough.
           </div>
         </section>
 
         <section id="chapters">
-          <h2>Manual chapters</h2>
-          <p>Read them in workflow order, or jump straight to the part you need.</p>
+          <h2>Manual chapters (5 volumes)</h2>
+          <p>Read them in workflow order, or jump straight to the volume you need.</p>
           <div class="entry-cards chapter-cards">
             <a class="entry-card" href="manual-setup.en.html">
-              <strong>§3–4 Projects & settings</strong>
-              <span>Projects, model providers, object storage, MCP tool service and web search</span>
+              <strong>Vol. 1 · §3–4 Workspaces &amp; settings</strong>
+              <span>Multi-project workspaces (workspace.json), Zero-Key Demo, BYOK providers, S3 storage, local ONNX/OCR, 102-tool MCP &amp; web search</span>
             </a>
             <a class="entry-card" href="manual-workspace.en.html">
-              <strong>§5–6 Workspace & asset library</strong>
-              <span>Workspace layout, AI chat panel, skills, plugin marketplace and asset library</span>
+              <strong>Vol. 2 · §5–6 Workspace, AI Chat &amp; assets</strong>
+              <span>◈ AI Chat sidebar &amp; file editor, 24h scheduled automations, Skill Marketplace, Canvas Wish Maiden &amp; weather, asset library</span>
             </a>
             <a class="entry-card" href="manual-workflow.en.html">
-              <strong>§7–8 One-Click Workflow & node graph</strong>
-              <span>One-Click Workflow, Film Workbench, node graph, task queue and node types</span>
+              <strong>Vol. 3 · §7–8 Workflows &amp; core node graph</strong>
+              <span>PNG recipes, Game UI TySh PSD &amp; ui.atlasCompose, Machinations v2 120fps Goal-Seek, rea-video forensic remake &amp; script.run</span>
             </a>
             <a class="entry-card" href="manual-production.en.html">
-              <strong>§9–12 Script, timeline & director stage</strong>
-              <span>Script and shots, final timeline, canvas and world elements, 3D director stage</span>
+              <strong>Vol. 4 · §9–12 AI Drama, NLE &amp; director stages</strong>
+              <span>21-genre 5-stage Film Workbench, 6-tab CapCut NLE, AI-aligned Spine 2D, 4-band wavelet portrait lab &amp; 56-bone 3D Director Stage</span>
             </a>
             <a class="entry-card" href="manual-reference.en.html">
-              <strong>§13–16 Reference & troubleshooting</strong>
-              <span>Asset packages, shortcuts, troubleshooting, about and updates</span>
+              <strong>Vol. 5 · §13–16 Reference &amp; troubleshooting</strong>
+              <span>Workspace file layout, .aipackage archives, keyboard shortcuts, troubleshooting &amp; updates</span>
             </a>
           </div>
         </section>

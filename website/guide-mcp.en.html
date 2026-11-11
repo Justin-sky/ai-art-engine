@@ -19,28 +19,37 @@
         } catch (e) {}
       })()
     </script>
+    <title>MCP Setup Guide &amp; 102-Tool Reference — Claude Code / Cursor / Codex with AI Art Engine</title>
     <meta
       name="description"
-      content="AiArtEngine MCP setup guide: connect the app to Claude Code and other AI agents to plan workflows, edit graphs, run generation and track tasks by conversation."
+      content="AI Art Engine (AIArtEngine) v8.9.1 MCP Setup Guide: connect Claude Code, Cursor, and Codex via stdio bridge or Streamable HTTP to all 102 local MCP tools (93 core tools on /mcp + 9 on /mcp/blender) for typed DAG node orchestration, Skill Marketplace workflows, video forensics, Game UI, and Machinations simulations."
     />
-    <title>MCP Setup Guide — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI Art Engine MCP, AIArtEngine MCP Server, Claude Code MCP setup, Cursor MCP integration, Codex MCP, Blender MCP bridge, typed DAG node graph, X-MCP-Mode scoping, local AI agent studio"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
-    <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="MCP Setup Guide — AIArtEngine" />
-    <meta property="og:description" content="AiArtEngine MCP setup guide: connect the app to Claude Code and other AI agents to plan workflows, edit graphs, run generation and track tasks by conversation." />
-    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta property="og:title" content="MCP Setup Guide &amp; 102-Tool Reference — AI Art Engine v8.9.1" />
+    <meta
+      property="og:description"
+      content="Connect Claude Code, Cursor, and Codex to AI Art Engine's 102 local MCP tools (93 on /mcp + 9 on /mcp/blender) with request-level Agent / Plan / Ask mode scoping and bi-directional stdio bridges."
+    />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="MCP Setup Guide — AIArtEngine" />
-    <meta name="twitter:description" content="AiArtEngine MCP setup guide: connect the app to Claude Code and other AI agents to plan workflows, edit graphs, run generation and track tasks by conversation." />
+    <meta name="twitter:title" content="MCP Setup Guide &amp; 102-Tool Reference — AI Art Engine v8.9.1" />
+    <meta name="twitter:description" content="Connect Claude Code, Cursor, and Codex to AI Art Engine's 102 local MCP tools (93 on /mcp + 9 on /mcp/blender) with request-level Agent / Plan / Ask mode scoping." />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
-    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
     <link rel="icon" href="assets/logo-mark.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -49,7 +58,55 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "MCP Setup Guide & 102-Tool Reference — Claude Code / Cursor / Codex with AI Art Engine",
+            "description": "Complete AI Art Engine v8.9.1 MCP integration guide covering stdio bridge and Streamable HTTP setup, all 102 live MCP tools (93 on /mcp + 9 on /mcp/blender), typed DAG node orchestration, and request-level Agent/Plan/Ask mode scoping.",
+            "inLanguage": "en",
+            "url": "https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://justin-sky.github.io/ai-art-engine/index.en.html"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "MCP Setup Guide",
+                "item": "https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <style>
       pre.mcp-code {
         background: var(--bg-soft);
@@ -74,7 +131,7 @@
     <a class="skip" href="#manual">Skip to content</a>
 
     <header class="top">
-      <a class="brand" href="index.html">
+      <a class="brand" href="index.en.html">
         <img src="assets/logo-mark.png" alt="" width="30" height="30" />
         <span>AI Art Engine</span>
       </a>
@@ -133,12 +190,12 @@
         <ol>
           <li><a href="#what">What is MCP</a></li>
           <li><a href="#setup">Connect Claude Code in 3 steps</a></li>
-          <li><a href="#tools">Tool reference</a></li>
+          <li><a href="#tools">Full 102-tool reference</a></li>
           <li><a href="#examples">Example conversations</a></li>
           <li><a href="#env">Configuration &amp; environment</a></li>
           <li><a href="#settings-bridge">stdio bridge settings</a></li>
           <li><a href="#reverse-bridge">Reverse bridge: dsh connects to stdio servers</a></li>
-          <li><a href="#security">Security &amp; limitations</a></li>
+          <li><a href="#security">Mode scoping &amp; safety rails</a></li>
           <li><a href="#blender">Blender tools (advanced)</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
@@ -148,36 +205,28 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · MCP</p>
-          <h1>MCP Setup Guide</h1>
+          <p class="eyebrow">Guide · MCP · v8.9.1</p>
+          <h1>MCP Setup Guide &amp; 102-Tool Reference</h1>
           <p class="lede">
-            Connect AiArtEngine to <strong>Claude Code</strong> and other AI agents: the app ships a local
-            MCP tool service, so agents can <strong>plan workflows, edit graphs, run generation and track
-            tasks</strong> by conversation — the "product as an agent tool" experience, fully local with no
-            cloud account authorization. The built-in <strong>AI chat panel</strong> (the “◈” button on the
-            left of the workspace) runs on this same tool surface: <code>@</code>-reference assets in chat and
-            let the assistant call the tools below directly.
+            Connect AI Art Engine to <strong>Claude Code, Cursor, Codex</strong>, and other AI agents: the desktop app runs a local bi-directional
+            MCP tool server (<strong>93 tools on <code>/mcp</code> + 9 live Blender bridge tools on <code>/mcp/blender</code> = 102 tools total</strong>). Agents can <strong>orchestrate typed DAG node graphs, search &amp; install Skill Marketplace workflows, run 4-axis video forensics and multi-track NLE edits, and ship Game UI / Machinations economy simulations / playable HTML5 games</strong> — 100% local with zero cloud account lock-in. The built-in <strong>AI chat panel</strong> (“◈”) runs on this exact same tool surface: <code>@</code>-mention any asset in chat to drive the studio directly.
           </p>
         </header>
 
         <section id="what">
           <h2>1. What is MCP</h2>
           <p>
-            MCP (Model Context Protocol) is the standard protocol for AI agents to call external tools.
-            Once connected, your coding agent gains a set of "AiArtEngine tools" and can drive the app
-            through conversation:
+            MCP (Model Context Protocol) is the standard protocol for AI agents to invoke external tools.
+            Once connected, your coding agent gains the full AI Art Engine industrial asset toolset and drives the desktop app through conversation:
           </p>
-          <pre class="mcp-code"><code>Claude Code / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AiArtEngine app (127.0.0.1 tool service)</code></pre>
+          <pre class="mcp-code"><code>Claude Code / Cursor / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AI Art Engine (127.0.0.1 tool server)</code></pre>
           <ul>
-            <li>On startup the app serves a token-protected tool service on <code>127.0.0.1</code> and writes
-              connection info to <code>%APPDATA%/aiartengine/mcp.json</code> (macOS / Linux paths below). The file persists across restarts and <strong>the token stays stable</strong> — configure clients once; you can also edit the token in the app under Settings → MCP.</li>
-            <li>The bridge <code>scripts/mcp-bridge.mjs</code> is dependency-free: the agent client spawns it, and it
-              translates the protocol and forwards calls.</li>
-            <li>Communication stays on the loopback interface; everything except the health check requires the token.</li>
+            <li>On startup the app launches a Bearer-token-protected tool server on <code>127.0.0.1</code> and writes connection info to <code>%APPDATA%/aiartengine/mcp.json</code> (macOS / Linux paths below). The file persists across restarts and <strong>the token stays stable</strong> — configure clients once, or manage the token under Settings → MCP.</li>
+            <li>The zero-dependency bridge <code>scripts/mcp-bridge.mjs</code> is spawned by your agent client to translate stdio frames and forward HTTP calls.</li>
+            <li>Traffic never leaves the loopback interface; every endpoint except the health check requires the Bearer token, and request-level <strong>Agent / Plan / Ask</strong> mode scoping is enforced via <code>X-MCP-Mode</code> / <code>X-AIArt-Mode</code>.</li>
           </ul>
           <div class="tip">
-            Prerequisites: the AiArtEngine desktop app must be running; the bridge needs Node.js 18+;
-            <code>workflow_plan</code>-style tools rely on a text model configured in the app.
+            Prerequisites: the AI Art Engine desktop app must be running; the stdio bridge requires Node.js 18+ (HTTP direct needs no Node.js); running generation nodes on canvas requires the corresponding modality provider to be enabled under Settings → Models.
           </div>
         </section>
 
@@ -185,9 +234,9 @@
           <h2>2. Connect Claude Code in 3 steps (choose one of two)</h2>
           <h3>Option A: stdio bridge (recommended)</h3>
           <ol>
-            <li>Start the AiArtEngine desktop app.</li>
+            <li>Start the AI Art Engine desktop app.</li>
             <li>
-              Register the MCP server (the bridge lives in the repository — adjust the path):
+              Register the MCP server (adjust the path to your repo or app installation directory):
               <pre class="mcp-code"><code>claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code></pre>
               or write it into your MCP config file manually:
               <pre class="mcp-code"><code>{
@@ -199,26 +248,21 @@
   }
 }</code></pre>
             </li>
-            <li>Restart the agent session and the tools are ready. Other MCP-capable clients (Codex, Trae, …)
-              use the same "command + args" configuration.</li>
+            <li>Restart the agent session and all tools are live. Other MCP-capable clients (Cursor, Codex, Trae, …) use the same <code>command + args</code> configuration.</li>
           </ol>
           <h3>Option B: HTTP direct (no Node.js required)</h3>
           <p>
-            Clients that support streamable HTTP can skip the bridge. The token lives in mcp.json (persisted):
+            Clients that support Streamable HTTP can skip the bridge. Read the persistent token from <code>mcp.json</code>:
           </p>
           <pre class="mcp-code"><code>claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer &lt;token&gt;"</code></pre>
           <h3>Config template (.mcp.json)</h3>
           <p>
-            <code>.mcp.json</code> is <strong>optional</strong> and must be <strong>created manually</strong> (nothing
-            generates it for you) — create a text file named <code>.mcp.json</code>, fill in the template below, and
-            place it in <strong>the root of the project where you run Claude Code</strong>. Commit it and your team
-            gets it on clone.
+            <code>.mcp.json</code> is <strong>optional</strong> and must be <strong>created manually</strong> — create a file named <code>.mcp.json</code> with the template below in <strong>the root of the project where you run Claude Code</strong>. Commit it so teammates get the integration on clone.
           </p>
           <div class="tip">
-            Solo use doesn't need this file: just run
+            Solo use doesn't need this file: run
             <code>claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code> and
-            Claude Code writes the config to <code>~/.claude.json</code> automatically. Pick either way — no need to
-            do both.
+            Claude Code writes the config into <code>~/.claude.json</code> automatically. Pick either option — no need to do both.
           </div>
           <p>stdio bridge variant (adjust the path):</p>
           <pre class="mcp-code"><code>{
@@ -246,189 +290,105 @@
 }</code></pre>
           <div class="tip">
             The app-side connection file (<code>%APPDATA%/aiartengine/mcp.json</code>, structured
-            <code>{ "port": 43110, "token": "…", "pid": …, "version": "…" }</code>) is written and removed by the
-            app automatically — <strong>do not edit it by hand</strong>. The token is reused across restarts; delete
-            the file and restart the app to reset it.
+            <code>{ "port": 43110, "token": "…", "pid": …, "version": "…" }</code>) is managed automatically by the app — <strong>do not edit it by hand</strong>. Delete the file and restart the app if you ever want to rotate the token.
           </div>
-          <ol start="4">
-          </ol>
         </section>
 
         <section id="tools">
-          <h2>3. Tool reference</h2>
+          <h2 id="catalog">3. Full 102-Tool Reference (93 on <code>/mcp</code> + 9 on <code>/mcp/blender</code>)</h2>
+          <div class="tip">
+            <strong>v8.9.1 Unified DAG Architecture:</strong> Legacy standalone media-generation and old preset-planning tools have been completely retired in favor of <strong>typed DAG nodes and Skill Marketplace workflows</strong>. Image/video/speech/SFX/music generation, 3D model generation/rigging/part segmentation, and World Labs 3D Gaussian Splatting spatial worlds now run as typed canvas nodes through two clean workflows:
+            <br />① <strong>Typed DAG Graph Orchestration</strong>: inspect available node schemas via <code>graph_node_types</code> → wire nodes, deep dot-path params, and presets via <code>graph_edit</code> → execute and poll via <code>task_run</code> / <code>task_status</code>;
+            <br />② <strong>Skill Marketplace Workflows</strong>: discover domain bundles via <code>skill_search</code> → install atomically via <code>skill_install</code> → materialize onto a host asset via <code>workflow_use_installed</code>.
+          </div>
+
           <table>
             <thead>
               <tr>
-                <th>Group</th>
-                <th>Tool</th>
-                <th>Purpose</th>
+                <th>Domain Group (Count)</th>
+                <th>Exact Live Tools</th>
+                <th>Capabilities</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td rowspan="11">Projects &amp; assets</td>
-                <td><code>app_status</code></td>
-                <td>App version, current project, asset count</td>
-              </tr>
-              <tr>
-                <td><code>project_list</code> / <code>project_open</code> / <code>project_create</code></td>
-                <td>Recent projects, open, create</td>
-              </tr>
-              <tr>
-                <td><code>asset_list</code> / <code>asset_read_file</code></td>
-                <td>List assets, read files inside the project</td>
-              </tr>
-              <tr>
-                <td><code>asset_write_text</code></td>
-                <td>Update text assets (scripts / notes; synced to the UI)</td>
-              </tr>
-              <tr>
-                <td><code>folder_create</code></td>
-                <td>Create a library folder, returns <code>folderId</code></td>
-              </tr>
-              <tr>
-                <td><code>asset_create</code></td>
-                <td>Create an asset (script / game design doc / world / storyboard / canvas / image / video / voice / 2D action)</td>
-              </tr>
-              <tr>
-                <td><code>asset_import</code></td>
-                <td>Import local files by absolute path (image / video / audio / text, up to 50 per call)</td>
-              </tr>
-              <tr>
-                <td><code>asset_rename</code></td>
-                <td>Rename an asset (synced to the UI)</td>
-              </tr>
-              <tr>
-                <td><code>asset_move</code></td>
-                <td>Move an asset between library folders (media files move with it)</td>
-              </tr>
-              <tr>
-                <td><code>asset_delete</code></td>
-                <td>Remove an asset from the library (refuses when still referenced)</td>
-              </tr>
-              <tr>
-                <td><code>folder_list</code></td>
-                <td>Library folders (source of folderId for generation tools)</td>
-              </tr>
-              <tr>
-                <td rowspan="14">Delivery &amp; post</td>
-                <td><code>transcribe_audio</code></td>
-                <td>Transcribe audio / video into timestamped segments (subtitle draft)</td>
-              </tr>
-              <tr>
-                <td><code>audio_separate</code></td>
-                <td>Separate vocals / instrumental (outputs under <code>Cache/Separated/</code>)</td>
-              </tr>
-              <tr>
-                <td><code>storage_upload</code></td>
-                <td>Upload project media to object storage, returns a shareable URL</td>
-              </tr>
-              <tr>
-                <td><code>asset_package_export</code></td>
-                <td>Export a <code>.aipackage</code> delivery pack (headless calls pass an absolute path)</td>
-              </tr>
-              <tr>
-                <td><code>asset_package_import</code></td>
-                <td>Import a <code>.aipackage</code> pack (optionally a guid subset)</td>
-              </tr>
-              <tr>
-                <td><code>stage2d_spine_export</code></td>
-                <td>Export a 2D stage rig as a Spine skeleton pack (part pages + skeleton.json + .atlas)</td>
-              </tr>
-              <tr>
-                <td><code>asset_qc</code></td>
-                <td>Engine-readiness check for image assets (holes / fringe / debris / edge clipping / size / naming, read-only)</td>
-              </tr>
-              <tr>
-                <td><code>asset_qc_fix</code></td>
-                <td>Edge decontamination rework into a new asset, with before/after metrics</td>
-              </tr>
-              <tr>
-                <td><code>timeline_read</code></td>
-                <td>Read the timeline: clips / settings / total duration, filterable by track</td>
-              </tr>
-              <tr>
-                <td><code>timeline_rough_cut</code></td>
-                <td>Smart rough cut: squeeze silences out by transcript and ripple the whole sequence, plan-only by default</td>
-              </tr>
-              <tr>
-                <td><code>timeline_export</code></td>
-                <td>Render the timeline to MP4 (transitions / mixing / burned-in subtitles / watermark)</td>
-              </tr>
-              <tr>
-                <td><code>timeline_edit</code></td>
-                <td>Edit the timeline: lay media on tracks / adjust volume, transitions, subtitle text / remove clips / rebuild subtitles from a transcript</td>
-              </tr>
-              <tr>
-                <td><code>timeline_preview</code></td>
-                <td>See the picture: frames captured from the same filter graph as the export, returned to multimodal clients</td>
-              </tr>
-              <tr>
-                <td rowspan="6">Planning &amp; execution</td>
-                <td><code>workflow_list_presets</code></td>
-                <td>The 12 industry templates (id + title)</td>
-              </tr>
-              <tr>
-                <td><code>workflow_plan</code></td>
-                <td>Natural language → graph plan (uses the app's configured text model)</td>
-              </tr>
-              <tr>
-                <td><code>workflow_commit</code></td>
-                <td>Persist a plan as a host asset (appears in the UI)</td>
-              </tr>
-              <tr>
-                <td><code>task_run</code> / <code>task_status</code></td>
-                <td>Run a persisted workflow and poll its execution state</td>
-              </tr>
-              <tr>
-                <td><code>graph_node_types</code></td>
-                <td>Addable node types (typeId / label / ports / default params; the graph_edit whitelist)</td>
-              </tr>
-              <tr>
-                <td><code>graph_read</code></td>
-                <td>Read a host asset graph structure (ids / edges; prerequisite of graph_edit)</td>
-              </tr>
-              <tr>
-                <td rowspan="4">Generation</td>
-                <td><code>generate_image</code></td>
-                <td>Text-to-image / image-to-image, saved as a project asset</td>
-              </tr>
-              <tr>
-                <td><code>generate_video</code></td>
-                <td>Submit video generation as an asset (track via <code>video_job_*</code>)</td>
-              </tr>
-              <tr>
-                <td><code>generate_model3d</code></td>
-                <td>Text/image-to-3D producing a GLB asset</td>
-              </tr>
-              <tr>
-                <td><code>decide</code></td>
+                <td><strong>1. System, Multi-Project Workspace, Git &amp; Schedules (14)</strong><br /><small>Endpoint: <code>/mcp</code></small></td>
                 <td>
-                  Ask an OpenRouter decision model typed questions about a given state (noul yes/no, choice
-                  one-of, score on an ordered scale) and get branchable, probability-carrying verdicts; the
-                  three primitives can be mixed in one request and nothing is written to disk
+                  <code>app_status</code> · <code>models_list</code> · <code>storage_status</code> ·
+                  <code>project_list</code> · <code>project_open</code> · <code>project_create</code> ·
+                  <code>project_memory_read</code> · <code>project_memory_write</code> · <code>project_memory_append</code> ·
+                  <code>project_git_status</code> · <code>project_git_diff</code> ·
+                  <code>schedule_list</code> · <code>schedule_delete</code> · <code>ask_user</code>
                 </td>
+                <td>Inspect app version, enabled model catalog, and object-storage health; list/open/create projects and read/write persistent project memory; inspect project Git status &amp; diffs; manage 24h scheduled automations; prompt the user for structured confirmation (<code>ask_user</code>).</td>
               </tr>
               <tr>
-                <td rowspan="5">Editing &amp; queries</td>
-                <td><code>graph_edit</code></td>
-                <td>Apply node / edge edit batches to a host asset graph (supports arbitrarily deep dot-path <code>params</code>, named <code>preset</code>s, node <code>dive_open</code> / <code>dive_close</code>, and <code>run_node</code>)</td>
+                <td><strong>2. Asset Library, Packages, Voice Profiles, QC &amp; Spine/SVG (21)</strong><br /><small>Endpoint: <code>/mcp</code></small></td>
+                <td>
+                  <code>asset_list</code> · <code>asset_read_file</code> · <code>asset_write_text</code> ·
+                  <code>asset_create</code> · <code>asset_import</code> · <code>asset_rename</code> ·
+                  <code>asset_move</code> · <code>asset_delete</code> ·
+                  <code>folder_list</code> · <code>folder_create</code> · <code>folder_move</code> ·
+                  <code>asset_package_export</code> · <code>asset_package_import</code> · <code>storage_upload</code> ·
+                  <code>voice_profile_list</code> · <code>voice_profile_upsert</code> · <code>voice_profile_delete</code> ·
+                  <code>asset_qc</code> · <code>asset_qc_fix</code> · <code>stage2d_spine_export</code> · <code>render_svg</code>
+                </td>
+                <td>Full CRUD over project assets and folders, batch local file import, <code>.aipackage</code> bundle export/import, and cloud storage upload; persistent cross-episode TTS voice profiles; engine-readiness alpha/fringe/debris QC &amp; edge decontamination rework; Spine 2D skeleton export (<code>skeleton.json + .atlas</code>) and SVG rasterization.</td>
               </tr>
               <tr>
-                <td><code>director_stage_edit</code></td>
-                <td>Full 3D Director Stage control (show/hide, lock, translate/rotate/scale, poses, materials, keyframes, whitebox building, and live sync with <code>stage.3d</code> node parameters)</td>
+                <td><strong>3. DAG Node Graph, 3D Director, Task Execution &amp; Skill Marketplace (18)</strong><br /><small>Endpoint: <code>/mcp</code></small></td>
+                <td>
+                  <code>graph_node_types</code> · <code>graph_read</code> · <code>graph_edit</code> · <code>graph_icon_refine</code> ·
+                  <code>director_stage_read</code> · <code>director_stage_edit</code> ·
+                  <code>task_run</code> · <code>task_status</code> · <code>video_job_list</code> · <code>video_job_get</code> ·
+                  <code>list_model3d_animations</code> · <code>decide</code> ·
+                  <code>skill_list</code> · <code>skill_search</code> · <code>skill_inspect_github</code> ·
+                  <code>skill_install</code> · <code>skill_uninstall</code> · <code>workflow_use_installed</code>
+                </td>
+                <td>Inspect addable node types/ports/schemas, batch-edit host graphs, refine single icons in an icon pack, and drive the 56-bone 3D Director Stage; run graphs &amp; poll async tasks/video jobs; query 3D animations; run typed OpenRouter probability decisions (<code>noul / choice / score</code>); search, preflight-inspect GitHub repos, install/uninstall skills, and materialize installed marketplace workflows.</td>
               </tr>
               <tr>
-                <td><code>graph_icon_refine</code></td>
-                <td>Redraw a single icon, write it back as a per-cell override, then re-run packing (same pipeline as the dialog; the run shows up in the task list and as a spinner on the asset card)</td>
+                <td><strong>4. Local Vision, Audio, Video Forensics &amp; Timeline NLE (15)</strong><br /><small>Endpoint: <code>/mcp</code></small></td>
+                <td>
+                  <code>vision_local_ocr</code> · <code>vision_local_yolo</code> ·
+                  <code>transcribe_audio</code> · <code>audio_separate</code> ·
+                  <code>extract_video_frames</code> · <code>grab_video_frames</code> · <code>detect_video_keyframes</code> ·
+                  <code>analyze_video_beats</code> · <code>semantic_analyze_video</code> · <code>semantic_timeline_read</code> ·
+                  <code>timeline_read</code> · <code>timeline_rough_cut</code> · <code>timeline_export</code> ·
+                  <code>timeline_edit</code> · <code>timeline_preview</code>
+                </td>
+                <td>Cross-platform offline OCR and local ONNX YOLO detection; WhisperX-grade transcription and Demucs stem separation; frame extraction, scene-cut detection, Librosa beat analysis, and 4-axis semantic video forensics; multi-track NLE timeline read/edit, silence-ripple rough cut, filter-accurate frame preview, and MP4 export.</td>
               </tr>
               <tr>
-                <td><code>models_list</code></td>
-                <td>Enabled providers and per-modality models (incl. OpenRouter <code>decisions</code> models; no secrets)</td>
+                <td><strong>5. Web Extraction &amp; Screen-Recorded Tutorials (10)</strong><br /><small>Endpoint: <code>/mcp</code></small></td>
+                <td>
+                  <code>web_extract_article</code> · <code>web_fetch_video</code> ·
+                  <code>screen_record_start</code> · <code>screen_record_step</code> · <code>screen_record_wait</code> ·
+                  <code>screen_record_stop</code> · <code>screen_record_status</code> ·
+                  <code>ui_bounds</code> · <code>ui_click</code> · <code>tutorial_compose</code>
+                </td>
+                <td>Extract clean article Markdown and fetch reference videos; locate live UI DOM bounds and click controls (<code>ui_bounds</code> / <code>ui_click</code>), record step-annotated screen sessions, and auto-dub + burn subtitles into finished video tutorials via <code>tutorial_compose</code>.</td>
               </tr>
               <tr>
-                <td><code>video_job_list</code> / <code>video_job_get</code></td>
-                <td>Async video task status</td>
+                <td><strong>6. Game Production, Playable HTML5 &amp; Machinations Studio (15)</strong><br /><small>Endpoint: <code>/mcp</code></small></td>
+                <td>
+                  <code>gameplay_prepare_project</code> · <code>gameplay_build</code> · <code>gameplay_job_status</code> ·
+                  <code>game_tile_pbr_process</code> · <code>game_audio_variants</code> · <code>game_bundle_export</code> ·
+                  <code>game_data_table_generate</code> · <code>game_level_map_generate</code> ·
+                  <code>game_shader_particle_generate</code> · <code>game_systems_graph_generate</code> ·
+                  <code>game_one_sentence_create</code> · <code>game_ui_suite_create</code> · <code>game_playable_preview_compile</code> ·
+                  <code>machinations_building_blocks</code> · <code>machinations_studio</code>
+                </td>
+                <td>Procedural 2D/3D Node+esbuild playable HTML5 scaffolding, single-file build &amp; headless Chromium smoke gate; seamless PBR tiles, SFX variants, data tables, level maps, shaders/particles, one-sentence game asset packs, full Game UI suites (exporting native TySh PSD / Unity / Godot), and playable preview compilation; Machinations v2 59-block catalog, Monte Carlo/sensitivity simulation, Goal-Seek curve solving, and C#/GDScript export.</td>
+              </tr>
+              <tr>
+                <td><strong>7. Blender Live Bridge (9)</strong><br /><small>Endpoint: <code>/mcp/blender</code></small></td>
+                <td>
+                  <code>get_scene_info</code> · <code>get_world_state_snapshot</code> · <code>get_object_info</code> ·
+                  <code>get_viewport_screenshot</code> · <code>execute_blender_code</code> · <code>export_scene</code> ·
+                  <code>describe_node_type</code> · <code>bpy_api_lookup</code> · <code>get_addon_status</code>
+                </td>
+                <td>Outbound socket bridge to a running local Blender (<code>localhost:9876</code>): inspect scene/mesh bounding-box snapshots, query live RNA &amp; shader nodes, execute full <code>bpy</code> Python scripts, capture multimodal viewport screenshots, and export GLB/FBX/USD straight into <code>asset_import</code> (see <a href="#blender">§7</a>).</td>
               </tr>
             </tbody>
           </table>
@@ -436,18 +396,17 @@
 
         <section id="examples">
           <h2>4. Example conversations</h2>
-          <p>Once connected, just give natural-language instructions — the agent perceives your active editor and combines the tools:</p>
+          <p>Once connected, give natural-language instructions — the agent perceives your active workspace and chains the live tools:</p>
           <ul>
-            <li>"List my recent projects and open the first one" → <code>project_list</code> + <code>project_open</code></li>
+            <li>"List my recent projects, open the first one, and read its project memory" → <code>project_list</code> + <code>project_open</code> + <code>project_memory_read</code></li>
+            <li>"Search the Skill Marketplace for the short-drama workflow, install it, and instantiate a new episode graph" → <code>skill_search</code> + <code>skill_install</code> + <code>workflow_use_installed</code></li>
+            <li>"Add an image generation node wired into the 10-in-1 image processor on this canvas and render a 9:16 poster" → <code>graph_node_types</code> + <code>graph_edit</code> (<code>node_upsert</code> + <code>edge_connect</code>) + <code>task_run</code> + <code>task_status</code></li>
             <li>"Hide Lin Xiaoman, move her 2m left, rotate 45°, and set her pose to sitting" → <code>director_stage_edit</code> (works in both standalone <code>.dstage</code> and <code>stage.3d</code> Dive)</li>
-            <li>"Apply the sweet portrait preset on the portrait node, set face slimming to 55, and remove glasses" → <code>graph_edit</code> (<code>preset</code> + deep dot-path <code>params</code>)</li>
-            <li>"Set the lighting node to cyberpunk neon, make the key light blue-violet, and enable volumetric fog" → <code>graph_edit</code> (semantic <code>node_params</code>)</li>
-            <li>"Plan a workflow from the shortDrama template and save it" → <code>workflow_plan</code> (presetId=shortDrama) + <code>workflow_commit</code></li>
-            <li>"Run the workflow I just created and report back" → <code>task_run</code> + <code>task_status</code> polling</li>
-            <li>"Add a voice node under this image node and wire it" → <code>graph_edit</code> (node_upsert + edge_connect)</li>
-            <li>"What nodes can this graph take? Which type packs icons?" → <code>graph_node_types</code> (typeId + ports + default params + param schema + presets)</li>
-            <li>"Icon #3 in the pack looks blurry — redraw just that one" → <code>graph_icon_refine</code> (cellKey + hint; writes back and re-packs)</li>
-            <li>"Generate a 9:16 poster with my configured model" → <code>models_list</code> + <code>generate_image</code></li>
+            <li>"Run 4-axis video forensics on this reference clip and read the shot breakdown and transcript cuts" → <code>semantic_analyze_video</code> + <code>semantic_timeline_read</code></li>
+            <li>"Icon #3 in the pack looks blurry — redraw just that cell and re-pack the atlas" → <code>graph_icon_refine</code> (<code>cellKey</code> + <code>hint</code>; writes back and re-runs packing)</li>
+            <li>"Build a gacha economy loop, run 200 Monte Carlo trials to check Day-30 gold inflation, and export Unity C#" → <code>machinations_building_blocks</code> + <code>machinations_studio</code></li>
+            <li>"Create a dark-fantasy inventory + shop + combat HUD Game UI suite workflow" → <code>game_ui_suite_create</code> + <code>task_run</code></li>
+            <li>"Build a low-poly 3D space-station energy collector game with WASD movement" → <code>gameplay_prepare_project</code> (<code>3d</code>) → write <code>src/assets/**</code> &amp; <code>src/game/**</code> → <code>gameplay_build</code> + <code>gameplay_job_status</code> (auto-verified by the headless Chromium smoke gate)</li>
           </ul>
         </section>
 
@@ -542,22 +501,21 @@
         </section>
 
         <section id="security">
-          <h2>6. Security &amp; limitations</h2>
+          <h2>6. Request-Level Mode Scoping (Agent / Plan / Ask) &amp; Safety Rails</h2>
           <ul>
-            <li>The service listens on <code>127.0.0.1</code> only, with token auth; file access is confined to the
-              project root (the single exception is <code>asset_import</code>, which reads absolute paths you pass in
-              and copies them into the project); secrets are never exposed.</li>
-            <li>Concurrency gate: <code>generate_image</code> / <code>generate_speech</code> /
-              <code>decide</code> / <code>workflow_plan</code> run at most 3 concurrently
-              (<code>AIAE_MCP_GEN_LIMIT</code> tunable); excess queue is rejected with a friendly error.</li>
-            <li>Audit trail: every tool call is appended to
-              <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code> (args truncated, 5MB rotation) so generation and
-              writes can be audited.</li>
-            <li><code>graph_edit</code> / <code>graph_icon_refine</code> refuse graphs that are currently open in an
-              editor to avoid clobbering in-memory state.</li>
-            <li><code>workflow_plan</code> runs an LLM and may take tens of seconds; <code>generate_video</code> /
-              <code>generate_model3d</code> are async — track them with <code>video_job_*</code>.</li>
-            <li>Two connection options: the <strong>stdio bridge</strong> (bundled in installers at <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>; for development use the in-repo <code>scripts/mcp-bridge.mjs</code>, Node.js 18+ required) or <strong>HTTP direct</strong> (no Node.js needed).</li>
+            <li>
+              <strong>Request-level mode scoping (<code>X-MCP-Mode</code> / <code>X-AIArt-Mode</code>, implemented in <code>src/shared/mcpModeAccess.ts</code>)</strong>: mode governance is bound per HTTP request rather than a global switch, dynamically filtering <code>tools/list</code> and hard-rejecting unauthorized <code>tools/call</code> invocations:
+              <ul>
+                <li><strong>Agent (Craft) mode</strong>: full read + write + generate tool surface (external CLI clients such as Claude Code / Cursor without mode headers default to full Agent access).</li>
+                <li><strong>Plan mode</strong>: exposes only read-only tools (<code>app_status</code>, <code>graph_read</code>, <code>graph_node_types</code>, <code>asset_qc</code>, <code>skill_search</code>, <code>vision_local_ocr</code>, etc.) plus <code>ask_user</code> until the user explicitly approves the step-by-step plan — after confirmation, write and generate tools unlock for that run.</li>
+                <li><strong>Ask mode</strong>: returns an empty <code>tools/list</code> and blocks all tool execution for strictly non-mutating Q&amp;A.</li>
+              </ul>
+            </li>
+            <li>The server binds strictly to <code>127.0.0.1</code> with Bearer token auth; file reads and writes are confined to the project root (the sole exception is <code>asset_import</code>, which copies explicit local paths you pass into the project); provider API keys are never exposed.</li>
+            <li>Concurrency gate: credit-spending or heavy synchronous tools (<code>decide</code>, <code>transcribe_audio</code>, <code>semantic_analyze_video</code>, <code>tutorial_compose</code>, <code>gameplay_build</code>, etc.) cap at 3 concurrent executions (<code>AIAE_MCP_GEN_LIMIT</code> tunable) and reject overflow cleanly.</li>
+            <li>Audit trail: every tool invocation is appended to <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code> (arguments truncated, 5MB log rotation).</li>
+            <li><code>graph_edit</code> / <code>graph_icon_refine</code> protect graphs currently open in an editor from conflicting in-memory overwrites; workflow execution runs asynchronously and is tracked via <code>task_run</code> + <code>task_status</code> (or <code>video_job_list</code> / <code>video_job_get</code> for video jobs).</li>
+            <li>Two connection options: the <strong>stdio bridge</strong> (bundled in installers at <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>; for development use <code>scripts/mcp-bridge.mjs</code>, Node.js 18+ required) or <strong>HTTP direct</strong> (no Node.js needed).</li>
           </ul>
         </section>
 

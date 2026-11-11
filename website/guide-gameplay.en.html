@@ -19,25 +19,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>Playable HTML5 Mini-Games &amp; Game Production Suite Guide — AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine guide: one-line playable HTML via dsh multi-turn Node/esbuild projects, cook to a single file, sandbox play for 2D/3D prototypes."
+      content="AI Art Engine v8.9.1 Playable HTML5 &amp; Game Production Guide: generate self-contained 2D/3D Node/esbuild mini-games from one sentence, run headless Chromium smoke verification (zero console/page errors + simulated input + canvas frame-diff validation), and connect game_one_sentence_create, game_ui_suite_create, game_playable_preview_compile &amp; game.economy Machinations v2 studio."
     />
-    <title>Playable HTML mini-games — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="playable HTML5 mini-games, AI game generator, Three.js playable prototype, headless Chromium smoke test, game_one_sentence_create, game_ui_suite_create, game_playable_preview_compile, game.economy, Machinations v2 economy simulator, AI Art Engine"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:title" content="Playable HTML mini-games — AIArtEngine" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta property="og:title" content="Playable HTML5 Mini-Games &amp; Game Production Suite Guide — AI Art Engine" />
     <meta
       property="og:description"
-      content="One line → dsh Node/esbuild project → cook single HTML → sandbox play."
+      content="One sentence → procedural 2D/3D Node/esbuild game → headless Chromium smoke gate (zero errors, simulated input &amp; canvas frame-diff validation) → single-file HTML5 play, plus Game UI PSD suites and Machinations v2 economy simulation."
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Playable HTML5 Mini-Games &amp; Game Production Suite Guide — AI Art Engine" />
+    <meta
+      name="twitter:description"
+      content="Generate procedural 2D/3D HTML5 prototypes from one sentence with headless Chromium smoke verification, layered TySh PSD Game UI suites, and Machinations v2 economy simulation."
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
@@ -50,7 +61,55 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "Playable HTML5 Mini-Games & Game Production Suite Guide — AI Art Engine",
+            "description": "AI Art Engine v8.9.1 guide to playable HTML5 mini-game generation and companion game production tools: gameplay_prepare_project / gameplay_build single-file bundling, headless Chromium smoke verification (zero console/page errors, simulated input, canvas frame-diff validation), game_one_sentence_create, game_ui_suite_create, game_playable_preview_compile, and game.economy Machinations v2 studio.",
+            "inLanguage": "en",
+            "url": "https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/index.en.html"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/index.en.html",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://justin-sky.github.io/ai-art-engine/index.en.html"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Playable HTML5 & Game Production",
+                "item": "https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#manual">Skip to content</a>
@@ -113,12 +172,13 @@
       <aside class="toc" aria-label="Contents">
         <h2>Contents</h2>
         <ol>
-          <li><a href="#overview">What it is</a></li>
-          <li><a href="#chat">Doing it in the AI chat</a></li>
-          <li><a href="#assets">All assets generated by code</a></li>
-          <li><a href="#run">Generate → build → play</a></li>
-          <li><a href="#resume">Iterating and project layout</a></li>
-          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#overview">1. What it is</a></li>
+          <li><a href="#chat">2. Driving it from the AI chat</a></li>
+          <li><a href="#assets">3. All assets generated by code</a></li>
+          <li><a href="#run">4. Build &amp; headless Chromium smoke gate</a></li>
+          <li><a href="#resume">5. Iterating and project layout</a></li>
+          <li><a href="#companion">6. Companion game production &amp; Machinations v2</a></li>
+          <li><a href="#faq">7. FAQ</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
           <a href="manual-workflow.en.html#graph">← Back to manual · Node graph</a>
@@ -127,16 +187,16 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · Playable HTML · v6.7+</p>
-          <h1>Playable HTML mini-games</h1>
+          <p class="eyebrow">Guide · v8.9.1 · Playable HTML5 &amp; Game Production</p>
+          <h1>Playable HTML5 Mini-Games &amp; Game Production Suite</h1>
           <p class="lede">
-            Describe the gameplay in one sentence inside the <strong>AI chat panel</strong> and the agent writes a whole pure Node (esbuild) project: geometry, textures, materials, sound effects and level layouts are <strong>all generated by code</strong>. The host cooks it into a single file locally, and the Play button on the card opens it in your browser. Great for gameplay drafts and asset sketches — not a replacement for Unity / Godot.
+            Describe gameplay in one sentence inside the <strong>AI chat panel</strong> (or from an external MCP client) and the agent writes a complete pure Node (esbuild) 2D / 3D project: geometry, textures, materials, SFX and level layouts are <strong>all generated procedurally by code</strong>. The host bundles a self-contained single HTML file, runs <strong>headless Chromium smoke verification (zero console/page errors + simulated input + canvas frame-diff validation)</strong>, and links seamlessly into layered Game UI suites and the <strong><code>game.economy</code> Machinations v2 studio</strong>.
           </p>
         </header>
 
         <section id="overview">
           <h2>1. What it is</h2>
-          <p>Since v6.7 this path is driven by the chat panel (there is no longer a "Playable HTML generation" / "Playable HTML" node in the graph):</p>
+          <p>This workflow is driven by the built-in AI chat panel or the <a href="guide-mcp.en.html#catalog">MCP Game Production toolset</a> (replacing legacy canvas-only playable generation nodes):</p>
           <table>
             <thead>
               <tr>
@@ -165,48 +225,48 @@
                 <td>Procedural assets + gameplay (geometry / canvas textures / audio / levels)</td>
               </tr>
               <tr>
-                <td>Build</td>
-                <td>Tool <code>gameplay_build</code> (the host runs npm)</td>
-                <td>Single-file <code>dist/single.html</code></td>
+                <td>Build &amp; smoke gate</td>
+                <td>Tool <code>gameplay_build</code> (host runs esbuild + headless Chromium smoke test)</td>
+                <td>Self-contained <code>dist/single.html</code> + live <code>smoke</code> verification report</td>
               </tr>
               <tr>
                 <td>Play</td>
                 <td>Play button on the chat artifact card</td>
-                <td>Opens in the system default app (browser); a gamePlay asset is registered too</td>
+                <td>Opens in the system default browser and registers a <code>gamePlay</code> asset</td>
               </tr>
             </tbody>
           </table>
           <div class="tip">
-            You need a configured <strong>text model</strong> (DeepSeek recommended; other compatible providers work) plus <strong>Node / npm</strong> on the machine (used for the cook). Generation runs through the dsh agent in the chat panel, and <strong>only the host runs npm</strong> — never race it from the project directory.
+            You need a configured <strong>text model</strong> (DeepSeek, Claude or any compatible reasoning provider) plus <strong>Node / npm</strong> on the machine. Both bundling and headless Chromium smoke checks are executed safely by the host — never run competing <code>npm</code> commands manually inside the job folder.
           </div>
         </section>
 
         <section id="chat">
-          <h2>2. Doing it in the AI chat</h2>
-          <p>Open the <strong>AI chat</strong> panel on the right (mode <strong>Craft</strong>) and just describe the game, for example:</p>
+          <h2>2. Driving it from the AI chat</h2>
+          <p>Open the <strong>AI chat</strong> panel on the right (mode <strong>Agent</strong>) and describe the game in one sentence, for example:</p>
           <pre><code>Low-poly space station corridor: collect energy cells, WASD to move, mouse to steer, win at 10; use Three.js</code></pre>
-          <p>The agent calls three tools in turn:</p>
+          <p>The agent calls three tools in sequence:</p>
           <ol>
             <li>
               <code>gameplay_prepare_project</code>: writes the scaffold (optionally with <code>mode: 2d | 3d | auto</code> and a game title).
             </li>
-            <li>It writes <code>src/assets/**</code> (procedural assets) and <code>src/game/**</code> (gameplay) itself.</li>
+            <li>Writes <code>src/assets/**</code> (procedural assets) and <code>src/game/**</code> (gameplay loop &amp; HUD).</li>
             <li>
-              <code>gameplay_build</code>: the host runs <code>npm install</code> + <code>node build.mjs</code> and returns a <code>jobId</code>; poll it with <code>gameplay_job_status</code> until <code>done</code>.
+              <code>gameplay_build</code>: the host runs <code>npm install</code> + <code>node build.mjs</code> and launches the headless Chromium smoke gate, returning a <code>jobId</code> polled via <code>gameplay_job_status</code> until <code>done</code>.
             </li>
           </ol>
           <p>
-            When the build finishes, a game card appears in the conversation with <strong>a single Play button</strong> that opens the game in the system default app.
+            Once the build and smoke check pass, a game card appears in the conversation with a <strong>Play</strong> button that opens the single-file HTML5 build directly in your browser.
           </p>
           <div class="tip">
-            2D or 3D follows what you ask for; say "use Three.js" when you want 3D for sure. The asset-layer conventions (directory layout, the <code>defineAsset</code> contract, texture and audio recipes) live in the built-in skill
-            <code>gameplay-proc-assets</code>, which the agent loads on demand.
+            2D or 3D follows what you ask for; say "use Three.js" when you want 3D explicitly. Asset-layer conventions (directory layout, the <code>defineAsset</code> contract, texture and WebAudio recipes) live in the built-in skill
+            <code>gameplay-proc-assets</code>, loaded automatically by the agent.
           </div>
         </section>
 
         <section id="assets">
           <h2>3. All assets generated by code</h2>
-          <p>This is the heart of the approach: no asset downloads and no paid generation APIs — everything is synthesized inside the generated project, so it costs nothing, produces assets instantly, is reproducible from a seed, and stays visually consistent.</p>
+          <p>This is the core of the approach: zero external asset downloads and zero paid media API calls — everything is synthesized deterministically inside the project, so it costs no media credits, builds in seconds, reproduces from a seed, and stays stylistically coherent.</p>
           <ul>
             <li><code>src/core/rng.js</code>: seeded randomness (change one character to swap the whole asset set).</li>
             <li><code>src/core/palette.js</code>: one coherent palette shared by textures, materials and lights.</li>
@@ -219,19 +279,24 @@
         </section>
 
         <section id="run">
-          <h2>4. Generate → build → play</h2>
+          <h2>4. Generate → build → headless Chromium smoke verification → play</h2>
           <ol>
             <li>
-              <strong>Generate</strong>: describe the game in the chat; the log shows the agent editing <code>src/**</code>. In 3D mode the scaffold ships the <code>three</code> dependency and a 3D sample entry.
+              <strong>Generate</strong>: describe the game in chat; the log shows the agent authoring <code>src/**</code>. In 3D mode the scaffold includes <code>three</code> and a clean render loop.
             </li>
             <li>
-              <strong>Build</strong>: <code>gameplay_build</code> starts, a running tool card appears, and the log shows <code>npm install</code>, <code>node build.mjs</code> and the single-file size when it succeeds. After a successful build the host also <strong>runs a playtest gate</strong> — the game really runs for a few seconds in a hidden window, catching uncaught exceptions, load failures, black screens and static frames, with the verdict in the <code>smoke</code> field of <code>gameplay_job_status</code>; when <code>smoke.ok === false</code> the agent fixes it from that report and rebuilds.
+              <strong>Build &amp; Headless Chromium Smoke Verification</strong>: right after <code>gameplay_build</code> bundles <code>dist/single.html</code>, the host boots a hidden <strong>headless Chromium</strong> instance and runs a three-pillar live verification gate:
+              <ul>
+                <li><strong>Zero console &amp; page errors</strong>: captures any <code>console.error</code>, uncaught <code>pageerror</code> runtime exception, WebGL shader compilation failure or broken resource load.</li>
+                <li><strong>Simulated player input</strong>: dispatches synthetic pointer clicks and keyboard input (<code>WASD</code>, arrow keys, <code>Space</code>) to click past title overlays and exercise movement/action handlers.</li>
+                <li><strong>Canvas pixel frame-diff validation</strong>: samples multiple rendered canvas frames across time to verify non-blank pixel luminance and real inter-frame motion (catching all-black/white screens or frozen requestAnimationFrame loops). Results are reported in <code>gameplay_job_status.smoke</code>; whenever <code>smoke.ok === false</code>, the agent reads the diagnostics, patches the bug and rebuilds automatically.</li>
+              </ul>
             </li>
             <li>
-              <strong>Play</strong>: the Play button opens the self-contained single file in your browser — fullscreen and DevTools included. If the build is not self-contained (ES modules or relative references), it falls back to the in-app play window and tells you why.
+              <strong>Play</strong>: click Play to open the self-contained single file in your browser — fullscreen and DevTools included. If a build is non-self-contained (ES modules or relative paths), it falls back gracefully to the in-app sandbox window.
             </li>
             <li>
-              <strong>Also playable from the library</strong>: a successful build registers a <code>gamePlay</code> asset; double-click it (or right-click → Play) to use the in-app sandbox window.
+              <strong>Also playable from the library</strong>: every successful build registers a <code>gamePlay</code> asset you can double-click in the asset browser at any time.
             </li>
           </ol>
         </section>
@@ -240,19 +305,40 @@
           <h2>5. Iterating and project layout</h2>
           <ul>
             <li>
-              Keep talking: "make it darker / add a jump sound / change the seed" — the agent edits only <code>src/assets/**</code> and <code>src/game/**</code> and rebuilds once.
+              Keep iterating naturally: "make it darker / add a double-jump sound / add boss waves" — the agent updates only <code>src/assets/**</code> and <code>src/game/**</code> and re-runs <code>gameplay_build</code>.
             </li>
             <li>
-              Rebuilding the same project <strong>reuses the same job and the same asset</strong>, updating the card in place, so neither the conversation nor the asset library fills up with duplicates.
+              Rebuilding the same project <strong>reuses the same job and asset</strong>, updating the card in place without cluttering your asset library.
             </li>
             <li>
-              On disk: <code>Cache/GamePlayJobs/&lt;jobId&gt;/project/</code> under the project root, with the single file at <code>dist/single.html</code>.
+              On disk: <code>Cache/GamePlayJobs/&lt;jobId&gt;/project/</code> under the project root, with the bundled single file at <code>dist/single.html</code>.
+            </li>
+          </ul>
+        </section>
+
+        <section id="companion">
+          <h2>6. Companion Game Production Tools &amp; Machinations v2 Studio</h2>
+          <p>
+            Beyond pure-code prototypes, AI Art Engine v8.9.1 ships a full commercial game production suite accessible on the node canvas and via the <a href="guide-mcp.en.html#catalog">15 Game Production MCP tools</a>:
+          </p>
+          <ul>
+            <li>
+              <strong><code>game_one_sentence_create</code> (One-Sentence Game Suite)</strong>: turn a single concept prompt into coordinated design specs, structured balance tables, core art assets and a playable scaffold.
+            </li>
+            <li>
+              <strong><code>game_ui_suite_create</code> (16-Class Game UI Suite &amp; Native <code>TySh</code> Layered PSD)</strong>: generate cohesive HUDs, inventory grids, gacha banners, shops and skill bars split into 16 UI widget classes, exporting layered <code>.psd</code> files with <strong>native Photoshop editable <code>TySh</code> text layers</strong> plus Unity / Godot UI prefabs.
+            </li>
+            <li>
+              <strong><code>game_playable_preview_compile</code> (Interactive HTML5 Playable Compiler)</strong>: compile generated tilemaps (<code>game_level_map_generate</code>), JSON/CSV data tables (<code>game_data_table_generate</code>), shaders/particles (<code>game_shader_particle_generate</code>) and UI assets into instant playable HTML5 previews or playable ad packages, alongside <code>game_tile_pbr_process</code>, <code>game_audio_variants</code> and <code>game_bundle_export</code>.
+            </li>
+            <li>
+              <strong><code>game.economy</code> Node &amp; <code>machinations_studio</code> (Machinations v2 Economy Studio)</strong>: model progression loops, gacha pity systems, stamina sinks and combat balance across <strong>59 typed building blocks</strong> (Pools, Sources, Drains, Converters, Gates, Delays, Registers — inspectable via <code>machinations_building_blocks</code>), and run deterministic step-by-step traces or <strong>multi-run Monte Carlo simulations</strong> before writing production server code.
             </li>
           </ul>
         </section>
 
         <section id="faq">
-          <h2>6. FAQ</h2>
+          <h2>7. FAQ</h2>
           <details>
             <summary>The build fails with an npm / build error?</summary>
             <p>
@@ -262,43 +348,44 @@
           <details>
             <summary>Play opened an editor instead of a browser?</summary>
             <p>
-              Play uses the <strong>system default app</strong>; if <code>.html</code> is associated with an editor, that is what opens. Use the in-app play window from the asset library in that case.
+              Play uses the <strong>system default app</strong>; if <code>.html</code> is associated with a code editor, that editor opens. Use the in-app play window from the asset library in that case.
             </p>
           </details>
           <details>
             <summary>Blank page in the browser but fine in the app?</summary>
             <p>
-              The build is not self-contained: from <code>file://</code> browsers refuse to execute <code>type="module"</code> scripts and cannot read sibling files. Ask the agent to keep <code>index.template.html</code> on inline classic scripts (no <code>type="module"</code>, no relative references).
+              The build is not self-contained: from <code>file://</code> browsers block <code>type="module"</code> scripts and relative sibling files. Ask the agent to keep <code>index.template.html</code> on inline classic scripts.
             </p>
           </details>
           <details>
             <summary>Black screen or shader errors?</summary>
             <p>
-              Start with the <code>smoke</code> field of <code>gameplay_job_status</code>: after a successful build the host runs the game once in a hidden window, and <strong>uncaught exceptions / load failures / an all-black screen / not a single rendered frame</strong> land in <code>smoke.errors</code>, while a frame that never changes lands in <code>smoke.warnings</code>. Hand that report to the agent for one more pass.
-            </p>
-            <p>
-              If the gate passes and only the visuals disappoint: complex custom WebGL (such as <code>dFdx</code>) is sensitive to WebGL1/2 extensions, so ask for standard Three materials instead. This is a prototyping path — the gate only guarantees that it runs and that pixels move, not that any shader looks good.
+              Check the <code>smoke</code> field of <code>gameplay_job_status</code>: headless Chromium smoke verification catches <strong>console/page errors, load failures, blank/black canvases and zero canvas frame-diff after simulated input</strong> in <code>smoke.errors</code> / <code>smoke.warnings</code>. Pass that report back to the agent to patch and rebuild.
             </p>
           </details>
           <details>
             <summary>What happened to the old "Playable HTML generation" / "Playable HTML" nodes?</summary>
             <p>
-              They are retired: game generation now happens in the chat. Legacy generation nodes are <strong>migrated into note nodes</strong> (keeping your brief text) that point you to the chat; legacy "Playable HTML" asset nodes still work (they render and can be double-clicked to play) but no longer appear in the right-click menu.
+              Game generation moved to the chat panel and MCP tools. Legacy generation nodes are migrated into note nodes preserving your prompt, while existing <code>gamePlay</code> assets remain playable from the library.
             </p>
           </details>
           <details>
-            <summary>How does this relate to finished videos?</summary>
+            <summary>Can external coding agents (Claude Code / Cursor / Codex) drive all these game tools?</summary>
             <p>
-              Loosely. Playable HTML is a <strong>lightweight gameplay prototype</strong>; short drama and ad deliverables still go through the node graph plus the timeline / director stage. See
-              <a href="manual-workflow.en.html#graph">§8 Node graph</a> and the
-              <a href="guide-short-video.en.html">short-drama guide</a>.
+              Yes — enable Settings → MCP Server and connect to <code>/mcp</code> to call <code>gameplay_prepare_project</code>, <code>gameplay_build</code>, <code>gameplay_job_status</code>, <code>game_one_sentence_create</code>, <code>game_ui_suite_create</code>, <code>game_playable_preview_compile</code> and <code>machinations_studio</code> directly. See the <a href="guide-mcp.en.html">MCP Setup Guide</a>.
             </p>
           </details>
         </section>
 
         <nav class="doc-pager" aria-label="Related docs">
-          <a href="manual-workflow.en.html#ai-workflow">← Manual · One-click workflow</a>
-          <a href="manual-workflow.en.html#graph">Manual · Node graph →</a>
+          <a href="guide-mcp.en.html">
+            <span class="pager-dir">Previous</span>
+            <span class="pager-title">← MCP Setup Guide</span>
+          </a>
+          <a href="developers.en.html">
+            <span class="pager-dir">Next</span>
+            <span class="pager-title">Developer Docs →</span>
+          </a>
         </nav>
       </article>
 

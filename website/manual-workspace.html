@@ -20,24 +20,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>工作区、AI 对话与资产库 · 使用手册（v8.9.1）— 多工程侧栏、24h 定时任务、技能市场与祈愿巫女 | AI Art Engine</title>
     <meta
       name="description"
-      content="工作区的顶栏、四栏面板与新建资产入口，AI 对话面板、技能系统与插件市场，以及资产库的浏览、筛选、右键操作与快捷键。"
+      content="AI Art Engine (AIArtEngine) v8.9.1 使用手册第 2 卷：多面板工作区布局、◈ AI 对话可展开多工程左侧边栏与内置工作区文件编辑器、零 Key 极速体验、00:00–23:59 全天候定时任务、技能市场（Skill Marketplace）、画布祈愿巫女与程序化天气（晴空/樱吹雪/极光/流星雨）及资产库管理。"
     />
-    <title>工作区与资产库 · 使用手册 — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI Art Engine 工作区, ◈ AI 对话多工程侧栏, 内置文件编辑器, 24h 定时任务自动化, 技能市场 Skill Marketplace, 祈愿巫女程序化天气, skill_install graph_edit task_run, 本地 AIGC 资产库"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="工作区与资产库 · 使用手册 — AIArtEngine" />
-    <meta property="og:description" content="工作区的顶栏、四栏面板与新建资产入口，AI 对话面板、技能系统与插件市场，以及资产库的浏览、筛选、右键操作与快捷键。" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="工作区、AI 对话与资产库 · 使用手册（v8.9.1）— AI Art Engine" />
+    <meta
+      property="og:description"
+      content="详解 ◈ AI 对话多工程侧边栏与内置文件编辑器、零 Key 极速体验、24 小时定时任务、技能市场、画布祈愿巫女天气系统及资产库操作。"
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="工作区与资产库 · 使用手册 — AIArtEngine" />
-    <meta name="twitter:description" content="工作区的顶栏、四栏面板与新建资产入口，AI 对话面板、技能系统与插件市场，以及资产库的浏览、筛选、右键操作与快捷键。" />
+    <meta name="twitter:title" content="工作区、AI 对话与资产库 · 使用手册（v8.9.1）— AI Art Engine" />
+    <meta
+      name="twitter:description"
+      content="详解 ◈ AI 对话多工程侧边栏与内置文件编辑器、零 Key 极速体验、24 小时定时任务、技能市场、画布祈愿巫女天气系统及资产库操作。"
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html" />
@@ -50,7 +62,61 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "工作区、AI 对话与资产库 · AI Art Engine v8.9.1 使用手册（第 2 卷）",
+            "description": "AI Art Engine v8.9.1 工作区完整指南：涵盖可停靠面板布局、◈ AI 对话多工程侧边栏与内置工作区文件编辑器、零 Key 极速体验、24 小时（00:00–23:59）定时自动化任务、技能市场（Skill Marketplace）、画布祈愿巫女与四种程序化天气及资产库管理。",
+            "inLanguage": "zh-CN",
+            "url": "https://justin-sky.github.io/ai-art-engine/manual-workspace.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/manual-workspace.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "首页",
+                "item": "https://justin-sky.github.io/ai-art-engine/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "使用手册",
+                "item": "https://justin-sky.github.io/ai-art-engine/manual.html"
+              },
+              {
+                "@type": "ListItem",
+                "position": 3,
+                "name": "工作区、AI 对话与资产库",
+                "item": "https://justin-sky.github.io/ai-art-engine/manual-workspace.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#manual">跳到手册正文</a>
@@ -121,14 +187,17 @@
         <ol>
           <li class="toc-group">基础</li>
           <li><a href="#workspace">5. 工作区</a></li>
-          <li><a href="#marketplace">5.7 插件市场</a></li>
+          <li><a href="#ai-chat">5.5 ◈ AI 对话与多工程侧栏</a></li>
+          <li><a href="#skills">5.6 技能（Skills）</a></li>
+          <li><a href="#marketplace">5.7 技能市场</a></li>
+          <li><a href="#schedules">5.8 定时任务（24h 自动化）</a></li>
           <li><a href="#assets">6. 资产库</a></li>
 
           <li class="toc-group">手册章节</li>
           <li><a href="manual.html">概述与核心概念</a></li>
-          <li><a href="manual-setup.html">工程与设置</a></li>
-          <li><a href="manual-workflow.html">一键工作流与节点图</a></li>
-          <li><a href="manual-production.html">剧本、成片与导演台</a></li>
+          <li><a href="manual-setup.html">工作区与设置</a></li>
+          <li><a href="manual-workflow.html">一键工作流与核心节点图</a></li>
+          <li><a href="manual-production.html">漫剧短剧、时间线与导演台</a></li>
           <li><a href="manual-reference.html">参考与故障排查</a></li>
         </ol>
       </aside>
@@ -136,24 +205,24 @@
       <article class="manual" id="manual">
         <header class="manual-hero">
           <p class="eyebrow">Manual · Workspace</p>
-          <h1>工作区与资产库</h1>
+          <h1>工作区、AI 对话与资产库</h1>
           <p class="lede">
-            工作区的顶栏、四栏面板与新建资产入口，AI 对话面板、技能系统与插件市场，以及资产库的浏览、筛选、右键操作与快捷键。
+            工作区的顶栏、可停靠面板布局与画布祈愿巫女天气系统，右侧 <code>◈ AI 对话</code> 面板的可展开多工程侧边栏、内置工作区文件编辑器、零 Key 极速体验与 24 小时定时任务，技能系统与技能市场（Skill Marketplace），以及资产库管理。
           </p>
         </header>
 
         <section id="workspace">
           <h2>5. 工作区</h2>
-          <p>打开工程后进入工作区（应用内导航名称为「工作区」）。界面为可拖拽停靠的多面板布局。</p>
+          <p>打开工作区（<code>workspace.json</code> / <code>project.json</code>）后进入主创作界面，采用可自由拖拽停靠的多面板布局。</p>
           <figure class="shot">
             <img
               src="assets/imgs/ui-layers.webp"
-              alt="工作区四栏面板：左栏大纲与对话、中栏节点图、右栏检视器、底栏资产库"
+              alt="工作区四栏面板：左栏大纲与工具、中栏节点图、右栏检视器与 AI 对话、底栏资产库"
               width="1600"
               height="860"
               loading="lazy"
             />
-            <figcaption>工作区四栏面板布局：顶栏、左侧大纲 / 对话、中间节点图或预览、右侧检视器与底部资产库。</figcaption>
+            <figcaption>工作区多面板布局：顶栏、左侧工具栏、中间节点图或 Dive 工作台、右侧检视器 / ◈ AI 对话与底部资产库。</figcaption>
           </figure>
 
           <h3>5.1 顶栏</h3>
@@ -161,14 +230,17 @@
             <li>未保存时标题旁显示 <code>*</code>；用 <kbd>Ctrl</kbd>+<kbd>S</kbd> 保存。</li>
             <li><strong>↶ / ↷</strong>：撤销 / 重做（亦可用快捷键）。</li>
             <li>
-              <strong>一键工作流</strong>：用预设或 AI 规划生成可复用宿主资产（见
+              <strong>一键工作流</strong>：用内置预设（如 <code>爆款视频拆解复刻</code>）或 AI 自然语言规划生成可复用宿主资产（见
               <a href="manual-workflow.html#ai-workflow">§7</a>）。
             </li>
             <li>
-              <strong>影视工作台</strong>：在节点图中双击 <code>film.workbench</code> 节点进入全屏 Dive 界面，集中完成分镜拆解、导演审核、角色场景设定与批量拍摄（见
-              <a href="manual-workflow.html#agent-pipeline">§7.5</a>）。
+              <strong>影视工作台</strong>：在节点图中双击 <code>film.workbench</code> 节点进入全屏 Dive 界面，一站式完成 21 题材五阶段闭环（分镜拆解 → 11 项导演审核 → 角色换装/场景/音色设定 → 批量拍摄质检 → 宣发包与成片导出，见
+              <a href="manual-production.html#film-workbench">§9</a>）。
             </li>
-            <li><strong>任务列表</strong>、<strong>执行日志</strong>：后台队列与模型调用日志。</li>
+            <li><strong>任务列表</strong>、<strong>执行日志</strong>：后台队列与模型 / MCP 工具调用日志。</li>
+            <li>
+              <strong>技能市场</strong>与<strong>设置</strong>：顶栏右侧「设置」齿轮左侧即为<strong>「技能市场」</strong>独立窗口入口（见 <a href="#marketplace">§5.7</a>）。
+            </li>
             <li>
               <strong>布局</strong>：切换默认布局、保存当前布局、导出/导入布局 <code>.json</code>、删除自定义布局。
             </li>
@@ -177,8 +249,8 @@
             提示：拖动标签可停靠到不同区域；标签右键可浮动、分离到新窗口或关闭相关标签。节点执行中不可关闭关键面板。
           </p>
 
-          <h3>5.2 四栏面板</h3>
-          <div class="table-scroll" role="region" aria-label="四栏面板说明" tabindex="0">
+          <h3>5.2 核心面板</h3>
+          <div class="table-scroll" role="region" aria-label="工作区面板说明" tabindex="0">
             <table>
             <thead>
               <tr>
@@ -192,20 +264,20 @@
                 <td>左侧窄栏，快捷新建各类资产草稿。</td>
               </tr>
               <tr>
-                <td>AI 对话</td>
-                <td>左侧窄栏底部「◈」按钮打开；应用内 AI 助手，可在对话中调用 MCP 工具（见 <a href="#ai-chat">§5.5</a>）。</td>
+                <td>工作区画布</td>
+                <td>中心编辑器；空态显示推荐流程与最近资产，打开资产后为多标签页，并支持拖入 <code>aiae:graph</code> 配方 PNG 原地展开工作流。</td>
               </tr>
               <tr>
-                <td>工作区</td>
-                <td>中心编辑器；空态显示推荐流程与最近资产，打开资产后为标签页。</td>
+                <td>◈ AI 对话</td>
+                <td>工作区右侧常驻 / 可展开的 Agent 协作中枢；自带可展开左侧边栏（多工程切换、会话历史、定时任务与工作区文件树）及内置文件编辑器（见 <a href="#ai-chat">§5.5</a>）。</td>
               </tr>
               <tr>
                 <td>资产</td>
-                <td>工程资产库浏览与管理。</td>
+                <td>工程资产库浏览、筛选、打包与跨目录拖拽管理。</td>
               </tr>
               <tr>
                 <td>参数</td>
-                <td>当前选中项的 Inspector 参数面板。</td>
+                <td>当前选中节点或 Dive 元素的 Inspector 参数面板。</td>
               </tr>
             </tbody>
             </table>
@@ -217,13 +289,12 @@
             <li>自由画布 · 宿主资产 · 剧本 · 世界元素 · 场 · 导演台 · 图片 · 视频 · 声音</li>
           </ul>
           <p>
-            空工作区推荐流程：<strong>剧本 → 场 → 节点生成</strong
-            >；也可快捷新建剧本、场、导演台，或双击最近资产打开。
+            空工作区推荐流程：<strong>一键工作流 / 技能市场 → 宿主资产 → 节点运行</strong>，或按影视创作流程新建剧本、影视工作台与 3D 导演台。
           </p>
 
-          <h3>5.4 右侧竖栏：资产 / 参数</h3>
+          <h3>5.4 右侧竖栏：资产 / 参数 / AI 对话</h3>
           <p>
-            工作区最右侧为 Rider 式竖栏，可分别展开或收起<strong>资产</strong>与<strong>参数</strong>面板（收起后不占中间布局宽度）。
+            工作区右侧为 Rider 式竖栏，可分别展开或收起<strong>资产</strong>、<strong>参数</strong>与<strong>◈ AI 对话</strong>面板（收起后不占中间画布宽度）。
           </p>
           <ul>
             <li>点击竖栏按钮切换对应侧栏显示。</li>
@@ -234,140 +305,101 @@
             <li>布局菜单保存的是展开几何；侧栏收起偏好单独记忆，不会把收起态写成零宽灰洞。</li>
           </ul>
 
-          <h3 id="ai-chat">5.5 AI 对话面板（全工作区对话直控）</h3>
+          <h3 id="ai-chat">5.5 ◈ AI 对话面板（多工程侧栏 · 内置文件编辑器 · 全工作区直控）</h3>
           <p>
-            左侧窄栏底部的 <strong>◈ AI 对话</strong> 打开应用内 AI 助手。它运行 DeepSeek Harness（dsh）
-            agent 运行时，实时感知左侧焦点编辑器（节点图、全部下钻 Dive 工作台、3D 导演台、成片时间线、剧本），并能调用应用自带的 <a href="guide-mcp.html">MCP 工具服务</a>——
-            <strong>所有手动可在画布、Dive 工作台或右侧 Inspector 参数面板中进行的操作，都可以直接在 AI 对话中用一句话完成</strong>。
+            点击工作区右侧的 <strong><code>◈ AI 对话</code></strong> 打开应用内原生 Agent 协作面板。它运行内置的 DeepSeek Harness（<code>dsh</code>）运行时，实时感知当前焦点编辑器（节点图、全部 Dive 专业工作台、Machinations v2 沙盘、3D 导演台、成片时间线、剧本），并直接调用本地 <strong>102 个 MCP 工具</strong>与实时联网搜索——
+            <strong>所有手动可在画布、Dive 工作台或 Inspector 中完成的操作，都可以在对话中用一句话驱动</strong>。
           </p>
           <ul>
-            <li><strong>全工作区感知与直控</strong>：无需学习复杂的节点参数名——无论是 3D 导演台物体的显示/隐藏/移动/旋转/缩放/摆姿/打关键帧（如「隐藏林小满，把镜头推近」），还是美颜精修、多角度机位、打光工作台、影视工作台、漫画排版的深层参数与预设切换（如「套用甜美写真预设，瘦脸调到 55」「把主光调暖一点并加上丁达尔体积光」），AI 都能自动定位当前焦点并实时驱动 UI 刷新。</li>
-            <li><strong>@ 引用资产</strong>：输入 <code>@</code> 弹出资产选择器，可把工程内图片 / 视频 / 声音 / 3D 模型
-              内联引用进指令（输入区会显示缩略图预览）。dsh 直接解析文本里的 <code>@路径</code>。</li>
-            <li><strong>调用生成工具</strong>：让助手「把 @bg.png 生成一张标题图存进工程」——它会调用
-              <code>generate_image</code> 等 MCP 工具，工具执行过程以卡片形式实时显示（生成中 / 完成 / 失败）。</li>
-            <li><strong>Ask / Plan / Craft 三档模式</strong>：面板支持切换只读问答（Ask）、沙箱规划（Plan）与全权执行（Craft），在安全可控与高效自动化之间自由切换。</li>
-            <li><strong>模型选择</strong>：面板底部可选用任一<strong>已配置密钥的文本模型</strong>（不限于 DeepSeek
-              官方）；选择会记住，下次打开沿用。</li>
-            <li><strong>多会话</strong>：输入框上方工具栏可新建 / 切换 / 删除会话，历史消息本地持久化。</li>
-            <li><strong>取消与状态</strong>：执行中可停止；dsh 的状态行与工具活动实时回显在面板中。</li>
             <li>
-              <strong>越界需授权</strong>：Agent 需要越过沙箱边界时，对话里会出现<strong>「需要你授权这一步」</strong>授权卡，
-              写明工具名与申请原因，只提供<strong>「允许一次」</strong>与<strong>「拒绝」</strong>两个选项。
-              授权<strong>只对这一次调用有效</strong>——应用刻意不提供「总是允许」，避免一次点击悄悄放宽 Agent 之后能跑的东西。
-              没有人能应答这条请求时（例如兜底的一次性执行路径），请求按<strong>失败即拒绝</strong>处理：它会被拒掉，绝不会默认放行。
+              <strong>⚡ 零 Key 极速体验（新手免配置入口）</strong>：在尚未填写任何 API Key 时，直接点击 <code>◈ AI 对话</code> 欢迎区的 <strong>「⚡ 零 Key 极速体验」</strong>，系统即刻在本地自动运行一套<strong>仙侠 RPG 装备界面拆解 + 3D 爆炸视图分层预览 → 导出原生可编辑 <code>TySh</code> 文本图层 <code>.psd</code> / Unity UGUI / Godot 4</strong> 的完整演示流水线。
+            </li>
+            <li>
+              <strong>可展开多工程左侧边栏与内置工作区文件编辑器</strong>：点击 <code>◈ AI 对话</code> 顶部的侧栏展开按钮，即可打开<strong>多工程管理侧边栏</strong>——支持在同一工作区（<code>workspace.json</code>）下新建或秒切不同子工程（<code>project.json</code>）、管理多条持久化对话会话、浏览工作区磁盘文件树，并直接在<strong>内置工作区文件编辑器</strong>中查阅与修改剧本、JSON 配置、Markdown 技能或脚本文件，无需切出应用。
+            </li>
+            <li>
+              <strong>全工作区感知与 MCP 工具直控</strong>：无论是安装并挂载市场工作流（调用 <code>skill_install</code>、<code>workflow_use_installed</code>）、增删连线编辑节点图并触发执行（调用 <code>graph_edit</code>、<code>task_run</code>）、运行本地离线 OCR 识别 UI 文字（调用 <code>vision_local_ocr</code>），还是操控 Machinations v2 经济沙盘仿真与曲线反推（调用 <code>machinations_studio</code>）或调度 3D 导演台机位灯光，工具执行进度均以实时状态卡片回显。
+            </li>
+            <li>
+              <strong><code>@</code> 引用资产与原生联网搜索</strong>：输入 <code>@</code> 弹出工程资产选择器（支持图片 / 视频 / 声音 / 3D 模型缩略图内联引用）；同时内置 <code>web_search</code> 与 <code>web_fetch</code> 工具，可结合 <a href="manual-setup.html#web-search">设置 → 联网搜索</a> 实时检索参考资料与竞品页面。
+            </li>
+            <li><strong>Ask / Plan / Craft 三档模式</strong>：自由切换只读问答（Ask）、沙箱规划（Plan）与全权执行（Craft），并与 MCP 的 <code>X-MCP-Mode</code> 权限模型严格对齐。</li>
+            <li><strong>任意 BYOK 文本模型选择</strong>：面板底部可选用任一已配置密钥的文本模型（OpenRouter、DeepSeek、Claude、GPT、Gemini、本地 Ollama 等），偏好自动记忆。</li>
+            <li>
+              <strong>越界需单次授权（Fail-Closed）</strong>：当 Agent 需要执行越过沙箱边界的操作时，对话内会弹出<strong>「需要你授权这一步」</strong>卡片，列明工具与原因，仅提供<strong>「允许一次」</strong>与<strong>「拒绝」</strong>（刻意不设「总是允许」）；无人应答的路径一律按失败即拒绝处理。
             </li>
           </ul>
           <div class="tip">
-            <strong>前提：</strong>AI 对话已内置 Node.js 运行时与 dsh 运行体，开箱即用、无需安装任何环境
-            （极少数特殊环境才会回退联网拉包）；另需至少一个已启用并填好密钥的文本模型；
-            未打开工程时仅可做纯对话。
+            <strong>开箱即用：</strong>应用已内置 Node.js 与 <code>dsh</code> 运行时，无需安装外部开发环境。「⚡ 零 Key 极速体验」免密钥即可运行；常规 AI 对话需至少启用一个文本模型。
           </div>
 
           <h3 id="skills">5.6 技能（Skills）</h3>
           <p>
-            AI 对话的 Agent 携带一套<strong>创作技能</strong>（来自应用内置的分镜 / 导演台能力，对话时自动注入）；
-            你也可以在<a href="#marketplace">插件市场</a>的<strong>「技能」页签</strong>里放入自己的技能，让助手具备专属的工作方法。
+            AI 对话的 Agent 携带一套<strong>创作技能</strong>（来自应用内置的分镜 / 游戏 UI / 数值 / 导演台专业规范，对话时自动注入）；
+            你也可以在<a href="#marketplace">技能市场</a>的<strong>「技能」页签</strong>里安装社区技能包或放入自定义技能。
           </p>
           <ul>
-            <li><strong>内置技能</strong>：影视与分镜拆解（剧本拆镜、角色场景设定、镜头调度与运镜提示词）、
-              导演审核（叙事连贯性 / 视觉质检）、系统创作（剧本、图生提示词、图片 / 视频生成、声音、情绪、灯光、
-              多角度、扩图、重绘、抠图、高清放大、界面图、界面拆分、世界提取、策划案、
-              肖像贴图、提示词优化、擦除）。程序自动管理，请勿手动修改。</li>
-            <li><strong>自定义技能</strong>：在<strong>插件市场 → 技能</strong>页签里「打开目录」，把符合
-              dsh SKILL.md 格式（frontmatter <code>name</code> / <code>description</code> + Markdown 正文）的
-              <code>.md</code> 文件放进技能目录（文件名用小写字母 + 连字符，如 <code>my-skill.md</code>），
-              下次对话自动生效；同一页签的「生成示例模板」可给出一份可用的写法参考。</li>
-            <li><strong>技能如何生效</strong>：技能清单以 <code>&lt;available_skills&gt;</code> 注入对话上下文，
-              Agent 判断任务匹配时按需加载技能文件作为指令——技能告诉它流程与规范（怎么做），
-              MCP 工具负责真正动手（生成图片、跑工作流），两者配合才能「说到做到」。</li>
-            <li>节点图节点使用同一套技能定义节点行为；API 调用日志中会标注节点所用的技能。</li>
+            <li><strong>内置技能</strong>：涵盖 21 题材影视分镜拆解、11 项导演连贯性审核、游戏 UI 拆层与图集组装、Machinations 经济建模、爆款视频四轴取证，以及图生提示词、多角度机位、打光、美颜精修、扩图重绘等系统创作规范（程序自动维护，请勿手动改动）。</li>
+            <li><strong>自定义技能</strong>：在<strong>技能市场 → 技能</strong>页签点击「打开目录」，放入符合 <code>SKILL.md</code> 规范（frontmatter <code>name</code> / <code>description</code> + Markdown 正文，文件名小写连字符如 <code>my-skill.md</code>）的文档，下次对话自动生效；可点「生成示例模板」快速起步。</li>
+            <li><strong>技能与 MCP 工具协同</strong>：技能清单通过 <code>&lt;available_skills&gt;</code> 按需注入上下文——技能定义领域 SOP（怎么做），而 <code>graph_edit</code>、<code>workflow_use_installed</code>、<code>task_run</code> 等 MCP 工具负责实际落盘与执行。</li>
             <li>
-              <strong>技能包</strong>：从<a href="#marketplace">插件市场</a>安装工作流时可能随包附带技能包。它会在市场的
-              <strong>技能</strong>页签里列出，来源标记为<strong>「技能包」</strong>；它跟着所属工作流走，
-              <strong>卸载那条工作流时会一并删除</strong>，因此不是可以单独管理的产物。
+              <strong>随工作流附带的技能包</strong>：从<a href="#marketplace">技能市场</a>安装工作流时若附带技能包，会在「技能」页签标注来源为<strong>「技能包」</strong>，生命周期跟随所属工作流（卸载工作流时一并清理）。
             </li>
           </ul>
-          <div class="tip">
-            <strong>技能 vs 工具：</strong>技能是「职业手册」，工具是「手脚」。例如说
-            「用影视全流程把这段剧本拆成带角色设定与运镜的分镜表」——技能提供专业流程（拆镜 → 审核 → 定妆 → 拍摄），
-            生成动作由工具执行。
-          </div>
 
-          <h3 id="marketplace">5.7 插件市场（Plugin Marketplace）</h3>
+          <h3 id="marketplace">5.7 技能市场（Skill Marketplace）</h3>
           <p>
-            顶栏「设置」左边的<strong>「插件市场」</strong>打开一个<strong>独立窗口</strong>：MCP 服务、技能与工作流都在这里安装。
-            它是<strong>应用级入口</strong>——不需要先打开工程；窗口是<strong>单例</strong>，再点一次只会把已经开着的窗口聚焦到前台。
+            顶栏右上角「设置」左侧的<strong>「技能市场」</strong>打开一个<strong>独立单例窗口</strong>：官方与社区发布的<strong>工作流包、领域技能包与第三方 MCP 服务</strong>都在此一站式浏览与安装（无需先打开工程即可访问）。
           </p>
           <p>
-            页签为 <strong>全部 / MCP / 技能 / 工作流</strong>。每次打开窗口都会<strong>强制刷新</strong>工作流目录，
-            所以刚发布的工作流重开窗口就能看到，不必等缓存过期；刷新失败时会<strong>保留上一次读到的列表</strong>并给一句软提示，
-            不会把市场显示成空的。目录有两个来源：官方主源（GitHub raw）与 Gitee 镜像，按顺序尝试、失败自动降级，
-            窗口顶部会说明当前读到多少条（切到镜像时提示「主源不可达，已切换到镜像」），离线时提示显示的是上次缓存的目录。
-          </p>
-          <p>
-            想自己发布工作流 / 技能包？见<a href="developers.html">插件市场开发者文档</a>。
+            窗口包含 <strong>全部 / MCP / 技能 / 工作流</strong> 四个页签。每次打开都会自动刷新目录（GitHub 官方主源 + Gitee 国内镜像自动降级切换，离线或刷新失败时保留本地缓存目录并给出轻提示）。想自己打包发布工作流与技能包？请参阅 <a href="developers.html">技能市场开发者文档</a>。
           </p>
           <h4>安装、更新与卸载</h4>
           <ul>
             <li>
-              工作流卡片上直接带 <strong>安装 / 更新 / 重新安装 / 卸载</strong> 与 <strong>详情</strong>；
-              已安装的条目会标出状态，有新版本时显示「有更新」。
+              卡片直接提供 <strong>安装 / 更新 / 重新安装 / 卸载</strong> 与 <strong>详情</strong>（也可在对话中让 Agent 调用 <code>skill_install</code> 安装）；有新版本时自动标记「有更新」。
             </li>
             <li>
-              卸载走应用自己的确认框；确认后<strong>本地已装的文件会被删除</strong>。如果这条工作流还带了技能包，
-              卸载时会<strong>一并移除</strong>它装下的技能。
+              卸载经应用确认框二次确认后删除本地文件；若工作流附带技能包则同步移除。
             </li>
-            <li>市场只负责「装到本机」：装好的工作流在 <a href="#ai-chat">AI 对话</a>里使用（见下）。</li>
           </ul>
-          <h4>含技能的条目与脚本同意</h4>
+          <h4>脚本透明披露与显式同意</h4>
           <ul>
             <li>
-              一条工作流可以<strong>随包附带技能包</strong>：卡片上标<strong>「含技能」</strong>，包里还有脚本时标
-              <strong>「含技能 · 含脚本」</strong>——装之前就能看到。
+              附带技能或可执行脚本的工作流会在卡片上醒目标注<strong>「含技能」</strong>或<strong>「含技能 · 含脚本」</strong>。
             </li>
             <li>
-              技能包里的脚本是<strong>AI agent 可以在这台机器上跑起来的代码</strong>，因此只有在你明确同意时才会写入：
-              安装前会弹确认框，<strong>逐条列出每一个脚本路径</strong>，并说明这些脚本的性质。点「确定」写入脚本；
-              点「取消」则只安装说明书与 references，脚本不落盘——<strong>工作流照常可用</strong>。
-            </li>
-            <li>这份同意<strong>每次都问</strong>：应用不会记住「以后都允许」。</li>
-            <li>
-              装好的技能包同时出现在市场的<strong>技能</strong>页签里（来源标记为<strong>「技能包」</strong>），
-              AI 对话的 Agent 可以直接加载使用。它跟着所属工作流走：<strong>卸载那条工作流会一并删除它</strong>，
-              不是可以单独管理的产物。
+              凡含本地脚本的包，安装前必弹出确认框<strong>逐条列出脚本路径与用途</strong>：点「确定」才写入脚本；点「取消」仅安装 Markdown 规范与参考资料（脚本不落盘，<strong>节点工作流本体照常可用</strong>）。每次安装/更新均重新询问，绝不静默放行。
             </li>
           </ul>
-          <h4>MCP 页签</h4>
+          <h4>在 AI 对话与一键工作流中使用</h4>
           <ul>
             <li>
-              内置 <strong>MCP 工具服务</strong>（<code>aiartengine</code>）与 <strong>Blender 工具集</strong>的查看入口，
-              详见 <a href="manual-setup.html#settings">§4.5</a> 与 <a href="guide-mcp.html">MCP 接入教程</a>。
+              在 <code>◈ AI 对话</code> 输入框上方点击<strong>「技能」</strong>按钮或输入 <code>/skills</code>，选中已安装条目即可插入胶囊引用块；发送后 Agent 调用 <code>workflow_use_installed</code> 按 ID <strong>1:1 精确复现</strong>整张工作流，而非重新猜测拓扑。
             </li>
             <li>
-              也可以<strong>添加第三方 MCP 服务</strong>：HTTP（远程）填服务地址与请求头，stdio（本地命令）填命令、参数与环境变量；
-              保存前可「测试连接」，直接看到能发现多少个工具。stdio 会在本机执行第三方程序，只添加你信任来源的服务。
+              在<strong>技能市场 → MCP</strong> 页签中，还可直接查看内置 <code>aiartengine</code>（93 工具）与 <code>blender</code>（9 工具）状态，或添加/测试第三方 HTTP 与本地 stdio MCP 服务。
             </li>
           </ul>
-          <h4>在 AI 对话里使用已安装的技能</h4>
+
+          <h3 id="schedules">5.8 定时任务（24 小时无人值守自动化）</h3>
+          <p>
+            v8.9.1 内置全天候 <strong>24 小时（<code>00:00–23:59</code>）定时任务（Scheduled Automations）</strong>调度器，支持在指定时间点或周期自动唤醒 <code>◈ AI 对话</code> Agent 与已安装工作流，实现无人值守的日常内容生产与巡检：
+          </p>
           <ul>
-            <li>
-              入口有两个：AI 对话输入框上方工具栏的<strong>「技能」</strong>按钮，或直接输入 <code>/skills</code>。
-            </li>
-            <li>
-              选中一条工作流后，输入框里插入的是一个<strong>引用块</strong>（图标 + 标题的胶囊），而不是把标题 / id / 简介
-              摊成一段文字；悬停可以看到<strong>含 id 的完整引用</strong>。
-            </li>
-            <li>
-              发送时 Agent 按 <strong>id</strong> 调用这条已安装的工作流（<code>workflow_use_installed</code>），
-              <strong>精确复现</strong>它，而不是重新规划一个相似的东西。
-            </li>
+            <li><strong>全时段精确调度</strong>：支持在 <code>00:00–23:59</code> 任意分钟级时间窗设置每日定时或周期触发规则（例如凌晨自动抓取热点文案 → 调用 <code>short-drama</code> 跑出分镜初稿、定时批量拉取竞品视频执行 <code>rea-video</code> 四轴取证拆解、或夜间批量渲染多语言电商变体）。</li>
+            <li><strong>绑定工作区、模型与技能</strong>：每条定时任务独立绑定目标工作区 / 子工程（<code>project.json</code>）、执行模型与自然语言指令（可携带 <code>/skills</code> 工作流引用）。</li>
+            <li><strong>启停控制与运行审计</strong>：在 <code>◈ AI 对话</code> 侧边栏的定时任务视图中可随时新建、暂停/启用、立即试跑一次或删除任务；每次自动触发的会话记录、节点产出与工具审计日志均完整落盘，次日打开工作区即可直接审阅成片。</li>
           </ul>
-          <div class="tip">
-            <strong>两道闸：</strong>安装时的脚本同意解决的是「代码会不会落盘」；Agent 运行时真正要越过沙箱边界时还有第二道闸——
-            对话里的<strong>「需要你授权这一步」</strong>授权卡，只有「允许一次 / 拒绝」，没有「总是允许」，
-            无人应答的路径按失败即拒绝处理（见 <a href="#ai-chat">§5.5</a>）。
-          </div>
+
+          <h3>5.9 画布祈愿巫女与程序化天气系统</h3>
+          <p>
+            为了让高强度的节点编排与等待渲染过程更具沉浸感与陪伴感，工作区节点画布内置了可交互的<strong>祈愿巫女（Wish Maiden）</strong>与实时<strong>程序化天气渲染层</strong>：
+          </p>
+          <ul>
+            <li><strong>祈愿巫女（<code>祈愿巫女</code>）</strong>：驻留在画布角落的看板伙伴（支持点击互动抽签祈愿，祈求「抽卡不崩脸、一次过审、渲染秒出」，亦可在画布外观开关中随时隐藏或开启）。</li>
+            <li><strong>四种程序化天气氛围</strong>：支持在画布工具栏一键切换 <strong>晴空（Sunny）</strong>、<strong>樱吹雪（Sakura Snow）</strong>、<strong>极光（Aurora）</strong> 与 <strong>流星雨（Meteor Shower）</strong> 四套轻量级 GPU/Canvas 程序化粒子与光影天气，渲染开销极低且绝不遮挡节点连线与端口交互。</li>
+          </ul>
         </section>
 
         <section id="assets">

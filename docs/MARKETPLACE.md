@@ -1,332 +1,179 @@
-# 技能市场开发者文档
+# 技能市场开发者文档（v8.9.1）
 
-> **本文同时发布在官网**：<https://justin-sky.github.io/ai-art-engine/developers.html>
-> （源码 `website/developers.html` / `developers.en.html`，中英两版）。
-> 站点是**手写静态页、没有 md → html 构建步骤**，所以改内容要**两处一起改** ——
-> 与本仓库里中英两版手册同理。这一份随代码走查、供贡献者就近查阅；
-> 站点那份是给外部发布者看的（应用内市场窗口右上角的「开发者文档」按钮指向它）。
+> **本文同步发布在官网**：<https://justin-sky.github.io/ai-art-engine/developers.html>（源码 `website/developers.html` / `website/developers.en.html`，中英双语静态页，无构建转换步骤；修改客户端契约时请同步更新）。
 
-面向**往技能市场发布内容或接入 Claude Code 技能**的开发者：市场里有什么、内容长什么样、怎么被校验与分发、
-客户端拿到之后会做什么。作者侧的逐字段写作规范在仓库里（见下方「内容仓库」），
-本文讲的是**客户端契约**、**Claude Code 技能规范支持**与**交付链路**——那部分只有在应用侧才能看到。
+面向**往技能市场发布工作流/技能包或接入 Claude Code 技能**的开发者：市场里有什么、内容如何被校验与分发、桌面端拿到后会执行哪些安全门禁与物化动作。作者侧逐字段写作规范见内容仓库 `CONTRIBUTING.md`，本文聚焦**桌面客户端契约、Claude Code `SKILL.md` 规范支持与 MCP 技能工具链**。
 
-> 相关的客户端实现在 `src/shared/claudeSkill.ts`（Claude Code 技能规范与 frontmatter 解析）、
-> `src/main/services/claudeSkillRuntime.ts`（变量展开、`` !`cmd` `` 预处理、hooks / fork 子代理 / allowed-tools 治理）、
-> `src/main/services/githubSkillInstaller.ts`（GitHub 技能直装）、
-> `src/shared/graph/nodeCapabilities.ts`（画布节点原生能力定义）、
-> `src/shared/skillMarket.ts`（市场条目契约与解析）、
-> `src/main/services/marketPipeline.ts`（下载 / 缓存 / 原子安装）、
-> `src/main/services/skillMarketService.ts`（目录、兼容性、安装记账）、
-> `src/renderer/src/views/MarketplaceView.vue`（界面）。
+> **核心客户端实现路径**：
+>
+> - `src/shared/claudeSkill.ts`（Claude Code `SKILL.md` 规范与 frontmatter 解析）
+> - `src/main/services/claudeSkillRuntime.ts`（参数展开、`` !`cmd` `` 预处理、hooks / `fork` 子代理 / `allowed-tools` 治理与内置节点能力桥）
+> - `src/main/services/githubSkillInstaller.ts`（任意 GitHub 仓库/子目录/`SKILL.md` 联网检索、预检与直装）
+> - `src/shared/graph/nodeCapabilities.ts`（画布节点原生能力 `NodeCapabilityDef` 目录）
+> - `src/shared/skillMarket.ts`（市场索引与工作流包契约校验）
+> - `src/main/services/marketPipeline.ts`（主镜像源回退下载、磁盘缓存、staging → rename 原子安装）
+> - `src/main/services/skillMarketService.ts`（官方市场目录拉取、节点类型兼容性拦截、安装记账与卸载）
+> - `src/main/services/mcpServerService.ts`（6 个 MCP 技能与模板工具：`skill_list`、`skill_search`、`skill_inspect_github`、`skill_install`、`skill_uninstall`、`workflow_use_installed`）
+> - `src/renderer/src/views/MarketplaceView.vue`（独立技能市场窗口界面）
 
 ---
 
 ## 1. 市场里有什么
 
-技能市场是一个**独立窗口**（顶栏「技能市场」按钮打开，紧挨「设置」左边），分三个页签：
+技能市场是一个**独立窗口**（顶栏「技能市场」按钮打开，紧挨「设置」左侧），分为三个页签：
 
-| 页签     | 内容                                                                                                                                                 | 托管位置                                                 |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| **全部** | MCP 服务与全部技能混排展示，支持搜索与顶部 GitHub 技能直装                                                                                           | —                                                        |
-| **MCP**  | 内置 `aiartengine` 工具服务、Blender 工具面，以及用户自己添加的第三方 MCP 服务（http / stdio）                                                       | 应用内 + 用户本地配置                                    |
-| **技能** | **官方/社区市场技能**（可附带 `workflow.json` 画布模板）、**GitHub 直装技能**、**项目级技能**（`.claude/skills` / `.agents/skills`）、**自定义技能** | 内容仓库 + GitHub 任意仓库 + 工作区 + `$DSH_HOME/skills` |
+| 页签     | 内容                                                                                                                                                                 | 托管位置                                                                    |
+| :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------- |
+| **全部** | MCP 服务与全部技能混排展示，支持关键词过滤与顶部 GitHub 技能直装栏                                                                                                   | —                                                                           |
+| **MCP**  | 内置 `aiartengine` 主服务（93 工具）、Blender 实时建模桥 `/mcp/blender`（9 工具），以及用户添加的第三方 MCP 服务（`http` / `stdio`）                                 | 应用内建 + 用户本机配置                                                     |
+| **技能** | **官方/社区市场技能**（可附带 `workflow.json` 画布模板）、**GitHub 直装技能**、**工程级技能**（`<workspace>/.claude/skills` · `.agents/skills`）、**个人自定义技能** | `ai-art-engine-skills` 仓库 + GitHub 任意仓库 + 工作区 + `$DSH_HOME/skills` |
 
-为什么只有三个页签、且不再有「内置节点技能」？
+为什么只有三个页签、且不再将内置节点写成独立 `.md` 技能文件？
 
-- **内置技能已重构为画布节点原生能力**：旧版曾把 40+ 个画布节点的默认系统提示词与用法写成 `.md` 文件铺在 `$DSH_HOME/skills/` 下。重构后，节点的生成能力（`defaultSystemPrompt`、`usage`、`inputBindings` 等）全部收归为节点自身定义（`src/shared/graph/nodeCapabilities.ts`），由 MCP `graph_node_types` 直接向 Agent 暴露，不再混入技能目录。
-- **工作流与技能合流为「技能」页签**：远端市场仓库里的条目本质上是「给 Agent 看的操作手册（`SKILL.md`）+ 可选的一键工作流画布模板（`workflow.json`）」。安装后，条目既能在画布「新建 → 一键工作流」里复现节点图，也会把技能包落盘到 `$DSH_HOME/skills/<skill.name>/`，在「技能」页签中统一管理（不重复渲染两张卡片）。
+- **画布节点能力已内聚为 `NodeCapabilityDef`**：节点的默认系统提示词、用法与端口输入绑定统一声明在节点自身定义（`src/shared/graph/nodeCapabilities.ts`），由 MCP `graph_node_types` 与运行时自省引擎直接向 Agent 暴露，不再平铺污染 `$DSH_HOME/skills/`。
+- **工作流模板与技能包合流管理**：远端市场仓库里的条目本质上是「给 Agent 阅读的领域操作手册（`SKILL.md`）+ 可选的一键画布种子拓扑（`workflow.json`）」。安装后既可在画布「一键工作流」或 MCP `workflow_use_installed` 中复现拓扑，也会把技能落盘到 `$DSH_HOME/skills/<skill.name>/`，在「技能」页签一张卡片统一管理。
 
-### 内容仓库
+### 内容仓库（双源逐字节镜像）
 
-- 主源：`https://github.com/Justin-sky/ai-art-engine-skills`（raw 路径 `/main`）
-- 镜像：`https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-skills`（raw 路径 `/main`）
+- **主源（GitHub）**：`https://github.com/Justin-sky/ai-art-engine-skills`（raw 路径 `/main`）
+- **国内镜像（Gitee）**：`https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-skills`（raw 路径 `/main`）
 
-两个仓库的**内容必须逐字节一致**——不一致会造成「同一版本号、不同内容」，
-这是最难排查的一类状态。同步方式见仓库 README。
-
-作者侧的字段规范、审核标准、逐条拒绝原因在内容仓库的 `CONTRIBUTING.md`；
-目录结构、`workflow.json` 各字段含义在同仓库 `README.md`。**本文不重复那份规范**，
-只讲它没覆盖的客户端行为。
+两个仓库的内容**必须逐字节一致**，避免出现「同一版本号在不同网络源下装出不同内容」的隐蔽故障。
 
 ---
 
-## 2. 交付链路：一步都不能省
+## 2. 交付链路与工作流/技能解耦架构
 
-```
-贡献者提交 workflows/<id>/{workflow.json, cover.png, skill/**}
-   ↓  CI 校验（validate.mjs + 单测）
-   ↓  build-index.mjs 从磁盘派生 index.json（含技能文件清单）
-客户端拉 index.json（先主源，失败降级镜像）
-   ↓  用户点「安装」
-下载 workflow.json + cover.png（+ 技能文件）
-   ↓  原子安装（staging → rename，失败不留半成品）
-<userData>/workflows/<id>/            画布模板本体
-   ↓  同一次安装内
-$DSH_HOME/skills/<skill.name>/        技能包（随条目一起落盘）
+```text
+贡献者提交 workflows/<id>/{workflow.json, cover.png, skill/**} 至 ai-art-engine-skills
+   ↓  CI 门禁校验（node scripts/validate.mjs + 单测）
+   ↓  node scripts/build-index.mjs 从磁盘自动派生 index.json（含技能文件清单与代码摘要）
+客户端 skillMarketService.ts 拉取 index.json（优先 GitHub 主源，超时无缝降级 Gitee 镜像）
+   ↓  用户在技能市场点「安装」或 Agent 调用 MCP skill_install({ marketId })
+marketPipeline.ts 下载 workflow.json + cover.png（+ 技能文件清单）至 staging 临时目录
+   ↓  校验 SKILL.md frontmatter 与节点兼容性后原子 rename 落盘
+<userData>/workflows/<id>/            画布工作流模板本体 + installed.json 记账
+   ↓  同一次原子事务内
+$DSH_HOME/skills/<skill.name>/        技能包（wf-<id>）落盘
    ↓
-Agent 下次对话扫到该技能 → 注入 <available_skills> → 按需加载 / 斜杠调用
+Agent 当轮直接拿到 instructions（或下轮扫描注入 <available_skills>）+ workflow_use_installed 装载画布
 ```
 
-### 2.0 官方那 15 条的 `plan` 是**导出**的，不是手写的
+### 2.0 桌面内核轻量化：内置种子预设 vs 独立技能仓库
 
-应用内置的一键工作流预设（`src/shared/graph/aiWorkflowPresets.ts`）与市场上官方那 15 条
-（`game-ua-video` … `anim2d-gif`）是**同一张图的份拷贝**。既然市场要能独立分发、内置预设又要
-离线可用，两份就都得在 —— 但**不能靠人手同步**：
+在 `v8.9.1` 架构中，应用彻底移除了早期硬编码在客户端里的十余条行业预设大表与旧同步脚本，确立了清晰的职责边界：
 
-```bash
-npm run export:market        # 由内置预设生成各 workflow.json 的 plan 与 requires.nodeTypes
-npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑：拉市场仓库后核对）
-```
+1. **桌面端内置仅保留双节点视频拆解复刻种子（`builtin.video-breakdown-remake`）**：
+   - 定义于 `src/renderer/src/features/aiWorkflow/presets.ts`（`semantic.analyze` → `semantic.rebuild` 两节点直连拓扑），保证离线开箱即可运行核心视频逆向取证与复刻管线（另有免 Key 交互样板间位于 `src/shared/chatShowcaseStarters.ts`）。
+2. **官方与社区行业工作流/技能包全部独立托管于 `ai-art-engine-skills`**：
+   - 所有行业模板（如漫剧短片、古画一镜入画 `ancient-scroll-revive`、鬼畜调音 `guichu-remix`、游戏资产管线等）均以独立版本包形态维护在 `ai-art-engine-skills` 仓库中，无需发版升级桌面安装包即可随时迭代上新。
+   - **创作与导出闭环**：开发者在画布搭好工作流后，右键选择 **「导出为市场工作流」**，填好元数据与封面即可生成干净的 `workflows/<id>/{workflow.json, cover.png}`（自动剥离运行时临时回写字段与未声明参数）；随后在 `ai-art-engine-skills` 仓库执行 `node scripts/build-index.mjs && node scripts/validate.mjs` 即可提交发布。
+3. **MCP 全生命周期工具链直通**：
+   - Agent 在对话中可通过 `skill_list`、`skill_search`、`skill_inspect_github`、`skill_install`、`skill_uninstall` 全自动检索与装卸技能，并通过 `workflow_use_installed` 的三种模式灵活消费模板：
+     - `mode: "seed"`（默认）：一键将种子节点与完整连线落入当前画布并自动排版；
+     - `mode: "merge"`：多技能跨界混搭——保留当前画布已有节点，自动为新节点加前缀消歧并汇聚连入同一个 `output.timeline`；
+     - `mode: "blueprint"`：纯只读返回 `plan` 拓扑与 `SKILL.md` 正文，供 Agent 用 `graph_edit` 自由裁剪重组。
 
-- 只写 `plan` 与 `requires.nodeTypes` 两个字段（前者是内容，后者是它的派生值 —— 市场校验器
-  要求两者一致）。元数据、封面、`skill/` 全部保持手写，一个字节都不碰。
-- 市场仓库在 `../ai-art-engine-skills`，可用 `--dir <path>` 或 `AAE_WORKFLOW_MARKET_DIR` 指定；
-  CI 里是临时 clone 一份再 `--check`。
-- 因此**改官方工作流的图要改应用预设**，再导出；直接改市场那侧的 `plan` 会被判为漂移。
-  第三方工作流没有内置预设：在画布上右键**「导出为市场工作流」**，填好元数据与封面，
-  应用会把当前图写成 `workflows/<id>/{workflow.json, cover.png}`（`requires.nodeTypes` 由 plan
-  派生，运行时写回字段与节点类型没声明过的参数一律不进包）；导出完成后按提示到仓库里跑
-  `node scripts/build-index.mjs && node scripts/validate.mjs`。内置预设占用的市场 id（那 15 条）
-  会被拒绝导出 —— 它们的 `plan` 只能来自预设。
+### 2.1 `index.json` 的派生字段必须由脚本生成，严禁手改
 
-没有这道检查时的失败形态值得写下来：内置「一键工作流」和市场装出来的工作流会**同名同版本、
-却是两张不同的图**，而两边都不报错 —— 用户只会以为模型不稳定。
+`ai-art-engine-skills` 仓库 `index.json` 中的以下字段全部由 `scripts/build-index.mjs` 从磁盘自动计算派生：
 
-### 2.1 索引里的**派生字段**由脚本生成，贡献者不要手写
-
-`index.json` 里这些字段全部由 `scripts/build-index.mjs` 从磁盘派生：
-
-- `requires.nodeTypes`（该工作流用到哪些节点类型）、`requires.appMinVersion`
+- `requires.nodeTypes`（由 `plan.nodes[].typeId` 去重排序派生）与 `requires.appMinVersion`
 - `nodeCount` / `edgeCount` / `sizeBytes`
-- **`skill`**：技能包的名字、描述、是否含脚本、**文件清单**、整包体积
+- `hasExecutableCode` 与 `script.run` 节点摘要（节点 key、能力白名单、字符数、FNV-1a 短哈希）
+- **`skill`**：技能包名称、描述、`hasScripts` 标记、**逐文件相对路径与字节数清单**、整包体积
 
-最后一项尤其关键，原因值得写下来：
+> **为什么文件清单必须服务端脚本派生？** GitHub / Gitee 的 `raw` 静态源没有目录列表 API，客户端必须预先拿到精确的文件路径列表才能逐个拉取；由 `build-index.mjs` 从磁盘派生并在 CI 用 `--check` 强校验，可以从根源上消灭「手写清单与实际磁盘文件漂移」故障。
 
-> **raw 源没有目录列表 API。** 客户端必须先知道**每个文件的路径**才能逐个下载，
-> 所以技能包的文件清单只能由服务端（仓库脚本）派生。把清单交给脚本从磁盘生成，
-> 就**不可能出现「清单与磁盘漂移」**——而这正是手写清单必然发生的故障。
+### 2.2 附带画布模板的市场技能包强制使用 `wf-` 前缀
 
-`workflow.json` 里**不写技能文件清单**，只靠「`skill/SKILL.md` 是否存在」这一事实
-作为声明。CI 会比对索引与磁盘派生结果，手改索引会被拒。
+市场技能包与用户从 GitHub 直装的通用 Claude Code 技能共享同一个落地根目录 `$DSH_HOME/skills/<name>`。因此，`ai-art-engine-skills` 仓库中随工作流分发的技能包强制要求 `SKILL.md` frontmatter 的 `name` 为 **`wf-<id>`**，从源头杜绝与通用技能命名冲突。
 
-### 2.2 市场附带画布模板的技能包为什么要带 `wf-` 前缀
+### 2.3 技能包目录布局与体积硬顶
 
-技能包落地目录是 `$DSH_HOME/skills/<name>`，与用户从 GitHub 直装的 Claude Code 技能、本地自定义技能共享同一个目录。
-因此，`ai-art-engine-skills` 仓库里随画布模板分发的技能包强制将 `name` 命名为 **`wf-<id>`**，从源头避免与通用 Claude Code 技能重名。
-仓库校验器逐条拦这件事。
-
-### 2.3 技能包文件布局
-
-```
+```text
 workflows/<id>/skill/
   SKILL.md          必需。frontmatter: name(wf-<id>) / description / workflow: <id>
-  references/       可选。端口与参数速查、长契约、示例
-  scripts/          可选。见 §4
-  assets/           可选
+  references/       可选。端口与参数速查、领域长契约、提示词配方
+  scripts/          可选。需经 §4 用户明示同意流方可落盘
+  assets/           可选。静态模板资源
   examples/         可选（GitHub 直装 Claude Code 技能同样支持）
   templates/        可选（GitHub 直装 Claude Code 技能同样支持）
 ```
 
-- 只允许上面列出的标准子目录；不允许符号链接。
-- 单文件 ≤ 128KB，整包 ≤ 512KB，文件数 ≤ 40（客户端**逐个下载**，不能没有天花板）。
-- `description` ≤ 500 字符：技能目录会截断它，而**它是 Agent 决定是否加载这份技能
-  之前唯一能看到的东西**——请写成「什么时候该加载它」，而不是功能罗列。
+- 严禁符号链接与越界相对路径；仅允许上述白名单子目录。
+- 单文件 `≤ 128 KB`，整包总计 `≤ 512 KB`，文件总数 `≤ 40`（保障逐文件 HTTP 拉取稳定快速）。
+- `description` `≤ 500` 字符：**它是 Agent 在决定是否加载该技能前唯一能看到的摘要**，请聚焦描述「何时应当触发加载本技能」。
 
-### 2.4 正文里提到的节点类型必须真实存在
+### 2.4 技能正文引用的节点命名空间与 `typeId` 真实性校验
 
-仓库校验器会检查技能正文里**反引号包裹的 `x.y` 记号**：若 `x` 是已知节点命名空间
-（`asset` / `image` / `play` / `ui` / `model` / `spatialWorld` / `frame` / `note` / `beat` /
-`episode` / `anim` / `comic` / `svg` / `video` / `voice` / `media` / `output` / `graph` /
-`prompt` / `decisions` …），则该记号必须是**真实节点类型**。
+仓库校验器（`validate.mjs`）会扫描 `SKILL.md` 及 `references/*.md` 中所有**反引号包裹的 `x.y` 代码记号**：只要前缀 `x` 属于已知节点命名空间，该记号就必须是当前引擎真实注册的 `typeId`（或本工作流 `plan` 已声明的节点类型）。
 
-为什么值得单独一条：技能是写给 Agent 的**操作手册**，它会照着里面的 `typeId` 去
-`graph_edit` 建图。编一个不存在的类型（`asset.pic` 之类），Agent 就会写出一张坏图，
-**而运行时没有任何兜底会报出来**——只会表现为「工作流莫名其妙不跑」。
-按命名空间过滤是为了不误伤 `cover.png` / `references/ports.md` / `SKILL.md` 这类写法。
-参数名请**单独**用反引号写（如 `generateAspectRatio`），不要写成 `type.param` 的点号形式。
+`v8.9.1` 覆盖的节点命名空间体系包括：
 
-### 2.5 Claude Code 技能规范支持与 GitHub 直装
+- **影视漫剧与叙事**：`film.*`（如 `film.workbench`、`film.breakdown`、`film.review`、`film.cast`、`film.shot`、`film.render`）、`novel.*`（`novel.outline`）、`comic.*`（`comic.page`）
+- **游戏工业与数值沙盘**：`game.*`（`game.economy`、`game.numerical`、`game.pbrTile`、`game.spriteProp`、`game.vfxAlpha`、`game.audioDsp`、`game.levelMap`）、`gameplay.*` / `play.*`
+- **游戏 UI 拆层与图集拼装**：`ui.*`（`ui.split`、`ui.gen`、`ui.componentLib`、`ui.atlasCompose`）
+- **视频取证复刻与可执行脚本**：`semantic.*`（`semantic.analyze`、`semantic.rebuild`、`semantic.compile`）、`script.*`（`script.run`）
+- **2D 骨骼舞台、3D 导演台、模型加工与空间世界**：`stage.*`（`stage.2d`）、`director.*`（`director.stage`）、`model.*` / `model3d.*`（`model.rigSkin`、`model.pose`、`model.animation`、`model.retarget`、`model.segment`、`model.meshComplete`、`model.retopology`、`model.rigCheck`、`model.texture`、`model.convert`）、`spatialWorld.*`（`spatialWorld.export`）、`world.*`
+- **多模态资产、图像精修、动效与成片输出**：`asset.*`、`image.*`（含 `image.layerSplit`、`image.portrait`、`image.lighting`、`image.multiAngle`、`image.emotion`、`image.process`、`image.iconPack` 等）、`video.*`、`voice.*`、`text.*`、`note.*`、`anim.*`、`svg.*`、`frame.*`、`media.*`、`graph.*`、`prompt.*`、`decisions.*`、`output.*`（`output.timeline`、`output.director` 等）
 
-除了从官方 `ai-art-engine-skills` 市场安装外，客户端完整支持 **Claude Code Skill (`SKILL.md`) 规范**，并允许直接输入任意 GitHub 地址安装：
+> **防呆价值**：已下线的历史前缀（如 `beat.*`、`episode.*`、`world.*` 旧节点）仍保留在校验器的拦截集合内——一旦技能文档残留旧版或拼错的 `typeId`（例如编造出 `asset.pic`），Agent 照着调 `graph_edit` 会失败或建出残图，因此必须在校验阶段机械拦截。书写节点参数名时请单独包裹（如 `` `generateAspectRatio` ``），切勿写成 `` `image.generateAspectRatio` ``。
 
-1. **GitHub 地址直装（`githubSkillInstaller.ts`）**
-   - 在技能市场顶部的 GitHub 安装栏可直接输入：
-     - `owner/repo` 或 `https://github.com/owner/repo`（自动扫描仓库根目录、`skills/*`、`.claude/skills/*`）
-     - `https://github.com/owner/repo/tree/<branch>/<subpath>`（指定分支与子目录）
-     - `https://github.com/owner/repo/blob/<branch>/<subpath>/SKILL.md`（直接指向 `SKILL.md`）
-   - 安装器通过 GitHub Tree API 获取文件清单，校验单文件/总包体积与子目录白名单，若含 `scripts/` 则复用 §4 的脚本同意流；落盘后写入 `.source.json` 记录源仓库、分支、子路径与 commit SHA，支持在技能卡片上一键**从 GitHub 更新**或**卸载**。
-2. **多级技能发现作用域**
-   - **项目级**（仅当前工程可见，优先级最高）：`<workspace>/.claude/skills/<name>/SKILL.md`、`<workspace>/.agents/skills/<name>/SKILL.md`
-   - **个人/市场级**（全局可见）：`$DSH_HOME/skills/<name>/SKILL.md` 与扁平 `$DSH_HOME/skills/<name>.md`
-3. **Frontmatter 全字段支持（`claudeSkill.ts`）**
-   - 基础与发现：`name`、`description`、`argument-hint`、`when_to_use`、`version`、`license`、`author`、`workflow`
-   - 调用可见性控制：
-     - `disable-model-invocation: true`：禁止模型自动加载，不注入 `<available_skills>`，仅允许用户通过 `/skill-name` 显式触发。
-     - `user-invocable: false`：不在用户 `/` 斜杠补全菜单中展示，仅供模型自动按需加载。
-   - 执行治理：`allowed-tools`（支持空格或逗号分隔及 `Bash(git *)` 等模式匹配）、`model`（当前技能轮次模型覆盖）、`context: inline | fork`（`fork` 在独立子代理上下文中运行技能）、`agent`（子代理类型，如 `Explore` / `Plan` / `general-purpose`）、`hooks`（`PreToolUse` / `PostToolUse` / `Stop` 生命周期钩子）。
-4. **参数替换与动态上下文注入（`claudeSkillRuntime.ts`）**
-   - 变量替换：支持 `$ARGUMENTS`（完整参数串，若正文未出现且调用带参则自动追加 `ARGUMENTS: ...`）、`$ARGUMENTS[0]` / `$0`..`$9`（按空白/引号切分的位置参数）、`${CLAUDE_SKILL_DIR}`（技能所在绝对路径）、`${CLAUDE_SESSION_ID}`、`${WORKSPACE_ROOT}`。
-   - 动态命令预处理：正文中形如 `` !`command` `` 的标记会在技能加载前于工作区目录执行 shell 命令（受用户审批约束），并用标准输出替换占位符。
+### 2.5 Claude Code `SKILL.md` 规范完整兼容与 GitHub 直装
+
+除了官方 `ai-art-engine-skills` 市场外，客户端原生支持标准 **Claude Code Skill (`SKILL.md`)** 生态：
+
+1. **GitHub 任意地址直装（`src/main/services/githubSkillInstaller.ts`）**：支持在技能市场顶部输入栏或通过 MCP `skill_install({ url })` 传入 `owner/repo`、仓库根 URL、`/tree/<branch>/<subpath>` 子目录或 `/blob/.../SKILL.md` 直链；落盘时写入 `.source.json` 记录源仓库、分支与 commit SHA，支持卡片上一键检查更新与卸载。
+2. **多级技能发现优先级**：工程级（`<workspace>/.claude/skills/<name>/SKILL.md` · `<workspace>/.agents/skills/<name>/SKILL.md`）高于全局级（`$DSH_HOME/skills/<name>/SKILL.md`）。
+3. **Frontmatter 全字段治理（`src/shared/claudeSkill.ts`）**：完整支持 `name`、`description`、`argument-hint`、`when_to_use`、`disable-model-invocation`、`user-invocable`、`allowed-tools`（含 `Bash(git *)` 等通配模式）、`model`、`context: inline | fork`、`agent`、`hooks`（`PreToolUse` / `PostToolUse` / `Stop`）、`version`、`license`、`author`、`workflow`。
+4. **变量替换与动态预处理（`src/main/services/claudeSkillRuntime.ts`）**：支持 `$ARGUMENTS`、`$ARGUMENTS[n]`、`$0`..`$9`、`${CLAUDE_SKILL_DIR}`、`${CLAUDE_SESSION_ID}`、`${WORKSPACE_ROOT}`，以及正文中 `` !`command` `` 的工作区受控预处理替换。
 
 ---
 
-## 3. 客户端安装契约
+## 3. 客户端安装与卸载契约
 
-### 3.1 卡片与动作
-
-在市场的**技能**（及**全部**）页签中：
-
-- 顶部提供 **GitHub 技能直装栏**，以及本地技能管理动作（打开目录 / 生成示例模板 / 导入自定义技能）。
-- 远端市场条目卡片上直接有 安装 / 更新 / 重新安装 / 卸载 与 详情，不必先进详情页。卡片徽标会显示 **含技能** 或 **含技能 · 含脚本**——**装之前**就让用户知道 Agent 那边会多拿到一份手册（含脚本时更要说清）。
-- 已安装的市场条目直接在原卡片上展示「已安装」状态与管理按钮；GitHub 直装技能、项目级技能（`.claude/skills`）与个人自定义技能则以独立技能卡片列出，支持查看详情、更新或移除。
-
-### 3.2 原子性与回滚
-
-安装走 `marketPipeline`：先下到 staging，全部就位后再 rename 换入，失败清理。
-**技能包与工作流本体同生共死**：技能装失败（或校验不通过）会把工作流本体一并卸掉并返回
-失败原因。理由很直接——卡片写着「含技能」而技能没落地，等于界面在骗人；
-安装是幂等的，重试即可。
-
-### 3.3 安装前校验（否则「装上了却看不见」）
-
-dsh 对**不合法**的技能是**静默忽略**（只写一行日志然后跳过）。所以客户端在 staging 阶段
-就校验 `SKILL.md`：frontmatter 是否存在、`name` 是否合法、`description` 是否非空、
-字段类型是否符合 Claude Code 技能规范。
-不通过就**安装失败并给出具体原因**，绝不会留下一个装了却不生效的技能包。
-
-### 3.4 卸装
-
-- 卸载市场工作流条目会连带删除**它装上的那个技能包**——只按记账里记着的那一个目录名删，绝不按前缀批量删（用户可能自建了同名技能）。
-- 通过 GitHub 直装或本地导入的独立技能，可在卡片上直接点「卸载」移除对应技能目录。
-
-### 3.5 目录刷新
-
-打开市场窗口即**强制刷新目录**（这样往仓库推了新内容，重开窗口就能看到，不必等缓存 TTL）。
-刷新失败但手上已有内容时**保留旧列表**并给软提示，不用错误顶掉已有内容。
-缓存按**源**分别落盘：主源与镜像各存一份，避免把镜像的缓存当成主源的数据。
+- **原子性与同生共死**：`marketPipeline.ts` 先拉取全量文件至临时 staging 目录并通过 `validateSkillEntryText` 校验 `SKILL.md` 合法性（防止 `dsh` 对非法 frontmatter 静默忽略导致「装上了却看不见」），全部通过后原子 rename 入位；任一环节失败立即回滚清理，绝不留半成品。
+- **精准记账卸载**：卸载市场工作流时仅按 `installed.json` 记录的精确 `skillName`（`wf-<id>`）移除对应技能目录，绝不按前缀批量误删用户自建技能。
+- **分源独立缓存与离线兜底**：打开技能市场窗口即触发目录刷新；网络异常时保留本地上次成功缓存并给出轻提示，主源与镜像缓存按源隔离落盘。
 
 ---
 
-## 4. 脚本（`scripts/`）与同意流
+## 4. 技能随包脚本（`scripts/`）与一次性授权流
 
-技能包可以带脚本，但**默认不装**：它属于「会在用户机器上运行的代码」，
-必须由用户明示同意。
+技能包中的 `scripts/` 属于 Agent 可在用户机器上调用的本地脚本，**默认一律跳过不落盘**：
 
-### 4.1 安装时：每次都要问
-
-- 含脚本时，安装前弹出确认框，**逐条列出脚本路径**，并说明这是 Agent 可以在本机运行的代码。
-- **确定** = 写入脚本；**取消** = 只装 `SKILL.md` 与 `references/`（技能与工作流照常可用）。
-- **每次安装/重新安装都会再问一次**，不记住同意——同意是每次安装的独立决定，
-  不是一个装过一次就永久生效的开关。
-- 主进程只认**字面量** `skillScriptsConsent === true`，不做真值 coercion。
-- 脚本文件同样受路径白名单与体积上限约束。
-
-### 4.2 运行时：一次授权只对一次调用有效
-
-Agent 真正去跑脚本时，走的是 harness 的通用 shell（Windows 上是 `pwsh`），
-受沙箱约束。一旦某一步需要越出沙箱，就由**审批应答器**把决定权交给用户：
-
-| 用户选择                                             | 结果                                     |
-| ---------------------------------------------------- | ---------------------------------------- |
-| 允许一次                                             | 该次调用放行（**唯一放行路径**）         |
-| 拒绝                                                 | 工具调用被拒                             |
-| 无人应答 / 超时 / 载荷读不懂 / 读文件出错 / 任何异常 | **失败即关闭**（工具调用失败，绝不放行） |
-| 请求被中止（本轮结束）                               | 取消，不放行                             |
-
-界面上是一张对话内授权卡：工具名 + 原因，只有 **允许一次 / 拒绝**，
-**没有「总是允许」**——一次性授权是刻意的，持久授予等于悄悄放宽 Agent 能跑的东西。
-
-> 写技能时请据此设计：**脚本必须是可选的**。用户拒绝脚本时，仅凭说明与 references
-> 也要能用；不要把关键步骤只放在脚本里。
+1. **安装期逐次明示同意**：无论是界面点击安装（弹出逐文件确认框）还是 MCP `skill_install`（默认 `allowScripts: false`，必须先经 `ask_user` 征得用户同意后再传 `allowScripts: true`），主进程仅认严格字面量布尔值 `true`，且每次重装/更新均重新询问，不设永久免问开关。拒绝脚本时仍正常安装 `SKILL.md` 与 `references/`，因此**技能设计必须将脚本作为可选项**。
+2. **运行期沙箱越界审批**：Agent 在 `dsh` 受限沙箱中执行脚本若触及越界操作，会触发对话内审批应答器卡片（仅提供 **「允许一次 / 拒绝」**，无「总是允许」；超时或异常一律按拒绝关闭）。
 
 ---
 
-## 5. 可执行代码节点（`script.run`）与同意流
+## 5. 画布可执行代码节点（`script.run`）与沙箱同意流
 
-§4 讲的是**技能包里的脚本**（`skill/scripts/`，给 AI agent 在本机跑的文件）。
-这一节讲的是另一条、互相独立的路径：**工作流本体 `plan` 里的可执行代码**。
+与技能包里的 `scripts/` 相互独立，工作流 `plan` 内部也可包含 `script.run` JavaScript 节点：
 
-`script.run` 是一种节点类型，代码（JavaScript）作为它的参数写在 `plan` 里，
-由应用的**图执行引擎**在渲染进程里跑——而不是 harness shell。它运行在
-**受限沙箱**（QuickJS WASM，`src/shared/graph/execute/scriptSandboxQuickjs.ts`）里：
-**无文件、无网络、无 `require`、无宿主全局**。沙箱与应用之间只有三样东西过得去——
-上游输入进、端口输出出，以及一组 `await om.<能力>(...)` 的**受控能力调用**：
-`<能力>` 必须在该节点的 `capabilities` 白名单里声明过，每个 `om.*` 都转发到应用
-治理过的能力（提供商 / 密钥 / 配额 / 日志），不是后门。再叠加超时（deadline 中断）
-与内存上限。
-
-### 5.1 识别与派生（仓库侧 + 客户端同口径）
-
-- 仓库 `build-index.mjs` 从 `plan` 派生 `hasExecutableCode: true` 与逐条**脚本摘要**
-  （节点 key / 标题 / 声明用到的能力 / 代码字符数 / 短 hash）写进 `index.json`；
-  贡献者不手写这些字段（与 `requires.nodeTypes`、技能清单同理）。
-- 客户端 `parseSkillMarketEntry` / `parseWorkflowBundle` 认这些字段并再校验一遍。
-- 校验器对每个 `script.run` 节点核对边界：`code` 非空且 < 100000 字符、`capabilities`
-  只能取白名单内的能力、端口 id 合法不重名、`limits` 不超硬顶（timeout ≤ 120s、mem ≤ 512MB）。
-  代码为空 / 超长这类**无法规整**的会**拒绝整条工作流**（代码是工作流的一部分，不像坏技能
-  能降级丢弃）；越白名单的能力、超硬顶的资源会被**就地规整**（丢弃 / 夹到上限），不致整体拒绝。
-
-### 5.2 安装时：含代码必须逐次同意，拒绝即不导入
-
-- 含 `script.run` 的工作流卡片标 **「含可执行代码」**（与技能的「含脚本」区分开）。
-- 安装前弹确认框，**逐条列出**每个脚本节点声明用到的能力与代码规模。
-- **确定** = 安装并允许运行；**取消** = **不安装这条工作流** —— 这与技能脚本的「取消只跳过脚本、
-  照装其余」**不同**，因为代码就是工作流的一部分，去掉它工作流不成立。
-- **每次安装都重新问、不记忆、无「总是允许」**。主进程只认字面量 `scriptConsent === true`。
-- **本地自建豁免**：用户自己在应用里创建 / 编辑的脚本节点不走市场同意流（本来就是本人写的），
-  只有**从市场导入**才拦。
-
-> 与技能脚本的关系：两条路径各自独立同意。一条工作流可能既「含技能 · 含脚本」又「含可执行代码」，
-> 届时两个确认框各问各的。
+- **QuickJS WASM 内存隔离沙箱**：运行在渲染进程的 `src/shared/graph/execute/scriptSandboxQuickjs.ts` 中，**无文件系统、无直接网络、无 `require`、无宿主全局对象**，仅能消费上游端口输入、产出下游端口输出，并调用节点 `capabilities` 白名单声明过的受控 `await om.<能力>(...)` 接口，同时受代码长度（`< 100,000` 字符）、超时（`≤ 120s`）与内存硬顶（`≤ 512 MB`）约束。
+- **安装期整包同意门禁**：含 `script.run` 的市场条目会显著标记 **「含可执行代码」**，安装前逐节点展示所需能力与代码规模；用户点「取消」则**整条工作流放弃安装**（因为节点本身即是拓扑不可分割的一环；用户在本地画布自建的 `script.run` 节点不弹市场确认框）。
 
 ---
 
-## 6. 兼容性与版本
+## 6. 兼容性校验与本地联调
 
-- 索引 `schemaVersion` 目前是 **1**；比客户端更新的索引会让客户端明确报「请先更新应用」，
-  而不是半渲染出一个误导性的空市场。
-- 条目可声明 `requires.appMinVersion`：应用版本低于它时卡片会被禁用并给出原因。
-- `requires.nodeTypes` 由脚本从 `plan` 派生：旧版应用缺某个节点类型时会提前判定并在安装前提示，
-  而不是等物化时才落出一张残图。
-- **同内容必须升版本**：同一 `version` 的内容不得再改。
-
----
-
-## 7. 本地调试
-
-### 7.1 在内容仓库里
+### 6.1 在 `ai-art-engine-skills` 内容仓库联调
 
 ```bash
-node scripts/validate.mjs          # 格式 / 依赖 / 索引一致性 / 技能包全部规则
-node scripts/build-index.mjs       # 重建 index.json（派生字段）
-node scripts/build-index.mjs --check   # CI 用：索引是否与磁盘一致
-node --test scripts/validate.test.mjs  # 校验器自身的单测
+node scripts/validate.mjs              # 校验全部工作流、节点命名空间、脚本硬顶与索引一致性
+node scripts/build-index.mjs           # 从磁盘重新派生 index.json
+node scripts/build-index.mjs --check   # CI 模式：检查 index.json 是否与磁盘完全同步
+node --test scripts/validate.test.mjs  # 运行校验器自身单测
 ```
 
-`validate.mjs` 与 CI 跑的是**同一份代码**——本地过、CI 不过这种事不该发生。
+### 6.2 常见退回与排障速查
 
-### 7.2 在应用侧
-
-- **自建源**：数据层支持把 `skillMarket.source` 设成一个或多个地址
-  （空白 / 逗号分隔；填了就**只用填的**，不混入官方源，避免回退把排查带偏）。
-  ⚠️ **当前设置界面还没有暴露这个输入项**，属于数据层能力。
-- 想验证「Agent 到底有没有真的加载技能」，最可靠的证据是 dsh 的会话日志
-  （`$DSH_HOME/sessions/<workspace>/<session>/session.v3.jsonl.zstd`）：
-  里面能查到 `tool/call`，`name: "skill"`、`arguments: {"name": "<skill-name>"}`，
-  以及紧随其后的 `<skill_content>` 结果。**别只看界面**——技能是否被加载，
-  界面是看不出来的。
-
----
-
-## 8. 常见退回原因（客户端视角）
-
-除内容仓库 `CONTRIBUTING.md` 列的那些之外，这几条会直接导致**装上了却不生效**：
-
-| 现象                        | 原因                                                                                                           |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| 装完 Agent 那边没有这份技能 | `SKILL.md` 的 frontmatter 不合法（dsh **静默忽略**）。客户端的安装前校验就是为了把这种失败提前成一句可读的报错 |
-| 市场工作流技能包校验被拒    | 附带画布模板的仓库技能包 `name` 没带 `wf-` 前缀                                                                |
-| 描述在 Agent 那里被截断     | `description` 超过 500 字符                                                                                    |
-| 更新后文件对不上            | 手改了 `index.json`；它必须由 `build-index.mjs` 派生                                                           |
-| 技能里写的节点类型建不出图  | 正文里出现了不存在的 `typeId`（仓库校验器会拦，但改写正文后请重跑）                                            |
-| 用户拒绝脚本后功能不可用    | 技能把关键步骤只写在 `scripts/` 里；脚本必须是可选的                                                           |
+| 现象                    | 根因                                                                                            |
+| :---------------------- | :---------------------------------------------------------------------------------------------- |
+| 安装后 Agent 看不到技能 | `SKILL.md` 缺少合法 YAML frontmatter 或用了被禁用的旧驼峰键（客户端安装前校验会直接报错拦截）。 |
+| 市场仓库 PR 校验失败    | 随工作流分发的技能 `name` 未加 `wf-` 前缀，或手改了 `index.json` 未跑 `build-index.mjs`。       |
+| 技能描述在目录中被截断  | `description` 超过 `500` 字符上限。                                                             |
+| 正文校验报未知节点类型  | 反引号内写了不存在或已下线的 `x.y` 节点类型（请对照 `graph_node_types` 清单修正）。             |
+| 用户跳过脚本后技能失效  | 将核心提示词或操作逻辑全部塞进了 `scripts/` 而未在 `SKILL.md` 给出免脚本主路径。                |

@@ -19,24 +19,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>AI 视频生成、两节点拉片 1:1 复刻与多轨剪辑教程 — AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine 教程：在自由画布上搭建视频生成节点，接入参考视频、首尾帧与对象存储。"
+      content="AI Art Engine (AIArtEngine) v8.9.1 视频制作全攻略：自由画布文生/图生/参考视频、3D 导演台 .webm 运镜白盒参考（@2）、两节点全息拉片拆解与 1:1 爆款复刻（semantic.analyze → semantic.rebuild / builtin.video-breakdown-remake），以及 6 抽屉 output.timeline 成片时间线与剪映/CapCut 草稿导出。"
     />
-    <title>自由画布：视频生成与参考视频 — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI视频生成教程, 爆款视频拆解复刻, semantic.analyze, semantic.rebuild, rea-video, WhisperX词级字幕, PySceneDetect拉片, 3D导演台运镜参考, output.timeline, 剪映草稿导出, CapCut草稿, AI Art Engine"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="自由画布：视频生成与参考视频 — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine 教程：在自由画布上搭建视频生成节点，接入参考视频、首尾帧与对象存储。" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="AI 视频生成、两节点拉片 1:1 复刻与多轨剪辑教程 — AI Art Engine" />
+    <meta
+      property="og:description"
+      content="涵盖自由画布参考视频、3D 导演台离屏 .webm 运镜白盒参考（@2）、semantic.analyze → semantic.rebuild 四轴视听拉片 1:1 复刻（含 compare.mp4 同屏对比），以及 6 抽屉成片时间线与剪映草稿导出。"
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/video-timeline.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="自由画布：视频生成与参考视频 — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine 教程：在自由画布上搭建视频生成节点，接入参考视频、首尾帧与对象存储。" />
+    <meta name="twitter:title" content="AI 视频生成、两节点拉片 1:1 复刻与多轨剪辑教程 — AI Art Engine" />
+    <meta
+      name="twitter:description"
+      content="自由画布参考视频、3D 导演台 .webm 运镜白盒参考（@2）、两节点四轴拉片拆解与 1:1 复刻（semantic.analyze → semantic.rebuild），以及剪映级 6 抽屉多轨时间线导出。"
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/video-timeline.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html" />
@@ -49,7 +61,55 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "AI 视频生成、两节点拉片 1:1 复刻与多轨剪辑教程 — AI Art Engine",
+            "description": "AI Art Engine v8.9.1 视频工作流教程：自由画布视频生成与参考视频上传、3D 导演台离屏 .webm 运镜白盒参考（@2）、内置 builtin.video-breakdown-remake（semantic.analyze → semantic.rebuild）四轴视听拆解与 1:1 视频复刻，以及 6 抽屉 output.timeline 成片时间线与剪映/CapCut 草稿导出。",
+            "inLanguage": "zh-CN",
+            "url": "https://justin-sky.github.io/ai-art-engine/guide-video.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/guide-video.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/video-timeline.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "首页",
+                "item": "https://justin-sky.github.io/ai-art-engine/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "视频生成与拉片复刻教程",
+                "item": "https://justin-sky.github.io/ai-art-engine/guide-video.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#manual">跳到正文</a>
@@ -68,7 +128,7 @@
           </button>
           <div class="nav-drop-menu">
             <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 定妆 · 审核 · 动态视频</span></a>
-            <a href="guide-video.html" aria-current="page"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
+            <a href="guide-video.html" aria-current="page"><strong>视频教程</strong><span>画布生视频 · 拉片 1:1 复刻 · 多轨时间线</span></a>
             <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
             <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
             <a href="guide-mcp.html"><strong>MCP 接入</strong><span>Claude Code / Codex 驱动应用</span></a>
@@ -112,13 +172,14 @@
       <aside class="toc" aria-label="目录">
         <h2>目录</h2>
         <ol>
-          <li><a href="#prep">准备</a></li>
-          <li><a href="#create-canvas">新建自由画布</a></li>
-          <li><a href="#add-nodes">搭视频生成链路</a></li>
-          <li><a href="#ref-video">参考视频怎么接</a></li>
-          <li><a href="#frames">首尾帧与指令</a></li>
-          <li><a href="#run">执行与查看结果</a></li>
-          <li><a href="#faq">常见问题</a></li>
+          <li><a href="#prep">1. 准备</a></li>
+          <li><a href="#create-canvas">2. 新建自由画布</a></li>
+          <li><a href="#add-nodes">3. 搭视频生成链路</a></li>
+          <li><a href="#ref-video">4. 参考视频与 3D 导演台运镜白盒（@2）</a></li>
+          <li><a href="#frames">5. 首尾帧与指令</a></li>
+          <li><a href="#forensic-remake">6. 两节点全息拉片与 1:1 爆款复刻</a></li>
+          <li><a href="#run">7. 多轨成片时间线与剪映草稿导出</a></li>
+          <li><a href="#faq">8. 常见问题</a></li>
           <li><a href="guide-short-video.html">短剧制作教程 →</a></li>
           <li><a href="guide-comfyui.html">ComfyUI 接入教程 →</a></li>
         </ol>
@@ -129,11 +190,11 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · Free Canvas</p>
-          <h1>自由画布：视频生成与参考视频</h1>
+          <p class="eyebrow">Guide · v8.9.1 · Video Generation, Forensic Remake &amp; Timeline NLE</p>
+          <h1>AI 视频生成、两节点拉片 1:1 复刻与多轨剪辑教程</h1>
           <p class="lede">
-            从新建「自由画布」开始，在空白节点图上搭一条最小可用的视频生成链路：文生视频、图生视频，以及把本地参考视频接到模型。
-            适合第一次在画布上跑通单条视频，而不走完整的影视工作台流程。
+            从新建「自由画布」搭建文生/图生/参考视频链路、利用 <strong>3D 导演台离屏 <code>.webm</code> 轨迹白盒视频（<code>@2</code>）</strong>精准控镜，到使用内置旗舰工作流
+            <strong><code>builtin.video-breakdown-remake</code>（<code>semantic.analyze</code> → <code>semantic.rebuild</code>）</strong>执行四轴视听全息拉片与 1:1 爆款视频复刻，最后接入剪映级 6 抽屉 <strong><code>output.timeline</code></strong> 导出成片与剪映/CapCut 多轨草稿。
           </p>
         </header>
 
@@ -142,11 +203,11 @@
           <ol>
             <li>
               <strong>模型</strong>：设置 → 模型 → 添加并启用提供商（如火山方舟、可灵、MiniMax、OpenRouter 等）→
-              在<strong>视频</strong>页签勾选要用的模型，并设好默认视频模型。
+              在<strong>视频</strong>页签勾选要用的模型，并设好默认视频模型；若要运行两节点爆款视频复刻，建议同时配好默认<strong>多模态文本模型</strong>、<strong>图片模型</strong>与可选<strong>语音合成（TTS）模型</strong>。
             </li>
             <li>
               <strong>对象存储（使用参考视频时必配）</strong>：设置 → 对象存储 → 添加火山 TOS / 阿里云 OSS /
-              腾讯云 COS / 兼容 Amazon S3 之一并启用。本地参考视频会先上传为公网可访问 URL（私有桶一般为签名链接），模型才能拉取。
+              腾讯云 COS / 兼容 Amazon S3 之一并启用。本地参考视频（含 3D 导演台导出的 <code>.webm</code> 运镜轨迹参考）会先上传为公网可访问 URL（私有桶一般为签名链接），模型才能拉取。
             </li>
             <li>确认提供商账户有余额；余额不足时提交会直接失败（例如 MiniMax <code>1008</code>）。</li>
           </ol>
@@ -197,7 +258,7 @@
             <li>
               （可选）用图片节点或资产连到<strong>图片 / 首帧 / 尾帧</strong>口（视模型与帧模式而定，见下一节）。
             </li>
-            <li>添加<strong>视频输出</strong>节点，把视频生成的输出接到输出节点，便于预览与导出。</li>
+            <li>添加<strong>视频输出</strong>或<strong>成片时间线（<code>output.timeline</code>）</strong>节点，把视频生成的输出接到输出节点，便于预览与导出。</li>
           </ol>
           <p>示意（文生 + 参考视频）：</p>
           <pre
@@ -211,26 +272,25 @@
               line-height: 1.5;
               overflow-x: auto;
             "
-          >[文本 / 指令] ──► [视频生成] ──► [视频输出]
+          >[文本 / 指令] ──► [视频生成] ──► [视频输出 / output.timeline]
                               ▲
-[选取视频 / 视频资产] ─────────┘  （Video 口 = 参考视频）</pre>
+[选取视频 / 3D 导演台运镜视频] ─┘  （Video 口 = 参考视频）</pre>
         </section>
 
         <section id="ref-video">
-          <h2>4. 参考视频怎么接</h2>
+          <h2>4. 参考视频怎么接（含 3D 导演台离屏 <code>.webm</code> 运镜白盒 <code>@2</code>）</h2>
           <p>
             视频生成节点的 <strong>Video</strong> 输入口用于「参考视频」：模型可借鉴运动、运镜、人物动作或场景节奏（具体能力因提供商与模型而异）。
           </p>
           <ul>
             <li>
-              <strong>来源</strong>：资产库导入的视频、选取视频节点、上游已生成的视频、或其它宿主的视频输出。
+              <strong>来源</strong>：资产库导入的视频、选取视频节点、上游已生成的视频，或<strong>3D 导演台（<code>.dstage</code> / <code>director.stage3d</code>）离屏渲染导出的轨迹白盒视频</strong>。
             </li>
             <li>
-              <strong>上传</strong>：执行时若参考仍是本地路径 / data URL，程序会经当前启用的对象存储上传，再把
-              URL 交给模型 API。
+              <strong>3D 导演台离屏 <code>.webm</code> 轨迹白盒控镜（<code>@2</code>）</strong>：在 3D 导演台中摆好角色/道具站位并编辑 Cinemachine 机位关键帧后，节点会在后台离屏渲染输出关键帧锚点图（<code>@1</code>）与<strong>精确运镜轨迹白盒视频 <code>.webm</code>（<code>@2</code>）</strong>。将二者同时连入支持多模态参考的视频生成节点，并在提示词中写明「保持 <code>@1</code> 人物场景外观，严格跟随 <code>@2</code> 的镜头推拉摇移轨迹」，即可实现工业级精确控镜。
             </li>
             <li>
-              <strong>清理</strong>：任务结束后，临时上传的参考对象一般会尝试删除，避免桶里堆积测试文件。
+              <strong>上传与清理</strong>：执行时若参考仍是本地路径 / data URL，程序会经当前启用的对象存储自动上传签名 URL 交给模型 API；任务结束后临时上传对象会自动尝试清理。
             </li>
             <li>
               <strong>多参考</strong>：Video 口支持多连线时，可同时挂多段参考（以模型实际支持为准）。
@@ -250,11 +310,11 @@
               <ul>
                 <li><strong>无</strong>：不强制首尾帧（纯文生或仅参考视频/图）。</li>
                 <li><strong>首帧</strong>：出现首帧图片口，适合图生视频、定格开场。</li>
-                <li><strong>首尾帧</strong>：同时约束开头与结尾画面（需模型支持，如部分 Hailuo / 可灵能力）。</li>
+                <li><strong>首尾帧</strong>：同时约束开头与结尾画面（需模型支持，如部分 Hailuo / 可灵 / Seedance 能力）。</li>
               </ul>
             </li>
             <li>
-              指令里可用 <code>@</code> 引用已连接的上游媒体（与图片生成一致），描述运动、镜头与节奏。
+              指令里可用 <code>@</code>（如 <code>@1</code>、<code>@2</code>）引用已连接的上游图片与参考视频，精准描述主体外观、运镜轨迹与动作节奏。
             </li>
             <li>
               时长、分辨率、是否生成音频等选项取决于当前模型能力目录；不支持的选项会被忽略或禁用。
@@ -265,28 +325,84 @@
             </li>
             <li>
               <strong>片段重拍</strong>：把源视频接到「片段重拍」节点，双击打开重拍台，标记要修改的起止时间并填写修改要求
-              （如「把雨伞改成透明」）；运行后仅重拍该区间（Seedance 2.5 时间戳级编辑），其余片段保持不变。
-              指令框支持 <code>@</code> 引用端口素材，右侧可直接选视频模型。
+              （如「把雨伞改成透明」）；运行后仅重拍该区间（时间戳级局部编辑），其余片段保持不变。
             </li>
           </ul>
         </section>
 
-        <section id="run">
-          <h2>6. 执行与查看结果</h2>
+        <section id="forensic-remake">
+          <h2>6. 两节点全息拉片拆解与 1:1 爆款视频复刻（<code>semantic.analyze</code> → <code>semantic.rebuild</code>）</h2>
+          <p>
+            想把任意一条实拍口播、带货种草、剧情混剪或漫剧爆款视频<strong>按原片分镜节奏、运镜、BGM 卡点与台词结构 1:1 复刻</strong>（同时替换成你自己的数字人角色、商品图或全新美术画风）？v8.9.1 核心内置了开箱即用的旗舰预设 <strong><code>builtin.video-breakdown-remake</code>（<code>rea-video</code> 视频拆解复刻）</strong>，仅用两颗一等公民节点直连闭环：
+          </p>
+          <pre
+            style="
+              margin: 0 0 14px;
+              padding: 14px 16px;
+              border-radius: 10px;
+              background: var(--bg-soft);
+              border: 1px solid var(--line);
+              font-size: 13px;
+              line-height: 1.55;
+              overflow-x: auto;
+            "
+          >[源视频 (in-video)] ──► [🧭 视频拆解 semantic.analyze] ──(SemanticTimeline aiart.semantic-timeline@1)──► [🎬 视频重制 semantic.rebuild] ──► [out-video 复刻成片 + compare.mp4]
+                              ▲                                                                                  ▲
+[替换主体/商品参考图 (in-images, @图片1..k)] ────────────────────────────────────────────────────────────────────┘</pre>
           <ol>
-            <li>选中视频生成或视频输出节点 → 工具条「执行」，或按住 <kbd>C</kbd> 打开执行环。</li>
             <li>
-              也可对输出节点「加入任务」，在任务列表里看后台进度；多条链路共用的上游只会 cook 一次。
+              <strong>四轴视听法医级拆解（4-Axis Audio-Visual Forensics，<code>semantic.analyze</code>）</strong>：
+              <ul>
+                <li><strong>语音词级对齐轨（WhisperX）</strong>：本地提取逐词精确时间戳（Word-Level Timestamps）与说话人分段，为口型对齐和卡点花字提供毫秒级基准。</li>
+                <li><strong>视觉切镜轨（PySceneDetect）+ 3 帧 VLM 运镜取证</strong>：精准定位每个硬切与转场边界，并对每一镜抽取<strong>首 / 中 / 尾 3 帧</strong>交由多模态 VLM 逆向解析景别、机位角度、镜头运动方向、光影色调与人物动作。</li>
+                <li><strong>音乐节拍轨（Librosa）与音轨分离轨（Demucs）</strong>：自动测算全片 BPM 与鼓点重拍（Beats），同时利用 Demucs 将原片无损分离为纯净 BGM/环境音伴奏轨（Stems）与干声人声轨。</li>
+                <li>全部多模态证据统一编码为类型安全的 <strong><code>SemanticTimeline</code>（<code>aiart.semantic-timeline@1</code>）</strong> 文档输出，双击节点即可在可视化拉片面板中审阅修订。</li>
+              </ul>
             </li>
             <li>
-              成功后在节点预览区播放：左侧为<strong>回到开头</strong>，中间进度条，右侧为<strong>播放 / 暂停</strong>。
+              <strong>去字幕纯净背景锚点提取（Clean-Plate Background Anchor Extraction）</strong>：
+              自动识别并擦除原片底部硬字幕、花字贴纸与角标遮挡，还原干净的场景锚点底板，彻底杜绝复刻画面中出现乱码残影文字。
             </li>
-            <li>需要成片拼装时，把结果接到剧本资产的<strong>成片时间线</strong>，或导出媒体文件。</li>
+            <li>
+              <strong>动态规划镜头拼批、口型同步与动态 <code>.ass</code> 字幕（<code>semantic.rebuild</code>）</strong>：
+              <ul>
+                <li><strong>动态规划拼批（DP Shot Batching）</strong>：针对高频快剪短镜头，使用动态规划算法智能聚合相邻微镜头以最优匹配目标视频模型的时长档位，大幅降低生成成本并提升连贯性。</li>
+                <li><strong>主体替换、口型同步（Lip-Sync）与动态字幕</strong>：连入 <code>in-images</code> 的新角色或商品图（<code>@图片1..k</code>）会自动替换原片主体，配合新配音口型同步、分离出的原声 BGM 混音，以及自动渲染的动态卡点 <strong><code>.ass</code> 样式字幕</strong>一键合成为复刻正片（<code>out-video</code>）。</li>
+              </ul>
+            </li>
+            <li>
+              <strong>左右同屏帧级对比视频（Side-by-Side <code>compare.mp4</code>）</strong>：
+              任务完成时除输出纯净复刻成片外，还会自动生成左原片、右复刻成片严格时间轴同步的 <strong><code>compare.mp4</code></strong>，一眼检验每一拍切镜、运镜与卡点还原精度。
+            </li>
           </ol>
         </section>
 
+        <section id="run">
+          <h2>7. 执行、6 抽屉成片时间线（<code>output.timeline</code>）与剪映草稿导出</h2>
+          <ol>
+            <li>选中视频生成、<code>semantic.rebuild</code> 或输出节点 → 工具条「执行」，或按住 <kbd>C</kbd> 打开执行环；多条链路共用的上游只会 cook 一次。</li>
+            <li>
+              <strong>剪映级 6 抽屉多轨时间线（<code>output.timeline</code>）</strong>：将生成的各镜视频、TTS 配音与音乐连入或拖入<strong>成片时间线（<code>output.timeline</code>）</strong>，双击展开专业非线性编辑工作台：
+              <ul>
+                <li>内置 <strong>6 大创意资产抽屉</strong>：<strong>素材（Media）</strong>、<strong>特效（Effects）</strong>、<strong>转场（Transitions）</strong>、<strong>滤镜（Filters）</strong>、<strong>调节（Adjust）</strong>、<strong>模板（Templates）</strong>，提供 120+ 视觉特效、无缝转场与电影级调色 LUT，并支持 <strong>DOTween 曲线双层关键帧动画</strong>。</li>
+                <li><strong>双通道无损交付</strong>：既可直接渲染导出高码率 <code>.mp4</code> 成品视频，也可一键导出 <strong>剪映专业版（JianyingPro）/ CapCut 多轨工程草稿</strong>（完整保留独立视频轨、音频轨、字幕轨与时间轴切点），无缝衔接后期团队精剪。</li>
+              </ul>
+            </li>
+          </ol>
+          <figure class="shot">
+            <img
+              src="assets/imgs/video-timeline.webp"
+              alt="output.timeline 6 抽屉成片多轨时间线：素材、特效、转场、滤镜、调节、模板与剪映专业版 / CapCut 草稿导出"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>剪映级 6 抽屉成片时间线（<code>output.timeline</code>）：支持 120+ 特效/转场/LUT、DOTween 双层关键帧，以及一键导出 MP4 或剪映专业版 / CapCut 多轨草稿。</figcaption>
+          </figure>
+        </section>
+
         <section id="faq">
-          <h2>7. 常见问题</h2>
+          <h2>8. 常见问题</h2>
           <div class="table-scroll" role="region" aria-label="常见问题" tabindex="0">
             <table>
               <thead>
@@ -308,8 +424,8 @@
                   <td>提供商账户余额不足，去对应控制台充值（不是 API Key 填错）。</td>
                 </tr>
                 <tr>
-                  <td><code>ENOTFOUND …https</code></td>
-                  <td>多为 TOS 预签名主机名拼错；请使用较新版本客户端后重试。</td>
+                  <td>如何快速创建两节点拉片复刻图？</td>
+                  <td>在新建一键工作流中直接选择核心内置预设 <code>builtin.video-breakdown-remake</code>（视频拆解复刻），或在自由画布右键添加 <code>视频拆解 (semantic.analyze)</code> 连向 <code>视频重制 (semantic.rebuild)</code>。</td>
                 </tr>
                 <tr>
                   <td>改了节点名，资产库名字也变了</td>

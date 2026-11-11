@@ -1,159 +1,274 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/index.en.html"/>
-    <lastmod>2026-08-30</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/index.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/index.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/index.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/"/>
-    <lastmod>2026-08-30</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/index.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/quickstart.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/quickstart.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/quickstart.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/quickstart.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual.en.html"/>
-    <lastmod>2026-08-30</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual.html"/>
-    <lastmod>2026-08-30</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-setup.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html"/>
-    <lastmod>2026-10-09</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-setup.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html"/>
-    <lastmod>2026-10-09</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-workspace.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html"/>
-    <lastmod>2026-10-09</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html"/>
-    <lastmod>2026-10-09</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-workflow.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html"/>
-    <lastmod>2026-10-09</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html"/>
-    <lastmod>2026-10-09</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-production.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-production.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-production.en.html"/>
-    <lastmod>2026-10-09</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-production.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-production.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-production.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-production.html"/>
-    <lastmod>2026-10-09</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-production.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-reference.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html"/>
-    <lastmod>2026-10-09</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.75</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/manual-reference.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html"/>
-    <lastmod>2026-10-09</lastmod>
-  </url>
-  <url>
-    <loc>https://justin-sky.github.io/ai-art-engine/guide-video.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-video.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html"/>
-    <lastmod>2026-08-29</lastmod>
-  </url>
-  <url>
-    <loc>https://justin-sky.github.io/ai-art-engine/guide-video.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-video.html"/>
-    <lastmod>2026-08-29</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.75</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/guide-short-video.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html"/>
-    <lastmod>2026-08-29</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html"/>
-    <lastmod>2026-08-29</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://justin-sky.github.io/ai-art-engine/guide-comfyui.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html"/>
-    <lastmod>2026-08-29</lastmod>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-video.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"/>
-    <lastmod>2026-08-29</lastmod>
-  </url>
-  <url>
-    <loc>https://justin-sky.github.io/ai-art-engine/guide-newapi.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html"/>
-    <lastmod>2026-10-02</lastmod>
-  </url>
-  <url>
-    <loc>https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html"/>
-    <lastmod>2026-10-02</lastmod>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-video.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/guide-mcp.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html"/>
-    <lastmod>2026-08-29</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html"/>
-    <lastmod>2026-08-29</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-comfyui.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-newapi.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.75</priority>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.75</priority>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-gameplay.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/developers.html</loc>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html"/>
-    <lastmod>2026-10-07</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://justin-sky.github.io/ai-art-engine/developers.en.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html"/>
-    <lastmod>2026-10-07</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>

@@ -19,28 +19,40 @@
         } catch (e) {}
       })()
     </script>
+    <title>Skill Marketplace &amp; Workflow Plugin Developer Docs (Claude Code Skills &amp; MCP) — AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine skill marketplace developer docs: what the marketplace contains, Claude Code skill specification support and direct GitHub install, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons."
+      content="AI Art Engine v8.9.1 Skill Marketplace Developer Documentation: standalone ai-art-engine-skills repository contract, Claude Code SKILL.md specification &amp; direct GitHub install, MCP skill tools, atomic client install contract, script consent, QuickJS WASM executable-code nodes, and the 18 allowed node namespaces."
     />
-    <title>Skill Marketplace Developer Docs — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI Art Engine developer docs, Skill Marketplace SDK, ai-art-engine-skills, Claude Code SKILL.md, GitHub skill install, aiae-workflow, QuickJS WASM sandbox, script.run, MCP skill tools"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
-    <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="Skill Marketplace Developer Docs — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine skill marketplace developer docs: what the marketplace contains, Claude Code skill specification support and direct GitHub install, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons." />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta property="og:title" content="Skill Marketplace &amp; Workflow Plugin Developer Docs (Claude Code Skills &amp; MCP) — AI Art Engine" />
+    <meta
+      property="og:description"
+      content="Developer guide to AI Art Engine v8.9.1's Skill Marketplace: standalone ai-art-engine-skills catalog, Claude Code SKILL.md specification, direct GitHub install, MCP skill tools, and QuickJS WASM code nodes."
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Skill Marketplace Developer Docs — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine skill marketplace developer docs: what the marketplace contains, Claude Code skill specification support and direct GitHub install, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons." />
+    <meta name="twitter:title" content="Skill Marketplace &amp; Workflow Plugin Developer Docs (Claude Code Skills &amp; MCP) — AI Art Engine" />
+    <meta
+      name="twitter:description"
+      content="Publish workflows and Claude Code skills to AI Art Engine v8.9.1 via ai-art-engine-skills, GitHub direct install, MCP skill tools, and QuickJS WASM sandboxes."
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
-    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
     <link rel="icon" href="assets/logo-mark.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -49,7 +61,55 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "Skill Marketplace & Workflow Plugin Developer Docs (Claude Code Skills & MCP) — AI Art Engine",
+            "description": "Developer reference for AI Art Engine v8.9.1's Skill Marketplace: standalone ai-art-engine-skills architecture, Claude Code SKILL.md specification, direct GitHub install, MCP marketplace tools, atomic install and script consent contracts, QuickJS WASM script.run sandbox, and the 18 allowed canvas node namespaces.",
+            "inLanguage": "en",
+            "url": "https://justin-sky.github.io/ai-art-engine/developers.en.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/developers.en.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/index.en.html"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/index.en.html",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://justin-sky.github.io/ai-art-engine/index.en.html"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Skill Marketplace Developer Docs",
+                "item": "https://justin-sky.github.io/ai-art-engine/developers.en.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <style>
       pre.mcp-code {
         background: var(--bg-soft);
@@ -147,7 +207,7 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Developers · Marketplace</p>
+          <p class="eyebrow">Developers · v8.9.1 · Skill Marketplace &amp; Workflow SDK</p>
           <h1>Skill Marketplace Developer Docs</h1>
           <p class="lede">
             For developers <strong>publishing content to the skill marketplace or integrating Claude Code skills</strong>: what the
@@ -263,42 +323,25 @@ $DSH_HOME/skills/&lt;skill.name&gt;/        skill bundle (installed together wit
    ↓
 the next Agent conversation picks up the skill → injects &lt;available_skills&gt; → loads on demand or via /slash</code></pre>
 
-          <h3>2.0 The 15 official <code>plan</code>s are <strong>exported</strong>, not hand-written</h3>
+          <h3>2.0 Single source of truth: lean built-in core + standalone <code>ai-art-engine-skills</code> distribution</h3>
           <p>
-            The app's built-in One-Click Workflow presets (<code>src/shared/graph/aiWorkflowPresets.ts</code>) and the 15
-            official marketplace entries (<code>game-ua-video</code> … <code>anim2d-gif</code>) are <strong>two copies of
-            the same graph</strong>. The marketplace has to be independently distributable and the presets have to work
-            offline, so both must exist — but they must <strong>not</strong> be kept in sync by hand:
+            Starting in v8.9.1, domain workflow presets have migrated out of the desktop client repository into the standalone open-source repository
+            <strong><code>ai-art-engine-skills</code></strong> as the single source of truth (the legacy duplicate preset registry and sync/export scripts inside the main app repo were removed during this migration, eliminating “same name, different graph” drift between client and marketplace):
           </p>
-          <pre class="mcp-code"><code>npm run export:market        # regenerate each workflow.json's plan + requires.nodeTypes from the presets
-npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is what CI runs)</code></pre>
           <ul>
             <li>
-              It writes exactly two fields: <code>plan</code> and <code>requires.nodeTypes</code> (the former is the
-              content, the latter its derived value — the marketplace validator requires them to agree). Metadata, cover
-              images and <code>skill/</code> stay hand-written; not a byte of them is touched.
+              <strong>Lean built-in core preset</strong>: the desktop app core (<code>src/renderer/src/features/aiWorkflow/presets.ts</code>) ships the minimal offline built-in preset <code>builtin.video-breakdown-remake</code> (the 2-node <code>semantic.analyze</code> → <code>semantic.rebuild</code> forensic video breakdown &amp; 1:1 remake pipeline).
             </li>
             <li>
-              The marketplace repo defaults to <code>../ai-art-engine-skills</code>; override with
-              <code>--dir &lt;path&gt;</code> or <code>AAE_WORKFLOW_MARKET_DIR</code>.
+              <strong>Official &amp; community domain skills and workflows</strong>: short/comic drama (<code>short-drama</code>), game production, e-commerce posters, audiobooks, 3D pipelines, and community packs all live in <code>ai-art-engine-skills</code> (standard layout <code>skills/&lt;slug&gt;/SKILL.md</code> + <code>workflows/&lt;slug&gt;.aiae-workflow.json</code>, alongside catalog entries under <code>workflows/&lt;id&gt;/{workflow.json, cover.png, skill/**}</code>).
             </li>
             <li>
-              So to change an official workflow's graph, change the <strong>app preset</strong> and re-export; editing the
-              <code>plan</code> on the marketplace side is treated as drift. Third-party workflows have no built-in preset:
-              right-click the canvas and pick <strong>“Export as marketplace workflow”</strong>, fill in the metadata and a
-              cover, and the app writes the current graph as
-              <code>workflows/&lt;id&gt;/{workflow.json, cover.png}</code> (<code>requires.nodeTypes</code> is derived from
-              the plan; runtime write-back fields and any parameter the node type does not declare are kept out of the
-              pack). When it finishes, run <code>node scripts/build-index.mjs &amp;&amp; node scripts/validate.mjs</code> in the
-              repo as prompted. The market ids used by the built-in presets (those 15) are refused — their
-              <code>plan</code> can only come from a preset.
+              <strong>End-to-end UI &amp; MCP installation</strong>: users and external Agents can browse and install workflows from the top-bar <strong>Skill Marketplace</strong> window or inspect, install, and materialize them programmatically via the 6 native MCP tools: <code>skill_list</code>, <code>skill_search</code>, <code>skill_inspect_github</code>, <code>skill_install</code>, <code>skill_uninstall</code>, and <code>workflow_use_installed</code> (see <a href="guide-mcp.en.html#catalog">MCP Integration Guide</a>).
+            </li>
+            <li>
+              <strong>Exporting &amp; publishing a new workflow</strong>: build and verify your node graph on the canvas, right-click and choose <strong>“Export as marketplace workflow”</strong> (or export a PNG recipe carrying an embedded <code>aiae:graph</code> chunk), fill in metadata and cover image to generate a clean bundle (<code>requires.nodeTypes</code> is derived automatically from <code>plan</code>, while transient runtime write-back fields are stripped), and run <code>node scripts/build-index.mjs &amp;&amp; node scripts/validate.mjs</code> inside <code>ai-art-engine-skills</code> before opening a PR.
             </li>
           </ul>
-          <div class="tip">
-            The failure mode without this check is worth spelling out: the built-in One-Click Workflow and the
-            marketplace-installed workflow end up <strong>sharing a name and version while building two different
-            graphs</strong>, and neither side reports an error — users just conclude the model is flaky.
-          </div>
 
           <h3>2.1 Derived fields in the index are generated by scripts — never hand-write them</h3>
           <p>
@@ -340,7 +383,7 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
           </p>
 
           <h3>2.3 Skill bundle file layout</h3>
-          <pre class="mcp-code"><code>workflows/&lt;id&gt;/skill/
+          <pre class="mcp-code"><code>workflows/&lt;id&gt;/skill/              # or standalone layout skills/&lt;slug&gt;/ + workflows/&lt;slug&gt;.aiae-workflow.json
   SKILL.md          required. frontmatter: name(wf-&lt;id&gt;) / description / workflow: &lt;id&gt;
   references/       optional. port and parameter cheat sheets, long contracts, examples
   scripts/          optional. see §4
@@ -360,24 +403,25 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
             </li>
           </ul>
 
-          <h3>2.4 Node types mentioned in the body must actually exist</h3>
+          <h3>2.4 Allowed node namespaces in workflow presets &amp; skill bodies (v8.9.1)</h3>
           <p>
-            The repository validator checks the <strong>backtick-wrapped <code>x.y</code> tokens</strong> in a
-            skill’s body: if <code>x</code> is a known node namespace (<code>asset</code> / <code>image</code> /
-            <code>play</code> / <code>ui</code> / <code>model</code> / <code>spatialWorld</code> /
-            <code>frame</code> / <code>note</code> / <code>beat</code> / <code>episode</code> /
-            <code>anim</code> / <code>comic</code> / <code>svg</code> / <code>video</code> /
-            <code>voice</code> / <code>media</code> / <code>output</code> / <code>graph</code> /
-            <code>prompt</code> / <code>decisions</code> …), that token must be a
-            <strong>real node type</strong>.
+            The repository validator strictly checks node types in workflow preset <code>plan</code>s as well as
+            <strong>backtick-wrapped <code>x.y</code> tokens</strong> inside a skill’s body. In v8.9.1, the
+            <strong>18 allowed canvas node namespaces</strong> are:
+          </p>
+          <pre class="mcp-code"><code>input.*     text.*      image.*     video.*     voice.*     audio.*
+film.*      game.*      ui.*        novel.*     semantic.*  script.*
+stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre>
+          <p>
+            Any <code>x.y</code> token whose prefix <code>x</code> belongs to one of the known node namespaces above must resolve to a
+            <strong>real node <code>typeId</code></strong> in the client’s <code>graph_node_types</code> registry.
           </p>
           <p>
             Why it deserves its own rule: a skill is an <strong>operator’s manual</strong> written for the
             Agent, and the Agent will follow the <code>typeId</code> values in it when it builds a graph with
-            <code>graph_edit</code>. Invent a type that doesn’t exist (<code>asset.pic</code> and the like)
-            and the Agent writes a broken graph, <strong>with nothing at runtime to catch it</strong> — it
-            only shows up as “the workflow mysteriously won’t run”. Filtering by namespace is there so that
-            spellings like <code>cover.png</code> / <code>references/ports.md</code> / <code>SKILL.md</code>
+            <code>graph_edit</code>. Invent a type that doesn’t exist (<code>image.pic</code> and the like)
+            and the Agent writes a broken graph. Filtering by namespace ensures file spellings like
+            <code>cover.png</code> / <code>references/ports.md</code> / <code>SKILL.md</code>
             are not caught by mistake. Write parameter names in <strong>their own</strong> backticks (for
             example <code>generateAspectRatio</code>) rather than as the dotted form <code>type.param</code>.
           </p>

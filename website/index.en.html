@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark" />
 
     <script>
-      // 提前应用本地主题选择，避免加载闪烁
+      // Apply saved theme early to avoid flash
       ;(function () {
         try {
           var pref = localStorage.getItem('site.theme')
@@ -19,24 +19,39 @@
         } catch (e) {}
       })()
     </script>
+    <title>AI Art Engine (AIArtEngine) — Open-Source Game UI to PSD/Unity, Machinations Economy, AI Short Drama &amp; MCP Asset Engine</title>
     <meta
       name="description"
-      content="AIArtEngine — The agent-native multimodal AI studio & production asset engine: don't just generate flat images—ship layered editable PSDs (with native TySh text layers), Unity/Godot/HTML5 UI code, Spine 2D skeleton packages, CapCut/Jianying multi-track NLE drafts, and playable HTML5 games. Built-in AI chat workspace control & bi-directional MCP server (drive from Claude Code / Cursor). 100% local-first + Zero-Key instant demo. Open source · GPL-3.0."
+      content="AI Art Engine (AIArtEngine) v8.9.1 — Open-source, agent-native multimodal AI production studio. Ship layered editable PSDs (native TySh text layers), Unity/Godot/HTML5 UI code, Machinations game economy simulations (C#/GDScript), Spine 2D bone rigs, 21-genre 5-stage AI short-drama episodes, 2-node forensic video remakes, CapCut multi-track NLE drafts, and playable HTML5 games. 102-tool local MCP server · GPL-3.0."
     />
-    <title>AIArtEngine — The Agent-Native Multimodal AI Production Engine</title>
+    <meta
+      name="keywords"
+      content="AI Art Engine, AIArtEngine, AI game UI generator, image to editable PSD, Photoshop TySh text layer AI, AI to Unity UI UXML, AI to Godot tscn, Spine 2D rigging AI, open source Machinations alternative, game economy simulator, AI short drama studio, AI comic drama, viral video remake tool, CapCut draft export, playable HTML5 game generator, Claude Code MCP server, Cursor MCP, ComfyUI desktop studio"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/index.en.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="alternate" type="text/plain" title="LLM Context Index" href="https://justin-sky.github.io/ai-art-engine/llms.txt" />
+    <meta property="og:site_name" content="AI Art Engine" />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:title" content="AIArtEngine — The Agent-Native Multimodal AI Production Engine" />
-    <meta property="og:description" content="Don't just generate flat images—ship editable PSDs (with native TySh text layers), Unity/Godot UI code, Spine 2D packages, CapCut multi-track drafts, and playable HTML5 games. Built-in AI chat & MCP server, 30+ providers, Zero-Key instant demo. Open source · GPL-3.0." />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta property="og:title" content="AI Art Engine — Ship Editable PSDs, Unity/Godot UI, Spine 2D, Game Economy &amp; Short Drama" />
+    <meta
+      property="og:description"
+      content="16-class Game UI split to native TySh editable PSD &amp; Unity/Godot code · Machinations 120fps curve-drag Goal-Seek studio · 21-genre 5-stage AI Short Drama · 2-node video forensic remake · Spine 2D rigs · 102-tool MCP server. Open source · GPL-3.0."
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/index.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
+    <meta property="og:image:alt" content="AI Art Engine 3D exploded Game UI layer split and editable PSD / Unity / Godot export workbench" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="AIArtEngine — The Agent-Native Multimodal AI Production Engine" />
-    <meta name="twitter:description" content="Don't just generate flat images—ship editable PSDs (native TySh text layers), Unity/Godot UI code, Spine 2D packages, CapCut NLE drafts, and playable HTML5 games. Open source · GPL-3.0." />
+    <meta name="twitter:title" content="AI Art Engine — The Agent-Native Multimodal AI Production Engine (v8.9.1)" />
+    <meta
+      name="twitter:description"
+      content="Don't just generate flat images—ship editable PSDs (native TySh text layers), Unity/Godot UI code, Machinations economy simulations, Spine 2D packages, CapCut NLE drafts, and playable HTML5 games. Open source · GPL-3.0."
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta name="theme-color" content="#05070d" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/" />
@@ -49,8 +64,131 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20261009i" />
-    <link rel="stylesheet" href="site.css?v=20261009c" />
+    <link rel="stylesheet" href="styles.css?v=20261111a" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://justin-sky.github.io/ai-art-engine/#software",
+            "name": "AI Art Engine",
+            "alternateName": ["AIArtEngine"],
+            "url": "https://justin-sky.github.io/ai-art-engine/index.en.html",
+            "applicationCategory": ["DesignApplication", "MultimediaApplication", "DeveloperApplication"],
+            "operatingSystem": "Windows 10+, macOS 12+, Linux",
+            "softwareVersion": "8.9.1",
+            "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+            "isAccessibleForFree": true,
+            "downloadUrl": "https://github.com/Justin-sky/ai-art-engine/releases",
+            "codeRepository": "https://github.com/Justin-sky/ai-art-engine",
+            "screenshot": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "description": "Open-source, local-first, agent-native multimodal AI production studio that ships layered editable PSDs (native TySh text layers), Unity/Godot/HTML5 UI code, Machinations game economy simulations (C#/GDScript), Spine 2D bone rigs, 21-genre 5-stage AI short-drama episodes, 2-node forensic video remakes, CapCut NLE drafts, and playable HTML5 games.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "featureList": [
+              "16-class Game UI layer split exporting native TySh editable PSDs, Unity UGUI/UXML, Godot 4 .tscn, HTML5, plus UI Atlas Compose",
+              "Machinations v2 Game Economy & Systems Studio: 59 verified blocks, 120fps Bezier curve-drag Goal-Seek formula solver, Monte Carlo & 2D sensitivity heatmaps, C#/GDScript export",
+              "5-Stage AI Short Drama / Comic Drama Workbench: 21 genre blueprints, 11-point continuity & >=67% dialogue audit, #variant wardrobe & cross-episode TTS voice binding, Vision QC auto-reshoots",
+              "2-Node rea-video Forensic Video Breakdown & 1:1 Remake (WhisperX + PySceneDetect + Librosa + Demucs + 3-frame VLM)",
+              "CapCut-grade 6-tab Multi-Track NLE Timeline (120+ effects/transitions/LUTs, DOTween keyframes, TD-PSOLA singing synthesis) & JianyingPro/CapCut draft export",
+              "2D Character Part Segmentation, AI Bone Alignment & Spine 2D (skeleton.json + .atlas) Export, plus 4-band Wavelet Portrait Studio",
+              "56-Bone 3D Director Stage, World Labs 3D Gaussian Splatting Spatial Worlds & 9-Tool Blender MCP Bridge",
+              "Embedded Multi-Project AI Chat, 24h Scheduled Automations & 102-Tool Local Bi-Directional MCP Server (Claude Code / Cursor / Codex)",
+              "Workflow-in-PNG (aiae:graph metadata chunk) & Local ONNX Vision + Cross-Platform Offline OCR"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://justin-sky.github.io/ai-art-engine/#website-en",
+            "url": "https://justin-sky.github.io/ai-art-engine/index.en.html",
+            "name": "AI Art Engine Official Website & Docs",
+            "inLanguage": ["en", "zh-CN"]
+          },
+          {
+            "@type": "VideoObject",
+            "name": "AI Art Engine Multimodal Production Studio Walkthrough",
+            "description": "Live demo of AI Art Engine's 3D exploded Game UI split to PSD/Unity, 5-stage AI short-drama pipeline, Spine 2D rigging, 3D Director Stage, and Agent workspace control.",
+            "thumbnailUrl": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "contentUrl": "https://justin-sky.github.io/ai-art-engine/assets/show.mp4",
+            "uploadDate": "2026-10-24T00:00:00+08:00"
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Is AI Art Engine completely free and open source?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. AI Art Engine is 100% free and open source under GPL-3.0, with zero subscription fees, credit markups, or watermarks. All project assets stay on your local disk, and you connect your own API keys (BYOK) or run local models via Ollama, LM Studio, vLLM, ComfyUI, and built-in ONNX Runtime vision."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I test AI Art Engine without configuring any API key?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Open any workspace, expand the right-hand ◈ AI Chat panel, and click Zero-Key Instant Demo to watch a live RPG Game UI decomposition, 3D exploded layer preview, and PSD / Unity / Godot export pipeline run locally with zero keys."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does AI Art Engine differ from web AIGC tools or raw ComfyUI?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Web AIGC tools output flat raster images or isolated clips; ComfyUI focuses on low-level diffusion sampling graphs. AI Art Engine integrates ComfyUI as one backend while providing 10+ domain Dive workbenches that ship editable engineering deliverables: native TySh PSDs, Unity UXML / Godot .tscn, Spine 2D rigs, Machinations C#/GDScript simulations, CapCut multi-track drafts, and playable HTML5 games."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Are text layers truly editable in Photoshop when exporting Game UI to PSD?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. The image.layerSplit node extracts font size, fill color, and stroke via cross-platform offline/online OCR, inpaints clean 9-slice base plates, and writes genuine Photoshop TySh text layers into the exported .psd so you can double-click and edit text directly in Photoshop or Photopea."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does AI Art Engine maintain character, wardrobe, and voice consistency across short-drama episodes?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "The 5-stage Film Workbench (film.workbench) includes 21 genre blueprints (P01-P21), an 11-point continuity & >=67% dialogue audit, locked character #variant wardrobe sheets, STYLE01 style bibles, and persistent cross-episode TTS voice profiles, plus @1-@4 anchor injection with VLM Vision QC auto-reshoots."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What can the Machinations v2 Game Economy & Systems Studio do?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "game.economy aligns 100% with Machinations semantics, offering 59 verified building blocks, lossless Simple Macro <-> Pro Blueprint switching, 120fps Bezier slope diamond & curve-drag inverse Goal-Seek formula solving, Monte Carlo P10/P50/P90 bands, 2D sensitivity heatmaps, zero-code playable HUD prototypes, and Unity C# / Godot GDScript code export."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do Claude Code, Cursor, or Codex connect via MCP?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "While running, AI Art Engine hosts an authenticated local MCP server on 127.0.0.1 exposing 102 tools (93 core tools on /mcp + 9 live modeling tools on /mcp/blender). Run claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs to let external agents build node graphs, run simulations, and export masters."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What is Workflow-in-PNG (aiae:graph)?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Every PNG exported from AI Art Engine embeds the complete node topology and prompt recipe inside a lossless aiae:graph PNG metadata chunk. Dragging that PNG back onto the canvas restores the entire multimodal production pipeline instantly."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <svg width="0" height="0" style="position: absolute" aria-hidden="true">
@@ -65,6 +203,8 @@
         <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2" /><path d="M7 3v18M17 3v18M2 12h20M2 7.5h5M2 16.5h5M17 7.5h5M17 16.5h5" /></symbol>
         <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20" /></symbol>
         <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></symbol>
+        <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18" /><path d="M5 7h14" /><path d="M5 7l-3 6h6l-3-6z" /><path d="M19 7l-3 6h6l-3-6z" /><path d="M8 21h8" /></symbol>
+        <symbol id="i-scissors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M20 4L8.12 15.88" /><path d="M14.47 14.48L20 20" /><path d="M8.12 8.12L12 12" /></symbol>
         <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></symbol>
         <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></symbol>
         <symbol id="i-github" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></symbol>
@@ -79,14 +219,15 @@
 
     <header class="top">
       <a class="brand" href="#top">
-        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <img src="assets/logo-mark.png" alt="AI Art Engine logo" width="30" height="30" />
         <span>AI Art Engine</span>
-        <span class="brand-ver">v8.0</span>
+        <span class="brand-ver">v8.9.1</span>
       </a>
       <nav class="nav" aria-label="Main navigation">
-        <a href="#features">Features</a>
-        <a href="#agent">Agents</a>
-        <a href="#workflow">Workflow</a>
+        <a href="#features">Highlights</a>
+        <a href="#studios">Studios</a>
+        <a href="#recipes">PNG Recipes</a>
+        <a href="#agent">MCP</a>
         <a href="quickstart.en.html">Quickstart</a>
         <a href="manual.en.html">Manual</a>
         <div class="nav-drop">
@@ -94,18 +235,18 @@
             Guides<svg aria-hidden="true"><use href="#i-down" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
-            <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
-            <a href="guide-mcp.en.html"><strong>MCP setup</strong><span>Drive the app from Claude Code / Codex</span></a>
+            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>21 genres · 5-stage pipeline &amp; Vision QC</span></a>
+            <a href="guide-video.en.html"><strong>Video &amp; Remake</strong><span>Multi-ref canvas · 2-node video clone</span></a>
+            <a href="guide-mcp.en.html"><strong>MCP server</strong><span>102 tools for Claude Code &amp; Cursor</span></a>
+            <a href="guide-gameplay.en.html"><strong>Playable HTML5</strong><span>Headless smoke-tested web games</span></a>
             <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
-            <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
-            <a href="guide-gameplay.en.html"><strong>Playable HTML</strong><span>Interactive gameplay prototypes</span></a>
-            <a href="developers.en.html"><strong>Developers</strong><span>Publish workflows & skill bundles</span></a>
-            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>bilibili</strong><span>Video walkthroughs</span></a>
+            <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted OpenAI-compatible gateways</span></a>
+            <a href="developers.en.html"><strong>Developers</strong><span>Publish workflows &amp; skill bundles</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>bilibili</strong><span>Video walkthroughs &amp; deep dives</span></a>
           </div>
         </div>
+        <a href="#faq">FAQ</a>
         <a href="#download">Download</a>
-        <a href="#community">Community</a>
         <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">
           <svg aria-hidden="true"><use href="#i-github" /></svg>GitHub
         </a>
@@ -115,19 +256,22 @@
       <details class="mobile-menu">
         <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
         <nav class="mobile-nav" aria-label="Mobile navigation">
-          <a href="#features">Features</a>
-          <a href="#agent">Agents</a>
-          <a href="#workflow">Workflow</a>
+          <a href="#features">Highlights</a>
+          <a href="#studios">Studios</a>
+          <a href="#why">Comparison</a>
+          <a href="#recipes">PNG Recipes</a>
+          <a href="#agent">MCP Server</a>
+          <a href="#faq">FAQ</a>
           <a href="#download">Download</a>
           <a href="#community">Community</a>
           <a href="quickstart.en.html">Quickstart</a>
           <a href="manual.en.html">Manual</a>
           <a href="guide-short-video.en.html">Short drama guide</a>
-          <a href="guide-video.en.html">Video guide</a>
+          <a href="guide-video.en.html">Video &amp; remake guide</a>
           <a href="guide-mcp.en.html">MCP setup</a>
           <a href="guide-comfyui.en.html">ComfyUI guide</a>
           <a href="guide-newapi.en.html">NewAPI guide</a>
-          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <a href="guide-gameplay.en.html">Playable HTML5</a>
           <a href="developers.en.html">Developers</a>
           <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
           <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
@@ -151,27 +295,37 @@
             target="_blank"
             rel="noopener noreferrer"
           >
-            <b>NEW</b><span>v8.9.1 is out · Bezier Slope Curve Drag Goal-Seek · AI Manju 21-Genre 5-Stage Film Pipeline · UI Atlas Compose Node</span> →
+            <b>v8.9.1</b><span>Machinations 120fps Curve-Drag Goal-Seek · 21-Genre 5-Stage Short Drama · UI Atlas Compose · 102 MCP Tools</span> →
           </a>
           <h1 class="reveal" style="--d: 0.04s">
-            <span class="hero-lead">The agent-native</span><span class="grad">AI production asset engine</span>
+            <span class="hero-lead">Don't just generate flat files —</span><span class="grad">ship editable game &amp; film assets</span>
           </h1>
           <p class="lede reveal" style="--d: 0.08s">
-            Don't just generate flat images — ship <strong>layered editable PSDs (with native TySh text layers)</strong>, <strong>Unity / Godot / HTML5 UI code</strong>, <strong>Spine 2D skeleton packages</strong>, <strong>CapCut / Jianying multi-track drafts</strong> and <strong>playable HTML5 games</strong>. Built-in full-workspace AI chat &amp; bi-directional MCP server, 100% local-first projects, your own API keys.
+            <strong>AI Art Engine (AIArtEngine)</strong> is a free, open-source, agent-native multimodal desktop studio that delivers <strong>layered editable PSDs (native TySh text layers)</strong>, <strong>Unity / Godot / HTML5 UI code</strong>, <strong>Machinations game economy simulations (C#/GDScript)</strong>, <strong>Spine 2D bone packages</strong>, <strong>21-genre AI short-drama episodes</strong>, and <strong>CapCut / Jianying multi-track NLE drafts</strong>. 100% local-first, with a built-in Zero-Key live demo.
           </p>
           <div class="cta reveal" style="--d: 0.12s">
-            <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>Download free</a>
-            <a class="btn btn-line" href="quickstart.en.html">3-minute quickstart</a>
+            <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>Download Free</a>
+            <a class="btn btn-line" href="quickstart.en.html">3-Minute Zero-Key Start</a>
             <a class="btn btn-ghost" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">
               <svg aria-hidden="true"><use href="#i-github" /></svg>Star on GitHub
             </a>
           </div>
-          <p class="hero-meta reveal" style="--d: 0.16s">
-            <span>Windows</span><span>macOS</span><span>Linux</span><span>GPL-3.0 open source</span>
+          <p class="hero-meta reveal" style="--d: 0.15s">
+            <span>Windows</span><span>macOS (Intel / Apple Silicon)</span><span>Linux</span><span>GPL-3.0 Open Source · BYOK</span>
           </p>
+          <div class="deliverable-strip reveal" style="--d: 0.18s" aria-label="Production deliverable formats">
+            <a class="deliv-chip" href="manual-workflow.en.html#layer-split"><b>.psd</b> Native TySh Text Layers</a>
+            <a class="deliv-chip" href="manual-workflow.en.html#layer-split"><b>.uxml / .tscn</b> Unity &amp; Godot UI</a>
+            <a class="deliv-chip" href="manual-workflow.en.html#game-economy"><b>.cs / .gd</b> Machinations Economy</a>
+            <a class="deliv-chip" href="manual-production.en.html#frame2d"><b>Spine 2D</b> skeleton.json + .atlas</a>
+            <a class="deliv-chip" href="guide-short-video.en.html"><b>Short Drama</b> 21-Genre 5-Stage Film</a>
+            <a class="deliv-chip" href="manual-production.en.html#timeline"><b>CapCut / Jianying</b> NLE Drafts</a>
+            <a class="deliv-chip" href="guide-gameplay.en.html"><b>single.html</b> Smoke-Tested Games</a>
+            <a class="deliv-chip" href="#recipes"><b>aiae:graph</b> PNG-as-Workflow</a>
+          </div>
         </div>
 
-        <figure class="hero-video reveal reveal-stage" style="--d: 0.2s">
+        <figure class="hero-video reveal reveal-stage" style="--d: 0.22s">
           <video
             data-hero-video
             src="assets/show.mp4?v=20261024a"
@@ -196,7 +350,6 @@
               aria-label="Pause"
               aria-pressed="false"
             >
-
               <svg class="hv-i-pause" aria-hidden="true" viewBox="0 0 24 24">
                 <rect x="6.6" y="5" width="3.6" height="14" rx="1.3" />
                 <rect x="13.8" y="5" width="3.6" height="14" rx="1.3" />
@@ -214,7 +367,6 @@
               aria-label="Unmute"
               aria-pressed="true"
             >
-
               <svg class="hv-i-sound-on" aria-hidden="true" viewBox="0 0 24 24">
                 <path d="M4 9.5h3.3L12 5.4v13.2L7.3 14.5H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z" />
                 <path
@@ -247,124 +399,458 @@
         </figure>
       </section>
 
-      <section class="stats" aria-label="Key numbers">
+      <section class="stats" aria-label="Key metrics">
         <div class="wrap stats-grid">
-          <div class="stat reveal"><strong>30+</strong><span>Model providers</span></div>
-          <div class="stat reveal" style="--d: 0.04s"><strong>100+</strong><span>MCP &amp; workbench tools</span></div>
-          <div class="stat reveal" style="--d: 0.08s"><strong>20+</strong><span>Production skill pipelines</span></div>
-          <div class="stat reveal" style="--d: 0.12s"><strong>16</strong><span>UI control classes &amp; code export</span></div>
-          <div class="stat reveal" style="--d: 0.16s"><strong>100%</strong><span>Local projects &amp; offline vision</span></div>
+          <div class="stat reveal"><strong>30+</strong><span>Cloud &amp; local providers</span></div>
+          <div class="stat reveal" style="--d: 0.03s"><strong>102</strong><span>MCP &amp; studio tools</span></div>
+          <div class="stat reveal" style="--d: 0.06s"><strong>59</strong><span>Verified Machinations blocks</span></div>
+          <div class="stat reveal" style="--d: 0.09s"><strong>21</strong><span>Short-drama genre blueprints</span></div>
+          <div class="stat reveal" style="--d: 0.12s"><strong>16</strong><span>UI control classes &amp; exports</span></div>
+          <div class="stat reveal" style="--d: 0.15s"><strong>100%</strong><span>Local projects &amp; offline vision</span></div>
         </div>
       </section>
 
       <div class="marquee" aria-label="Supported model providers">
-        <p class="marquee-caption">Works with your favorite models</p>
+        <p class="marquee-caption">Works with 30+ Cloud &amp; Local Model Providers (BYOK)</p>
         <div class="marquee-track">
-          <span>OpenRouter</span><span>OpenAI</span><span>Google Gemini</span><span>DeepSeek</span><span>xAI Grok</span><span>Volcengine Ark</span><span>Kling</span><span>MiniMax</span><span>DashScope</span><span>Zhipu GLM</span><span>Kimi</span><span>ElevenLabs</span><span>ComfyUI</span><span>World Labs</span><span>Meshy</span><span>Tripo</span><span>Rodin</span><span>Luma AI</span><span>Lux3D</span><span>ModelScope</span><span>MagicRouter</span><span>NewAPI</span><span>vLLM</span><span>Ollama</span><span>LM Studio</span>
-          <span aria-hidden="true">OpenRouter</span><span aria-hidden="true">OpenAI</span><span aria-hidden="true">Google Gemini</span><span aria-hidden="true">DeepSeek</span><span aria-hidden="true">xAI Grok</span><span aria-hidden="true">Volcengine Ark</span><span aria-hidden="true">Kling</span><span aria-hidden="true">MiniMax</span><span aria-hidden="true">DashScope</span><span aria-hidden="true">Zhipu GLM</span><span aria-hidden="true">Kimi</span><span aria-hidden="true">ElevenLabs</span><span aria-hidden="true">ComfyUI</span><span aria-hidden="true">World Labs</span><span aria-hidden="true">Meshy</span><span aria-hidden="true">Tripo</span><span aria-hidden="true">Rodin</span><span aria-hidden="true">Luma AI</span><span aria-hidden="true">Lux3D</span><span aria-hidden="true">ModelScope</span><span aria-hidden="true">MagicRouter</span><span aria-hidden="true">NewAPI</span><span aria-hidden="true">vLLM</span><span aria-hidden="true">Ollama</span><span aria-hidden="true">LM Studio</span>
+          <span>OpenRouter</span><span>OpenAI</span><span>Google Gemini</span><span>Anthropic Claude</span><span>DeepSeek</span><span>xAI Grok</span><span>Volcengine Ark</span><span>Kling</span><span>MiniMax Hailuo</span><span>Alibaba Qwen / Wan</span><span>Zhipu GLM</span><span>Kimi</span><span>ElevenLabs</span><span>ComfyUI</span><span>World Labs</span><span>Meshy</span><span>Tripo</span><span>Hyper3D Rodin</span><span>Luma AI</span><span>Lux3D</span><span>ModelScope</span><span>MagicRouter</span><span>NewAPI</span><span>vLLM</span><span>Ollama</span><span>LM Studio</span>
+          <span aria-hidden="true">OpenRouter</span><span aria-hidden="true">OpenAI</span><span aria-hidden="true">Google Gemini</span><span aria-hidden="true">Anthropic Claude</span><span aria-hidden="true">DeepSeek</span><span aria-hidden="true">xAI Grok</span><span aria-hidden="true">Volcengine Ark</span><span aria-hidden="true">Kling</span><span aria-hidden="true">MiniMax Hailuo</span><span aria-hidden="true">Alibaba Qwen / Wan</span><span aria-hidden="true">Zhipu GLM</span><span aria-hidden="true">Kimi</span><span aria-hidden="true">ElevenLabs</span><span aria-hidden="true">ComfyUI</span><span aria-hidden="true">World Labs</span><span aria-hidden="true">Meshy</span><span aria-hidden="true">Tripo</span><span aria-hidden="true">Hyper3D Rodin</span><span aria-hidden="true">Luma AI</span><span aria-hidden="true">Lux3D</span><span aria-hidden="true">ModelScope</span><span aria-hidden="true">MagicRouter</span><span aria-hidden="true">NewAPI</span><span aria-hidden="true">vLLM</span><span aria-hidden="true">Ollama</span><span aria-hidden="true">LM Studio</span>
         </div>
       </div>
 
       <section class="section" id="features" aria-labelledby="features-title">
         <div class="wrap">
           <div class="section-head">
-            <p class="section-label reveal">Highlights</p>
-            <h2 class="section-title reveal" id="features-title">Don't just generate flat files — <span class="grad">ship production deliverables</span></h2>
+            <p class="section-label reveal">Core Capabilities</p>
+            <h2 class="section-title reveal" id="features-title">Bridge the last mile from AIGC to <span class="grad">game engines &amp; NLE timelines</span></h2>
             <p class="section-lede reveal" style="--d: 0.06s">
-              Chat-native full-workspace control — every canvas, sub-editor, 3D rig and timeline track is directly operable by the in-app AI and external agents.
+              Every node graph, full-screen Dive workbench, 3D rig, and timeline track is directly operable by both the embedded workspace agent and external MCP clients.
             </p>
           </div>
 
           <div class="bento">
             <article class="bento-card span-4 reveal">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-chat" /></svg></span>
-              <span class="bento-tag">Chat-native workspace control</span>
-              <h3>AI chat panel · Live canvas &amp; Dive workbench action</h3>
+              <span class="bento-tag">Multi-project workspaces · 24h automations · Zero-Key demo</span>
+              <h3>Embedded AI chat · Live canvas &amp; Dive workbench action</h3>
               <p>
-                <code>@</code>-reference project assets and the agent invokes 100+ tools to wire nodes, split game UI layers, pose 3D rigs, typeset comic balloons and assemble timelines live on your canvas.
+                <code>@</code>-reference project assets and the agent invokes 100+ tools to wire nodes, decompose game UIs, solve economy curves, pose 3D rigs, and cut timelines live — complete with instant multi-project switching and <code>00:00–23:59</code> scheduled daily runs.
               </p>
               <div class="chat-mock" aria-hidden="true">
                 <div class="chat-row is-user">
-                  <div class="chat-bubble">Split <span class="mention">@inventory-ui</span> into an editable PSD and export Unity UXML + Godot 4 scene</div>
+                  <div class="chat-bubble">Split <span class="mention">@rpg-inventory</span> into an editable PSD and assemble a shop view from <span class="mention">@ui-atlas</span> for Unity UXML</div>
                 </div>
                 <div class="chat-row">
                   <div class="chat-bubble">
-                    Detected 16 UI control classes with offline OCR text &amp; stroke; inpainting clean 9-slice plates and exporting PSD + engine code.
-                    <div><span class="tool-chip">image.layerSplit</span><span class="tool-chip">export_psd</span><span class="tool-chip">export_unity_uxml</span></div>
+                    Extracted 16 UI control classes via offline OCR, inpainted clean 9-slice plates, and composed the shop layout from real atlas sprites — writing native <code>TySh</code> PSD + Unity UXML.
+                    <div><span class="tool-chip">vision_local_ocr</span><span class="tool-chip">image.layerSplit</span><span class="tool-chip">ui.atlasCompose</span></div>
                   </div>
                 </div>
               </div>
-              <a class="bento-link" href="manual-workspace.en.html#ai-chat">Manual §5.5</a>
+              <a class="bento-link" href="manual-workspace.en.html#ai-chat">Workspace &amp; AI Chat Manual</a>
             </article>
 
             <article class="bento-card span-2 reveal" style="--d: 0.05s">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-plug" /></svg></span>
-              <span class="bento-tag">Bi-directional MCP</span>
+              <span class="bento-tag">102-Tool Bi-Directional MCP</span>
               <h3>Claude Code &amp; Cursor ready</h3>
               <p>
-                Built-in <code>127.0.0.1</code> MCP server. Connect external agents in one line to autonomously plan workflows, generate multimodal assets and inspect project state.
+                Built-in <code>127.0.0.1</code> MCP server (<code>93</code> tools on <code>/mcp</code> + <code>9</code> Blender tools on <code>/mcp/blender</code>) with per-request <code>Agent / Plan / Ask</code> permission gating.
               </p>
-              <a class="bento-link" href="guide-mcp.en.html">MCP setup guide</a>
+              <a class="bento-link" href="guide-mcp.en.html">102-Tool MCP Guide</a>
             </article>
 
             <article class="bento-card reveal">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-package" /></svg></span>
-              <h3>Game UI split &amp; engine export</h3>
-              <p>Recognizes 16 UI control classes, extracts text fill &amp; stroke via cross-platform offline/online OCR, inpaints clean 9-slice plates, and exports <strong>.psd</strong> (with native <code>TySh</code> editable text layers) + <strong>Unity / Godot 4 / HTML5</strong> code.</p>
-              <a class="bento-link" href="manual-workflow.en.html#layer-split">Manual §8.3</a>
+              <span class="bento-tag">PSD TySh · Atlas Compose</span>
+              <h3>Game UI split &amp; engine code export</h3>
+              <p>
+                Recognizes 16 UI control classes, extracts text fill &amp; stroke via offline/cloud OCR, inpaints clean 9-slice plates in a 3D exploded view, composes screens from real sprite atlases via <code>ui.atlasCompose</code>, and exports native <code>TySh</code> editable <strong>.psd</strong> + <strong>Unity / Godot 4 / HTML5</strong>.
+              </p>
+              <a class="bento-link" href="manual-workflow.en.html#layer-split">Game UI Pipeline</a>
             </article>
 
             <article class="bento-card reveal" style="--d: 0.05s">
-              <span class="bento-icon"><svg aria-hidden="true"><use href="#i-spark" /></svg></span>
-              <h3>2D rigging &amp; Spine export</h3>
-              <p>Auto part cutting, edge dilation inpainting, parent-child bone rigging &amp; IK constraints, keyframe baking and direct <strong>Spine 2D</strong> (<code>skeleton.json</code> + <code>.atlas</code>) export.</p>
-              <a class="bento-link" href="manual-production.en.html#frame2d">Manual §11</a>
+              <span class="bento-icon"><svg aria-hidden="true"><use href="#i-scale" /></svg></span>
+              <span class="bento-tag">Machinations v2 · 120fps Goal-Seek</span>
+              <h3>Game economy &amp; systems studio</h3>
+              <p>
+                100% Machinations-aligned simulator with <strong>59 verified blocks</strong>, lossless Simple ↔ Pro toggle, <strong>120fps Bezier slope diamond &amp; curve-drag inverse Goal-Seek solver</strong>, Monte Carlo P10/P50/P90 bands, 2D sensitivity heatmaps, playable HUD cards, and <strong>Unity C# / Godot GDScript</strong> export.
+              </p>
+              <a class="bento-link" href="manual-workflow.en.html#game-economy">Economy Studio Manual</a>
             </article>
 
             <article class="bento-card reveal" style="--d: 0.1s">
-              <span class="bento-icon"><svg aria-hidden="true"><use href="#i-cube" /></svg></span>
-              <h3>Blender MCP live modeling</h3>
-              <p>9 tools close the inspect → bpy modeling &amp; materials → multi-angle viewport check → export <strong>.glb</strong> loop, connecting straight to the addon without uv or Python setup.</p>
-              <a class="bento-link" href="guide-mcp.en.html#blender">Blender toolset</a>
+              <span class="bento-icon"><svg aria-hidden="true"><use href="#i-spark" /></svg></span>
+              <span class="bento-tag">Spine 2D · Wavelet Retouch</span>
+              <h3>2D bone rigging &amp; portrait science</h3>
+              <p>
+                Auto character part segmentation, occluded-edge dilation inpainting, Alpha morphology + YOLOv8-Pose bone alignment &amp; IK baking straight to <strong>Spine 2D</strong> (<code>skeleton.json</code> + <code>.atlas</code>), plus 4-band wavelet skin retouching and 7 camera color sciences.
+              </p>
+              <a class="bento-link" href="manual-production.en.html#frame2d">2D Stage &amp; Portrait Docs</a>
+            </article>
+
+            <article class="bento-card span-3 reveal">
+              <span class="bento-icon"><svg aria-hidden="true"><use href="#i-film" /></svg></span>
+              <span class="bento-tag">21 Genre Blueprints · 5-Stage Loop</span>
+              <h3>AI Short Drama &amp; Comic Drama Workbench (<code>film.workbench</code>)</h3>
+              <p>
+                Built-in <strong>21 vertical short-drama blueprints (P01–P21)</strong>: <strong>① Dual-rhythm A+B beat breakdown</strong> → <strong>② 11-point continuity &amp; ≥67% dialogue audit</strong> → <strong>③ Character <code>#variant</code> wardrobe sheets / scenes / <code>STYLE01</code> bible + cross-episode TTS voice binding</strong> → <strong>④ <code>@1–@4</code> locked batch shoot &amp; Vision QC auto-reshoots</strong> → <strong>⑤ Viral cover/title release pack &amp; full episode</strong>.
+              </p>
+              <a class="bento-link" href="guide-short-video.en.html">5-Stage Short Drama Guide</a>
+            </article>
+
+            <article class="bento-card span-3 reveal" style="--d: 0.05s">
+              <span class="bento-icon"><svg aria-hidden="true"><use href="#i-scissors" /></svg></span>
+              <span class="bento-tag">4-Axis Forensics · rea-video</span>
+              <h3>2-Node Forensic Video Breakdown &amp; 1:1 Remake (<code>semantic.analyze → rebuild</code>)</h3>
+              <p>
+                Clone viral reference videos with just two nodes: upstream runs <strong>WhisperX word-level ASR + PySceneDetect cuts + Librosa beats + Demucs stems + 3-frame VLM camera forensics</strong>; downstream inpaints clean-plate backgrounds (removing burned subtitles), batches shots via dynamic programming, synthesizes lip-synced dialogue + kinetic <code>.ass</code> subtitles, and outputs both <code>final.mp4</code> and side-by-side <code>compare.mp4</code>.
+              </p>
+              <a class="bento-link" href="guide-video.en.html">Video &amp; Forensic Remake Guide</a>
             </article>
 
             <article class="bento-card span-3 reveal">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-graph" /></svg></span>
-              <h3>Typed DAG node graph × PNG-as-Workflow</h3>
+              <h3>Typed Multimodal DAG × PNG-as-Workflow</h3>
               <p>
-                Connect text, image, video, voice, music, 3D, spatial worlds and playable HTML; double-click any node to Dive into 10+ specialized workbenches. Exported PNGs embed the full graph (<code>aiae:graph</code>) — <strong>drag any PNG onto the canvas to restore the entire pipeline</strong>.
+                Strongly typed ports connect text, image, video, voice, singing, 3D, spatial worlds, inline JS (<code>script.run</code>), and playable HTML5 with fingerprint incremental caching. Every exported PNG embeds the full graph (<code>aiae:graph</code>) — <strong>drag any PNG onto the canvas to restore the entire pipeline</strong>.
               </p>
-              <a class="bento-link" href="manual-workflow.en.html#ai-workflow">Manual §7</a>
+              <a class="bento-link" href="#recipes">Try Downloadable PNG Recipes</a>
             </article>
 
             <article class="bento-card span-3 reveal" style="--d: 0.05s">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-camera" /></svg></span>
-              <h3>3D director stage &amp; spatial worlds</h3>
+              <h3>3D Director Stage · World Labs 3DGS &amp; Blender MCP</h3>
               <p>
-                56-bone humanoid rig posing, multi-camera blocking, and walkable 3D Gaussian Splatting worlds (World Labs); capture blocking frames or record camera moves straight into downstream generation.
+                56-bone humanoid rigs, 24 procedural motion clips, and 38 pose presets with offscreen <code>.webm</code> camera trajectory white-box previz (<code>@2</code>); explore walkable World Labs Marble 3D Gaussian Splatting worlds (<code>.glb</code>), or close the inspect → <code>bpy</code> modeling → viewport check → import loop via 9 Blender MCP tools.
               </p>
-              <a class="bento-link" href="manual-production.en.html#director">Manual §12</a>
+              <a class="bento-link" href="manual-production.en.html#director">3D Director &amp; Blender Bridge</a>
             </article>
 
             <article class="bento-card reveal">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-film" /></svg></span>
-              <h3>Short-drama workbench &amp; CapCut drafts</h3>
-              <p>Script breakdown → AI Director review → <code>#variant</code> wardrobe lock → batch shoot, exporting finished MP4s plus <strong>JianyingPro / CapCut multi-track NLE drafts</strong>.</p>
-              <a class="bento-link" href="manual-production.en.html#timeline">Manual §10</a>
+              <h3>CapCut-grade 6-tab NLE &amp; drafts</h3>
+              <p>
+                120+ GPU/FFmpeg effects, transitions, LUTs &amp; color wheels, DOTween dual-layer keyframes, and TD-PSOLA singing synthesis — render MP4 masters or export <strong>JianyingPro / CapCut editable multi-track drafts</strong>.
+              </p>
+              <a class="bento-link" href="manual-production.en.html#timeline">Timeline &amp; Draft Export</a>
             </article>
 
             <article class="bento-card reveal" style="--d: 0.05s">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-user" /></svg></span>
               <h3>Local ONNX vision &amp; offline OCR</h3>
-              <p>Built-in offline ONNX inference (YOLO detect/seg/pose, 468-pt FaceMesh, SAM 2.1) and native Windows / macOS / Linux offline OCR with zero cloud cost.</p>
+              <p>
+                Built-in offline ONNX Runtime (YOLOv8 detect/seg/pose, 468-pt FaceMesh, SAM 2.1, Rembg) plus native Windows / macOS / Linux offline OCR at zero cloud cost.
+              </p>
+              <a class="bento-link" href="manual-setup.en.html#local-vision">Local Vision Setup</a>
             </article>
 
             <article class="bento-card reveal" style="--d: 0.1s">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-globe" /></svg></span>
-              <h3>Playable HTML5 games</h3>
-              <p>Generate self-contained <code>single.html</code> games from a single prompt, verified by headless Chromium smoke tests (zero console errors + canvas frame-diff validation).</p>
-              <a class="bento-link" href="guide-gameplay.en.html">Playable HTML guide</a>
+              <h3>Playable HTML5 games &amp; smoke QC</h3>
+              <p>
+                Generate self-contained <code>single.html</code> playable games from one prompt, verified by headless Chromium smoke tests (zero console errors + simulated input + canvas frame-diff validation).
+              </p>
+              <a class="bento-link" href="guide-gameplay.en.html">Playable HTML5 Guide</a>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="studios" aria-labelledby="studios-title">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="section-label reveal">Dive Workbenches</p>
+            <h2 class="section-title reveal" id="studios-title">Double-click any node to Dive into <span class="grad">10+ specialized studios</span></h2>
+            <p class="section-lede reveal" style="--d: 0.06s">
+              Macro orchestration on the typed DAG canvas; pixel-, bone-, curve-, and frame-accurate craft inside full-screen Dive workbenches.
+            </p>
+          </div>
+
+          <div class="studio-tour reveal" data-studio-tour>
+            <div class="studio-tabs" role="tablist" aria-label="Flagship studio screenshots">
+              <button class="studio-tab" type="button" role="tab" id="st-tab-ui" aria-controls="st-panel-ui" aria-selected="true">
+                <span class="studio-tab-num">01</span>Game UI 3D Split &amp; PSD
+              </button>
+              <button class="studio-tab" type="button" role="tab" id="st-tab-film" aria-controls="st-panel-film" aria-selected="false" tabindex="-1">
+                <span class="studio-tab-num">02</span>5-Stage Short Drama
+              </button>
+              <button class="studio-tab" type="button" role="tab" id="st-tab-dir" aria-controls="st-panel-dir" aria-selected="false" tabindex="-1">
+                <span class="studio-tab-num">03</span>Storyboard &amp; 3D Director
+              </button>
+              <button class="studio-tab" type="button" role="tab" id="st-tab-spine" aria-controls="st-panel-spine" aria-selected="false" tabindex="-1">
+                <span class="studio-tab-num">04</span>2D Rigging &amp; Spine
+              </button>
+              <button class="studio-tab" type="button" role="tab" id="st-tab-nle" aria-controls="st-panel-nle" aria-selected="false" tabindex="-1">
+                <span class="studio-tab-num">05</span>6-Tab Timeline &amp; CapCut
+              </button>
+              <button class="studio-tab" type="button" role="tab" id="st-tab-onnx" aria-controls="st-panel-onnx" aria-selected="false" tabindex="-1">
+                <span class="studio-tab-num">06</span>Local ONNX &amp; 30+ Providers
+              </button>
+            </div>
+
+            <div class="studio-panel" role="tabpanel" id="st-panel-ui" aria-labelledby="st-tab-ui">
+              <figure class="studio-shot">
+                <img src="assets/imgs/ui-layers.webp" alt="AI Art Engine 3D exploded Game UI layer split exporting editable PSD and Unity/Godot UI code" width="1600" height="860" loading="lazy" />
+              </figure>
+              <div class="studio-info">
+                <span class="bento-tag">image.layerSplit · ui.atlasCompose</span>
+                <h3>Game UI 3D Exploded Layer Split · Native Editable PSD &amp; Engine Code</h3>
+                <p>Decompose flat UI mockups into clean 9-slice base plates, isolated icon sprites, and editable text layers — or assemble brand-new screens strictly from your uploaded texture atlas.</p>
+                <ul class="studio-bullets">
+                  <li>Detects 16 UI control classes (buttons, 9-slice panels, slots, tabs, currency bars, sliders)</li>
+                  <li>Offline/online OCR extracts font size, fill &amp; stroke while inpainting clean backing plates</li>
+                  <li>Interactive Three.js 3D exploded view to inspect Z-order hierarchy before export</li>
+                </ul>
+                <div class="studio-deliverables">
+                  <span>.psd (Native TySh Text)</span><span>Unity UGUI / .uxml</span><span>Godot 4 .tscn</span><span>HTML5 + PNG Slices</span>
+                </div>
+                <a class="bento-link" href="manual-workflow.en.html#layer-split">Explore Game UI Engineering</a>
+              </div>
+            </div>
+
+            <div class="studio-panel" role="tabpanel" id="st-panel-film" aria-labelledby="st-tab-film" hidden>
+              <figure class="studio-shot">
+                <img src="assets/imgs/film-workbench.webp" alt="AI Art Engine 21-genre 5-stage AI Short Drama Film Workbench" width="1440" height="900" loading="lazy" />
+              </figure>
+              <div class="studio-info">
+                <span class="bento-tag">film.workbench · P01–P21 Genre Blueprints</span>
+                <h3>5-Stage AI Short Drama Workbench · Locked Cast, Wardrobe &amp; Voices</h3>
+                <p>Purpose-built for episodic vertical short dramas and AI motion comics — eliminating face drift, outfit swaps, and sluggish pacing across episodes.</p>
+                <ul class="studio-bullets">
+                  <li>21 genre blueprints with A+B dual-rhythm beat breakdown &amp; 11-point continuity + ≥67% dialogue audit</li>
+                  <li>Character <code>#variant</code> wardrobe cards, <code>STYLE01</code> master style bible, and persistent cross-episode TTS voices</li>
+                  <li><code>@1–@4</code> anchor-locked batch video shoot, VLM Vision QC auto-reshoots, and per-shot fingerprint cache</li>
+                </ul>
+                <div class="studio-deliverables">
+                  <span>Full Episode .mp4</span><span>Cover &amp; Viral Title Pack</span><span>Cast Turnaround Sheets</span><span>CapCut Drafts</span>
+                </div>
+                <a class="bento-link" href="guide-short-video.en.html">Read the Short Drama Guide</a>
+              </div>
+            </div>
+
+            <div class="studio-panel" role="tabpanel" id="st-panel-dir" aria-labelledby="st-tab-dir" hidden>
+              <figure class="studio-shot">
+                <img src="assets/imgs/script-camera.webp" alt="AI Art Engine Storyboard and 56-bone 3D Director Stage camera blocking" width="1440" height="900" loading="lazy" />
+              </figure>
+              <div class="studio-info">
+                <span class="bento-tag">director.stage · world.generate · Blender MCP</span>
+                <h3>56-Bone 3D Director Stage · Trajectory Previz Straight to Video</h3>
+                <p>Stop gambling on prompt-only camera angles — block multi-character staging and camera moves in 3D, then feed exact perspective and motion guides downstream.</p>
+                <ul class="studio-bullets">
+                  <li>56-bone humanoid rigs with 38 dramatic pose presets and 24 procedural motion clips</li>
+                  <li>Offscreen <code>.webm</code> camera trajectory white-box video recording (<code>@2</code>) for motion-guided video models</li>
+                  <li>Walkable World Labs 3D Gaussian Splatting scenes and live <code>.glb</code> props via Blender MCP</li>
+                </ul>
+                <div class="studio-deliverables">
+                  <span>Blocking Still @1</span><span>Trajectory Video .webm @2</span><span>.glb 3D Scene Assets</span>
+                </div>
+                <a class="bento-link" href="manual-production.en.html#director">Explore 3D Director &amp; Spatial Worlds</a>
+              </div>
+            </div>
+
+            <div class="studio-panel" role="tabpanel" id="st-panel-spine" aria-labelledby="st-tab-spine" hidden>
+              <figure class="studio-shot">
+                <img src="assets/imgs/2d-director.webp" alt="AI Art Engine 2D character segmentation, bone rigging, and Spine 2D animation export" width="1600" height="860" loading="lazy" />
+              </figure>
+              <div class="studio-info">
+                <span class="bento-tag">stage.2d · AI Bone Alignment</span>
+                <h3>2D Character Segmentation &amp; Direct Spine 2D Skeleton Export</h3>
+                <p>Turn a single static character illustration into engine-ready idle, combat, and emote skeletal animations for Unity, Godot, Cocos, and Unreal.</p>
+                <ul class="studio-bullets">
+                  <li>Semantic limb/hair/torso part cutting with occluded-edge dilation inpainting</li>
+                  <li>Alpha morphology skeletonization + local YOLOv8-Pose joint alignment &amp; IK constraints</li>
+                  <li>Keyframe curve baking and one-click Spine 2D bundle export</li>
+                </ul>
+                <div class="studio-deliverables">
+                  <span>skeleton.json</span><span>texture.atlas + .png</span><span>Transparent Sprite Sheets / WebM</span>
+                </div>
+                <a class="bento-link" href="manual-production.en.html#frame2d">See 2D Rigging Documentation</a>
+              </div>
+            </div>
+
+            <div class="studio-panel" role="tabpanel" id="st-panel-nle" aria-labelledby="st-tab-nle" hidden>
+              <figure class="studio-shot">
+                <img src="assets/imgs/video-timeline.webp" alt="AI Art Engine 6-tab multi-track NLE timeline editor and CapCut draft export" width="1600" height="860" loading="lazy" />
+              </figure>
+              <div class="studio-info">
+                <span class="bento-tag">output.timeline · 120+ Effects &amp; LUTs · CapCut Drafts</span>
+                <h3>CapCut-Grade 6-Tab Timeline · Master Render or NLE Draft Handoff</h3>
+                <p>Assemble generated clips, dialogue stems, music, and kinetic subtitles on a multi-track timeline — finish in-app or hand off editable tracks to post-production.</p>
+                <ul class="studio-bullets">
+                  <li>6 creative tabs: Media, Subtitles, GPU/FFmpeg Effects, Transitions, Color/LUTs, and Presets</li>
+                  <li>DOTween-style dual-layer keyframe easing (in/loop/out) &amp; TD-PSOLA score-based singing synthesis</li>
+                  <li>One-click export to JianyingPro / CapCut editable multi-track draft packages</li>
+                </ul>
+                <div class="studio-deliverables">
+                  <span>H.264 / ProRes .mp4</span><span>CapCut / Jianying Drafts</span><span>.ass / .srt Kinetic Subtitles</span>
+                </div>
+                <a class="bento-link" href="manual-production.en.html#timeline">Explore Timeline &amp; NLE Export</a>
+              </div>
+            </div>
+
+            <div class="studio-panel" role="tabpanel" id="st-tab-onnx" aria-labelledby="st-tab-onnx" hidden>
+              <figure class="studio-shot">
+                <img src="assets/imgs/local-models.webp" alt="AI Art Engine local ONNX Runtime vision models and 30+ cloud/local model provider router" width="1600" height="860" loading="lazy" />
+              </figure>
+              <div class="studio-info">
+                <span class="bento-tag">ONNX Runtime · Offline OCR · 30+ BYOK Providers</span>
+                <h3>Offline ONNX Vision + 30+ Cloud &amp; Local Model Routing</h3>
+                <p>Run high-frequency matting, pose detection, face meshes, and OCR locally for free — while mixing the best cloud APIs or local ComfyUI/Ollama per node.</p>
+                <ul class="studio-bullets">
+                  <li>One-click manager for YOLOv8 (detect/seg/pose), 468-pt FaceMesh, SAM 2.1, and Rembg</li>
+                  <li>Native OS offline OCR across Windows, macOS, and Linux for UI split &amp; video forensics</li>
+                  <li>Built-in health checks for OpenRouter, NewAPI, Gemini, Claude, Kling, Volcengine, ComfyUI &amp; S3/OSS/R2</li>
+                </ul>
+                <div class="studio-deliverables">
+                  <span>Zero-Markup BYOK</span><span>Offline Local Vision</span><span>S3 / OSS / R2 Cloud Sync</span>
+                </div>
+                <a class="bento-link" href="manual-setup.en.html#local-vision">Configure Models &amp; Local Vision</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="why" aria-labelledby="why-title">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="section-label reveal">Why AI Art Engine</p>
+            <h2 class="section-title reveal" id="why-title">Why game &amp; film teams choose <span class="grad">AI Art Engine</span></h2>
+            <p class="section-lede reveal" style="--d: 0.06s">
+              Combining the immediacy of an AI assistant, the reproducibility of a typed DAG, and the editable file formats of pro desktop tools.
+            </p>
+          </div>
+
+          <div class="compare-wrap reveal">
+            <table class="compare-table">
+              <thead>
+                <tr>
+                  <th scope="col">Dimension</th>
+                  <th scope="col">Web AIGC Platforms</th>
+                  <th scope="col">Raw Diffusion Node Graphs</th>
+                  <th scope="col" class="is-hi">AI Art Engine (v8.9.1)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Final Deliverables</th>
+                  <td>Flat PNG/JPG images or isolated 5s clips with baked-in text</td>
+                  <td>Primarily raster frames &amp; raw clips; no engine packaging</td>
+                  <td class="is-hi">Native <code>TySh</code> editable <strong>.psd</strong>, <strong>Unity/Godot UI</strong>, <strong>Spine 2D</strong>, <strong>C#/GDScript</strong>, <strong>CapCut drafts</strong> &amp; <strong>single.html</strong></td>
+                </tr>
+                <tr>
+                  <th scope="row">Game UI Pipeline</th>
+                  <td>Pretty mockups that artists must manually re-slice and re-type</td>
+                  <td>No UI control recognition, 9-slice inpainting, or UXML/.tscn export</td>
+                  <td class="is-hi">16-class detection + offline OCR + clean 9-slice plates + 3D exploded view + <code>ui.atlasCompose</code></td>
+                </tr>
+                <tr>
+                  <th scope="row">Game Economy &amp; Balance</th>
+                  <td>Static prose docs; cannot simulate resource loops or inflation</td>
+                  <td>No system-dynamics simulation or inverse curve solving</td>
+                  <td class="is-hi">Built-in <strong>Machinations v2</strong> (59 blocks, <strong>120fps curve-drag Goal-Seek</strong>, Monte Carlo, 2D heatmaps, playable HUD)</td>
+                </tr>
+                <tr>
+                  <th scope="row">Episodic Short Drama</th>
+                  <td>Drifting faces, inconsistent outfits, and mismatched voices</td>
+                  <td>Fragile custom spaghetti graphs without director continuity checks</td>
+                  <td class="is-hi"><strong>21-genre 5-stage Film Workbench</strong>: A+B beats, 11-point continuity audit, <code>#variant</code> + TTS voice lock &amp; Vision QC</td>
+                </tr>
+                <tr>
+                  <th scope="row">Viral Video Remake</th>
+                  <td>Tedious manual shot logging and prompt guesswork</td>
+                  <td>Requires stitching dozens of brittle Python custom nodes</td>
+                  <td class="is-hi"><strong>2-node <code>rea-video</code></strong> 4-axis forensics + clean-plate subtitle removal + DP batching + lip-sync &amp; <code>compare.mp4</code></td>
+                </tr>
+                <tr>
+                  <th scope="row">Agent &amp; MCP Control</th>
+                  <td>Closed web silo; unreachable from coding agents</td>
+                  <td>Low-level JSON APIs without domain studio tools</td>
+                  <td class="is-hi">Multi-project AI chat + 24h schedules + <strong>102-tool local MCP server</strong> (Claude Code, Cursor, Codex, Blender)</td>
+                </tr>
+                <tr>
+                  <th scope="row">Pricing &amp; Ownership</th>
+                  <td>Monthly subscriptions, expiring credits, cloud lock-in</td>
+                  <td>Local open source, but complex hybrid cloud/offline setup</td>
+                  <td class="is-hi"><strong>GPL-3.0 free &amp; open source</strong>, 100% local disk projects, 30+ zero-markup BYOK providers + ComfyUI / ONNX</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="recipes" aria-labelledby="recipes-title">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="section-label reveal">PNG-as-Workflow</p>
+            <h2 class="section-title reveal" id="recipes-title">Every PNG carries its pipeline: <span class="grad">drag onto canvas to replay</span></h2>
+            <p class="section-lede reveal" style="--d: 0.06s">
+              Exported PNGs store their complete node topology inside a lossless <code>aiae:graph</code> chunk. Download any recipe PNG below and drop it onto your AI Art Engine canvas to inspect and run the pipeline!
+            </p>
+          </div>
+
+          <div class="recipe-grid">
+            <article class="recipe-card reveal">
+              <div class="recipe-media">
+                <video src="assets/recipe/recipe1.mp4" poster="assets/recipe/recipe1.png" muted loop playsinline autoplay preload="metadata"></video>
+                <span class="recipe-badge">aiae:graph · Recipe #01</span>
+              </div>
+              <div class="recipe-body">
+                <h3>Anime / Motion-Comic Multi-Shot Sequence</h3>
+                <p>Complete node topology locking character turnaround anchors, dynamic shot prompts, and multi-reference video synthesis. Drop onto the canvas and swap in your lead character.</p>
+                <div class="recipe-actions">
+                  <a class="recipe-dl" href="assets/recipe/recipe1.png" download="aiartengine-recipe-01.png">
+                    <svg width="15" height="15" aria-hidden="true"><use href="#i-download" /></svg>Download PNG Recipe
+                  </a>
+                </div>
+              </div>
+            </article>
+
+            <article class="recipe-card reveal" style="--d: 0.05s">
+              <div class="recipe-media">
+                <video src="assets/recipe/recipe2.mp4" poster="assets/recipe/recipe2.png" muted loop playsinline autoplay preload="metadata"></video>
+                <span class="recipe-badge">aiae:graph · Recipe #02</span>
+              </div>
+              <div class="recipe-body">
+                <h3>Fantasy VFX &amp; Guided Camera Choreography</h3>
+                <p>Combines start/end keyframe anchors, lighting mood control, and guided camera motion without manual wiring — inspect every node parameter right from the PNG.</p>
+                <div class="recipe-actions">
+                  <a class="recipe-dl" href="assets/recipe/recipe2.png" download="aiartengine-recipe-02.png">
+                    <svg width="15" height="15" aria-hidden="true"><use href="#i-download" /></svg>Download PNG Recipe
+                  </a>
+                </div>
+              </div>
+            </article>
+
+            <article class="recipe-card reveal" style="--d: 0.1s">
+              <div class="recipe-media">
+                <video src="assets/recipe/recipe3.mp4" poster="assets/recipe/recipe3.png" muted loop playsinline autoplay preload="metadata"></video>
+                <span class="recipe-badge">aiae:graph · Recipe #03</span>
+              </div>
+              <div class="recipe-body">
+                <h3>Commercial Short &amp; Audio-Visual Sync</h3>
+                <p>Demonstrates multimodal visual references, dynamic shot generation, and audio-synced assembly — share whole production pipelines over Slack, Discord, or Git as a single PNG.</p>
+                <div class="recipe-actions">
+                  <a class="recipe-dl" href="assets/recipe/recipe3.png" download="aiartengine-recipe-03.png">
+                    <svg width="15" height="15" aria-hidden="true"><use href="#i-download" /></svg>Download PNG Recipe
+                  </a>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="maiden-banner reveal" style="--d: 0.12s">
+            <img src="assets/wish-maiden.png" alt="AI Art Engine Wish Maiden companion and Zero-Key Instant Demo" width="76" height="82" loading="lazy" />
+            <div>
+              <h3>⚡ No API key yet? Launch the Zero-Key Instant Demo inside AI Chat</h3>
+              <p>
+                Open any workspace's <code>◈ AI Chat</code> panel and click <strong>Zero-Key Instant Demo</strong> to run a live RPG Game UI decomposition, 3D exploded layer preview, and PSD/Unity/Godot export locally — and summon the canvas <strong>Wish Maiden</strong> with procedural sakura, aurora, and meteor-shower weather while renders run.
+              </p>
+            </div>
+            <a class="btn btn-line" href="quickstart.en.html">3-Minute Quickstart →</a>
           </div>
         </div>
       </section>
@@ -372,33 +858,33 @@
       <section class="section" id="agent" aria-labelledby="agent-title">
         <div class="wrap agent-grid">
           <div>
-            <p class="section-label reveal">Agent Native</p>
-            <h2 class="section-title reveal" id="agent-title">One command and Claude Code<br /><span class="grad">runs your production</span></h2>
+            <p class="section-label reveal">Agent Native · 102 MCP Tools</p>
+            <h2 class="section-title reveal" id="agent-title">One command lets Claude Code / Cursor<br /><span class="grad">orchestrate 102 production tools</span></h2>
             <p class="section-lede reveal" style="--d: 0.06s">
-              While running, the app serves a local tool server on <code class="code-inline">127.0.0.1</code> with a Bearer token. External agents and the in-app chat share the same tools.
+              While running, AI Art Engine serves an authenticated local MCP endpoint on <code class="code-inline">127.0.0.1</code> (<code>93</code> tools on <code>/mcp</code> + <code>9</code> live modeling tools on <code>/mcp/blender</code>), sharing the exact same tool engine as the in-app AI chat.
             </p>
             <ul class="check-list">
-              <li class="reveal"><div><strong>Plan and commit workflows</strong> — natural language to a plan preview, committed as a host asset that appears in the UI</div></li>
-              <li class="reveal" style="--d: 0.04s"><div><strong>Run generation and track tasks</strong> — image, video, speech, music, SFX, 3D and spatial worlds</div></li>
-              <li class="reveal" style="--d: 0.08s"><div><strong>Safe by design</strong> — persistent token, audit log, concurrency gate; Ask / Plan modes narrow writes per request</div></li>
+              <li class="reveal"><div><strong>Graph &amp; Skill Marketplace orchestration</strong> — <code>skill_install</code> workflows, instantiate via <code>workflow_use_installed</code>, wire nodes with <code>graph_edit</code>, and execute via <code>task_run</code></div></li>
+              <li class="reveal" style="--d: 0.04s"><div><strong>Game, film &amp; 3D end-to-end</strong> — simulate economies with <code>machinations_studio</code>, run offline <code>vision_local_ocr</code>, dissect clips via <code>semantic_analyze_video</code>, and export via <code>timeline_export</code></div></li>
+              <li class="reveal" style="--d: 0.08s"><div><strong>Audited &amp; permission-gated</strong> — persistent Bearer token, concurrency gate, and per-request <code>Agent / Plan / Ask</code> read/write scoping</div></li>
             </ul>
             <div class="cta reveal" style="justify-content: flex-start; margin-top: 0">
-              <a class="btn btn-solid" href="guide-mcp.en.html"><svg aria-hidden="true"><use href="#i-terminal" /></svg>MCP setup guide</a>
+              <a class="btn btn-solid" href="guide-mcp.en.html"><svg aria-hidden="true"><use href="#i-terminal" /></svg>102-Tool MCP Setup Guide</a>
             </div>
           </div>
 
-          <div class="term reveal reveal-stage" style="--d: 0.1s" role="img" aria-label="Terminal demo: Claude Code plans and runs a short-drama workflow over MCP">
-            <div class="term-bar"><i></i><i></i><i></i><span>claude — ~/projects/mystery-short</span></div>
+          <div class="term reveal reveal-stage" style="--d: 0.1s" role="img" aria-label="Terminal demo: Claude Code driving AI Art Engine's 102 MCP tools">
+            <div class="term-bar"><i></i><i></i><i></i><span>claude — ~/projects/fantasy-production</span></div>
             <pre><span class="t-dim">$</span> <span class="t-cmd">claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs</span>
-<span class="t-ok">✓</span> Added stdio MCP server <span class="t-ok">aiartengine</span>
+<span class="t-ok">✓</span> Connected <span class="t-ok">aiartengine</span> <span class="t-dim">(/mcp 93 tools + /mcp/blender 9 tools)</span>
 
-<span class="t-user">&gt;</span> Make a mystery short with the Film Full Pipeline template, lead from @heroine-sheet
+<span class="t-user">&gt;</span> Install short-drama skill, shoot Ep.1, verify gacha economy &amp; export CapCut draft
 
-<span class="t-tool">●</span> workflow_list_presets  <span class="t-dim">matched: Film Full Pipeline (short-drama)</span>
-<span class="t-tool">●</span> workflow_plan          <span class="t-dim">plan preview ready</span>
-<span class="t-tool">●</span> workflow_commit        <span class="t-dim">host asset committed, shown in UI</span>
-<span class="t-tool">●</span> task_run               <span class="t-warn">running</span> <span class="t-dim">mcpTaskId=7f3a…</span>
-<span class="t-tool">●</span> task_status            <span class="t-dim">script</span> <span class="t-ok">✓</span> <span class="t-dim">breakdown</span> <span class="t-ok">✓</span> <span class="t-dim">cast sheets</span> <span class="t-ok">✓</span> <span class="t-dim">batch shoot …</span>
+<span class="t-tool">●</span> skill_install          <span class="t-dim">installed workflow: short-drama (P02 Fantasy)</span>
+<span class="t-tool">●</span> workflow_use_installed <span class="t-dim">created host asset &amp; wired film.workbench</span>
+<span class="t-tool">●</span> machinations_studio    <span class="t-ok">✓</span> <span class="t-dim">Monte Carlo P50=68 steps · exported Economy.cs</span>
+<span class="t-tool">●</span> task_run               <span class="t-warn">running</span> <span class="t-dim">film.workbench @1–@4 locked + Vision QC</span>
+<span class="t-tool">●</span> timeline_export        <span class="t-ok">✓</span> <span class="t-dim">ep01.mp4 + CapCut multi-track draft exported</span>
 <span class="cursor"></span></pre>
           </div>
         </div>
@@ -407,51 +893,51 @@
       <section class="section" id="workflow" aria-labelledby="workflow-title">
         <div class="wrap">
           <div class="section-head">
-            <p class="section-label reveal">Workflow</p>
-            <h2 class="section-title reveal" id="workflow-title">Seven steps to a finished piece</h2>
-            <p class="section-lede reveal" style="--d: 0.06s">Build each step by hand, or let an agent run the whole thing.</p>
+            <p class="section-label reveal">Production Pipeline</p>
+            <h2 class="section-title reveal" id="workflow-title">Seven steps from concept to deliverable</h2>
+            <p class="section-lede reveal" style="--d: 0.06s">Craft every detail interactively, or hand the entire pipeline to an agent.</p>
           </div>
           <ol class="steps">
             <li class="is-wide">
               <span class="n">01</span>
-              <h3>One-Click Workflow</h3>
+              <h3>Skill Marketplace, PNG Recipe, or Natural-Language Graph</h3>
               <p>
-                Pick a preset (including the Film Full Pipeline and Single-Shot Polish templates) or describe what you need in one sentence, preview the topology and create a reusable host asset. See
-                <a href="manual-workflow.en.html#ai-workflow">Manual §7</a> and the <a href="guide-short-video.en.html">short-drama guide</a>.
+                Start from the built-in Forensic Video Remake preset, install domain pipelines from the Skill Marketplace, drag in any recipe PNG, or describe your goal in AI Chat to build a typed DAG. See
+                <a href="manual-workflow.en.html#ai-workflow">Manual §7</a>.
               </p>
             </li>
             <li>
               <span class="n">02</span>
-              <h3>Asset library</h3>
-              <p>Images, videos and voices referenced by GUID, with asset-package import and export.</p>
+              <h3>Multi-Project Workspace &amp; GUID Assets</h3>
+              <p>Switch projects from the chat sidebar; reference images, videos, 3D models, and TTS voices by GUID with package import/export and Git diff.</p>
             </li>
             <li>
               <span class="n">03</span>
-              <h3>Film Workbench &amp; Shot node</h3>
-              <p>Unified 4-stage Film Workbench (Breakdown → Director Review → Character &amp; Scene Design → Batch Shoot, with auto per-shot duration and Vision QC reshoots) plus downstream single-shot polish.</p>
+              <h3>5-Stage Short Drama Workbench</h3>
+              <p>A+B beat breakdown → 11-point continuity &amp; dialogue audit → <code>#variant</code> / scene / <code>STYLE01</code> anchors → batch shoot &amp; Vision QC → release pack.</p>
             </li>
             <li class="is-wide">
               <span class="n">04</span>
-              <h3>Node generation &amp; Dive workbenches</h3>
+              <h3>Game UI Split, Atlas Compose &amp; Machinations Economy</h3>
               <p>
-                Text / image / video / voice / music / SFX / spatial-world / 3D model nodes, plus 10-in-1 image processing, comic page layout, 2D frame animation and rig stage across 30+ providers.
+                <code>image.layerSplit</code> ships native <code>TySh</code> PSDs + Unity/Godot UI; <code>ui.atlasCompose</code> builds screens from real sprite sheets; <code>game.economy</code> solves curves at 120fps and exports C# / GDScript.
               </p>
             </li>
             <li>
               <span class="n">05</span>
-              <h3>Director stage</h3>
-              <p>3D posing and cameras; capture blocking shots and record actions into downstream generation.</p>
+              <h3>2D Spine Stage &amp; 3D Director</h3>
+              <p>Rig 2D characters for Spine 2D export, or pose 56-bone 3D actors and record <code>.webm</code> camera trajectories into video generation.</p>
             </li>
             <li>
               <span class="n">06</span>
-              <h3>Final timeline</h3>
-              <p>Arrange imported and node clips, preview a selection or the whole cut, export.</p>
+              <h3>6-Tab Timeline &amp; CapCut Drafts</h3>
+              <p>Apply 120+ effects, transitions, LUTs, DOTween keyframes, and singing synthesis; render MP4 or export CapCut / Jianying drafts.</p>
             </li>
             <li class="is-wide">
               <span class="n">07</span>
-              <h3>4-stage film loop &amp; incremental cache</h3>
+              <h3>24h Scheduled Automations &amp; Headless Quality Gates</h3>
               <p>
-                Double-click the Film Workbench to enter its full-screen Dive view for script breakdown, AI director scoring, character/scene anchor sheets and batch video generation — with fingerprint caching and per-shot locking so editing one shot only re-renders that shot.
+                Schedule unattended daily episodic runs (<code>00:00–23:59</code>); verify playable HTML5 builds via headless Chromium smoke tests while fingerprint caching prevents redundant re-renders.
               </p>
             </li>
           </ol>
@@ -462,24 +948,84 @@
         <div class="wrap">
           <div class="section-head">
             <p class="section-label reveal">Get Started</p>
-            <h2 class="section-title reveal" id="start-title">Pick the path that fits your goal</h2>
+            <h2 class="section-title reveal" id="start-title">Pick the path that fits your production</h2>
           </div>
           <div class="path-grid reveal">
             <a class="path-card" href="quickstart.en.html">
-              <span class="path-tag">New here</span>
-              <strong>Get your first clip in 5 minutes</strong>
-              <span class="path-desc">Install → connect a model → pick a template → get a clip, no manual node wiring.</span>
+              <span class="path-tag">New here · Zero keys needed</span>
+              <strong>3-minute Zero-Key quickstart</strong>
+              <span class="path-desc">Install → trigger the Zero-Key RPG UI split demo in AI Chat → connect a model and ship your first asset.</span>
             </a>
             <a class="path-card" href="guide-short-video.en.html">
-              <span class="path-tag">Short drama</span>
-              <strong>Run the full short-drama pipeline</strong>
-              <span class="path-desc">The 4-stage Film Workbench loop (breakdown, director review, cast/scene sheets, batch shoot) and single-shot polish.</span>
+              <span class="path-tag">Short drama &amp; motion comics</span>
+              <strong>21-genre 5-stage short-drama guide</strong>
+              <span class="path-desc">Beat breakdown, continuity audit, #variant wardrobe &amp; TTS voice locking, Vision QC shoots, and CapCut export.</span>
             </a>
             <a class="path-card" href="manual.en.html">
-              <span class="path-tag">Reference</span>
-              <strong>Complete manual</strong>
-              <span class="path-desc">Core concepts, every screen, shortcuts and troubleshooting.</span>
+              <span class="path-tag">Game dev &amp; external agents</span>
+              <strong>Complete manual &amp; 102-tool MCP</strong>
+              <span class="path-desc">Deep reference for PSD/Unity UI export, Machinations v2 economy, Spine 2D, video cloning, and Claude Code MCP.</span>
             </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="faq" aria-labelledby="faq-title">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="section-label reveal">FAQ</p>
+            <h2 class="section-title reveal" id="faq-title">Frequently asked questions</h2>
+            <p class="section-lede reveal" style="--d: 0.06s">Common questions on licensing, Zero-Key demo, editable PSD/engine exports, episodic consistency, and MCP agents.</p>
+          </div>
+          <div class="faq-list">
+            <details class="faq-item reveal" open>
+              <summary>Is AI Art Engine completely free and open source?</summary>
+              <div class="faq-ans">
+                <p>Yes — 100% free and open source under <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GPL-3.0</a>, with zero subscriptions, credit markups, or watermarks. Projects live on your local disk; connect your own API keys (BYOK) or run locally via Ollama, LM Studio, vLLM, ComfyUI, and built-in ONNX Runtime vision.</p>
+              </div>
+            </details>
+            <details class="faq-item reveal" open>
+              <summary>Can I try it right away without any API key?</summary>
+              <div class="faq-ans">
+                <p>Yes! Open any workspace, expand the right-hand <code>◈ AI Chat</code> panel, and click <strong>⚡ Zero-Key Instant Demo</strong> to watch a live RPG Game UI decomposition, 3D exploded layer preview, and PSD / Unity / Godot export pipeline run locally.</p>
+              </div>
+            </details>
+            <details class="faq-item reveal">
+              <summary>How is AI Art Engine different from web AIGC tools or raw ComfyUI?</summary>
+              <div class="faq-ans">
+                <p>Web tools stop at flat images or isolated clips; ComfyUI focuses on low-level diffusion sampling graphs. AI Art Engine integrates ComfyUI as a backend while adding 10+ domain Dive studios that ship editable deliverables: native <code>TySh</code> PSDs, Unity <code>.uxml</code> / Godot <code>.tscn</code>, Spine 2D rigs, Machinations C#/GDScript, CapCut drafts, and playable HTML5 games.</p>
+              </div>
+            </details>
+            <details class="faq-item reveal">
+              <summary>Are text layers genuinely editable in Photoshop when exporting Game UI to PSD?</summary>
+              <div class="faq-ans">
+                <p>Yes. <code>image.layerSplit</code> extracts font size, fill color, and stroke via offline/online OCR, inpaints clean 9-slice base plates, and writes native Photoshop <code>TySh</code> text layers into the <code>.psd</code> so you can double-click to edit text in Photoshop or Photopea. See <a href="manual-workflow.en.html#layer-split">Manual §8.3</a>.</p>
+              </div>
+            </details>
+            <details class="faq-item reveal">
+              <summary>How does it keep faces, outfits, and voices consistent across short-drama episodes?</summary>
+              <div class="faq-ans">
+                <p>Stage 3 of <code>film.workbench</code> locks character base anchors, <code>#variant</code> wardrobe cards, scene plates, a <code>STYLE01</code> style bible, and persistent cross-episode TTS voice profiles; Stage 4 injects <code>@1–@4</code> anchors into every shot and runs VLM Vision QC auto-reshoots. See the <a href="guide-short-video.en.html">short-drama guide</a>.</p>
+              </div>
+            </details>
+            <details class="faq-item reveal">
+              <summary>What can the Machinations v2 Game Economy Studio simulate and export?</summary>
+              <div class="faq-ans">
+                <p><code>game.economy</code> aligns 100% with Machinations semantics (59 verified blocks, Simple ↔ Pro lossless toggle). In v8.9.1 you can drag target curve points or the purple Bezier slope diamond (<code>◆</code>) at 120fps to inversely solve progression formulas (Goal-Seek), run Monte Carlo &amp; 2D sensitivity sweeps, playtest HUD cards, and export Unity C# / Godot GDScript.</p>
+              </div>
+            </details>
+            <details class="faq-item reveal">
+              <summary>How do Claude Code, Cursor, or Codex control AI Art Engine via MCP?</summary>
+              <div class="faq-ans">
+                <p>The desktop app hosts an authenticated local MCP server on <code>127.0.0.1</code> exposing 102 tools (<code>93</code> on <code>/mcp</code> + <code>9</code> on <code>/mcp/blender</code>). Run <code>claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs</code> to connect. See the <a href="guide-mcp.en.html">MCP setup guide</a>.</p>
+              </div>
+            </details>
+            <details class="faq-item reveal">
+              <summary>How does Workflow-in-PNG (<code>aiae:graph</code>) work?</summary>
+              <div class="faq-ans">
+                <p>Every PNG exported from AI Art Engine embeds its full node graph and prompt recipe inside a lossless <code>aiae:graph</code> PNG metadata chunk. Dragging that PNG back onto the canvas restores the complete pipeline immediately.</p>
+              </div>
+            </details>
           </div>
         </div>
       </section>
@@ -488,24 +1034,24 @@
         <div class="wrap">
           <div class="section-head">
             <p class="section-label reveal">Download</p>
-            <h2 class="section-title reveal" id="download-title">Free download, ready out of the box</h2>
-            <p class="section-lede reveal" style="--d: 0.06s">Installers bundle their own runtime — no Node.js needed. Add your model keys and start creating.</p>
+            <h2 class="section-title reveal" id="download-title">Free desktop download, ready out of the box</h2>
+            <p class="section-lede reveal" style="--d: 0.06s">Installers bundle their own runtime — no separate Node.js or Python required. Launch the Zero-Key demo or add your own API keys.</p>
           </div>
           <ul class="dl-grid">
             <li class="reveal">
               <a class="dl-card" href="https://github.com/Justin-sky/ai-art-engine/releases" target="_blank" rel="noopener noreferrer">
                 <svg aria-hidden="true"><use href="#i-windows" /></svg>
                 <span class="dl-os">Windows</span>
-                <span class="dl-file">NSIS installer · .exe</span>
-                <span class="dl-go">Go to Releases</span>
+                <span class="dl-file">Windows 10 / 11 · NSIS installer (.exe)</span>
+                <span class="dl-go">Download from Releases</span>
               </a>
             </li>
             <li class="reveal" style="--d: 0.05s">
               <a class="dl-card" href="https://github.com/Justin-sky/ai-art-engine/releases" target="_blank" rel="noopener noreferrer">
                 <svg aria-hidden="true"><use href="#i-apple" /></svg>
                 <span class="dl-os">macOS</span>
-                <span class="dl-file">.dmg · x64 for Intel, arm64 for Apple Silicon</span>
-                <span class="dl-go">Go to Releases</span>
+                <span class="dl-file">.dmg · Apple Silicon (arm64) &amp; Intel (x64)</span>
+                <span class="dl-go">Download from Releases</span>
               </a>
             </li>
             <li class="reveal" style="--d: 0.1s">
@@ -513,12 +1059,12 @@
                 <svg aria-hidden="true"><use href="#i-terminal" /></svg>
                 <span class="dl-os">Linux</span>
                 <span class="dl-file">AppImage · chmod +x then run</span>
-                <span class="dl-go">Go to Releases</span>
+                <span class="dl-go">Download from Releases</span>
               </a>
             </li>
           </ul>
           <p class="dl-note reveal">
-            Pushing a <code>v*</code> tag builds every platform on GitHub Actions. Or run from source: <code>npm install &amp;&amp; npm run dev</code> (Node.js 22+).
+            Every <code>v*</code> tag builds cross-platform installers on GitHub Actions. Or run from source: <code>npm install &amp;&amp; npm run dev</code> (Node.js 22+).
           </p>
         </div>
       </section>
@@ -527,23 +1073,23 @@
         <div class="wrap">
           <div class="section-head">
             <p class="section-label reveal">Community</p>
-            <h2 class="section-title reveal" id="community-title">Community &amp; feedback</h2>
-            <p class="section-lede reveal" style="--d: 0.06s">Join the QQ groups, watch the video tutorials or open an issue.</p>
+            <h2 class="section-title reveal" id="community-title">Open-source community &amp; feedback</h2>
+            <p class="section-lede reveal" style="--d: 0.06s">Join our community groups, watch video walkthroughs, or open an issue on GitHub.</p>
           </div>
           <div class="community-grid">
             <div class="community-card reveal"><span>QQ groups</span><strong>346340389</strong><strong>647306826</strong></div>
-            <a class="community-card reveal" style="--d: 0.04s" href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><span>Video tutorials</span><strong>Bilibili space →</strong></a>
-            <a class="community-card reveal" style="--d: 0.08s" href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer"><span>Issues</span><strong>GitHub Issues →</strong></a>
-            <a class="community-card reveal" style="--d: 0.12s" href="mailto:284139554@qq.com"><span>Email</span><strong>284139554@qq.com</strong></a>
+            <a class="community-card reveal" style="--d: 0.04s" href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><span>Video walkthroughs</span><strong>Bilibili Space →</strong></a>
+            <a class="community-card reveal" style="--d: 0.08s" href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer"><span>Bugs &amp; ideas</span><strong>GitHub Issues →</strong></a>
+            <a class="community-card reveal" style="--d: 0.12s" href="mailto:284139554@qq.com"><span>Contact email</span><strong>284139554@qq.com</strong></a>
           </div>
         </div>
       </section>
 
       <section class="cta-band" aria-labelledby="cta-title">
-        <h2 class="reveal" id="cta-title">Ready to let AI <span class="grad">roll camera for you?</span></h2>
-        <p class="reveal" style="--d: 0.05s">Open source, free and local-first. Install and get your first clip in five minutes.</p>
+        <h2 class="reveal" id="cta-title">Ready to turn AI into your <span class="grad">local game &amp; film studio?</span></h2>
+        <p class="reveal" style="--d: 0.05s">GPL-3.0 open source · 100% local project ownership · Editable engineering deliverables.</p>
         <div class="cta reveal" style="--d: 0.1s">
-          <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>Download free</a>
+          <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>Download Free v8.9.1</a>
           <a class="btn btn-line" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">
             <svg aria-hidden="true"><use href="#i-github" /></svg>Star on GitHub
           </a>
@@ -556,43 +1102,49 @@
         <div class="foot-grid">
           <div>
             <a class="foot-brand" href="#top"><img src="assets/logo-mark.png" alt="" width="26" height="26" />AI Art Engine</a>
-            <p class="foot-about">The agent-native AI art asset engine for short drama, ads, games and e-commerce. Local-first projects, your own API keys.</p>
+            <p class="foot-about">The agent-native multimodal AI production engine (AIArtEngine) for short drama, game UI &amp; economy design, 2D/3D animation, and e-commerce. Local-first projects, your own API keys.</p>
           </div>
           <div class="foot-col">
             <h4>Product</h4>
             <ul>
-              <li><a href="#features">Features</a></li>
-              <li><a href="#agent">Agents</a></li>
+              <li><a href="#features">Highlights</a></li>
+              <li><a href="#studios">Dive Studios</a></li>
+              <li><a href="#why">Comparison</a></li>
+              <li><a href="#recipes">PNG Recipes</a></li>
+              <li><a href="#agent">102-Tool MCP</a></li>
+              <li><a href="#faq">FAQ</a></li>
               <li><a href="#download">Download</a></li>
-              <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+              <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog (v8.9.1)</a></li>
             </ul>
           </div>
           <div class="foot-col">
-            <h4>Docs</h4>
+            <h4>Docs &amp; Guides</h4>
             <ul>
               <li><a href="quickstart.en.html">Quickstart</a></li>
               <li><a href="manual.en.html">Manual</a></li>
               <li><a href="guide-short-video.en.html">Short drama</a></li>
-              <li><a href="guide-video.en.html">Video</a></li>
-              <li><a href="guide-comfyui.en.html">ComfyUI</a></li>
+              <li><a href="guide-video.en.html">Video &amp; remake</a></li>
               <li><a href="guide-mcp.en.html">MCP setup</a></li>
-              <li><a href="guide-gameplay.en.html">Playable HTML</a></li>
+              <li><a href="guide-gameplay.en.html">Playable HTML5</a></li>
+              <li><a href="guide-comfyui.en.html">ComfyUI</a></li>
+              <li><a href="guide-newapi.en.html">NewAPI</a></li>
               <li><a href="developers.en.html">Developers</a></li>
             </ul>
           </div>
           <div class="foot-col">
-            <h4>Community</h4>
+            <h4>Ecosystem</h4>
             <ul>
-              <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
-              <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
-              <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
-              <li><a href="#community">QQ groups</a></li>
-              <li><a href="mailto:284139554@qq.com">Email</a></li>
+              <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub Repo</a></li>
+              <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee Mirror</a></li>
+              <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Bilibili Channel</a></li>
+              <li><a href="llms.txt">LLMs.txt (AI Index)</a></li>
+              <li><a href="sitemap.xml">Sitemap</a></li>
+              <li><a href="#community">Community Groups</a></li>
             </ul>
           </div>
         </div>
         <div class="foot-bottom">
-          <span>© AI Art Engine · Open Source</span>
+          <span>© AI Art Engine (AIArtEngine) · Free &amp; Open Source</span>
           <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GPL-3.0 License</a>
         </div>
       </div>
@@ -613,7 +1165,40 @@
         })
       })
 
-      // 卡片跟随鼠标的光斑
+      // Interactive Studio Tour tabs (click + ArrowLeft/ArrowRight/Home/End)
+      document.querySelectorAll('[data-studio-tour]').forEach((tour) => {
+        const tabs = [...tour.querySelectorAll('[role="tab"]')]
+        const panels = [...tour.querySelectorAll('[role="tabpanel"]')]
+        function activate(nextTab, focusTab) {
+          tabs.forEach((t) => {
+            const active = t === nextTab
+            t.setAttribute('aria-selected', String(active))
+            t.tabIndex = active ? 0 : -1
+          })
+          panels.forEach((p) => {
+            p.hidden = p.id !== nextTab.getAttribute('aria-controls')
+          })
+          if (focusTab) nextTab.focus()
+        }
+        tabs.forEach((tab, idx) => {
+          tab.addEventListener('click', () => activate(tab, false))
+          tab.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+              e.preventDefault()
+              const dir = e.key === 'ArrowRight' ? 1 : -1
+              activate(tabs[(idx + dir + tabs.length) % tabs.length], true)
+            } else if (e.key === 'Home') {
+              e.preventDefault()
+              activate(tabs[0], true)
+            } else if (e.key === 'End') {
+              e.preventDefault()
+              activate(tabs[tabs.length - 1], true)
+            }
+          })
+        })
+      })
+
+      // Pointer spotlight on Bento cards
       document.querySelectorAll('.bento-card').forEach((card) => {
         card.addEventListener('pointermove', (e) => {
           const r = card.getBoundingClientRect()
@@ -661,7 +1246,7 @@
       onScroll()
     </script>
     <script>
-      // 主题切换：深色 → 浅色 → 跟随系统
+      // Theme toggle: dark -> light -> system
       ;(function () {
         var KEY = 'site.theme'
         var btn = document.querySelector('.theme-toggle')

@@ -19,24 +19,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>AI Video Generation, 2-Node Forensic Video Remake &amp; Multi-Track Timeline Guide — AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine guide: build a minimal video generation chain on a free canvas — text-to-video, image-to-video, and connecting a local reference video to the model."
+      content="AI Art Engine v8.9.1 Video Production Guide: Free Canvas text/image/reference video, 3D Director Stage .webm trajectory white-box control (@2), 2-node forensic video breakdown &amp; 1:1 remake (semantic.analyze → semantic.rebuild / builtin.video-breakdown-remake), and the 6-tab output.timeline with JianyingPro / CapCut draft export."
     />
-    <title>Free Canvas: Video Generation &amp; Reference Video — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI video generation, forensic video breakdown, 1:1 video remake, semantic.analyze, semantic.rebuild, rea-video, WhisperX word timestamps, PySceneDetect, 3D Director Stage camera control, output.timeline, CapCut draft export, JianyingPro draft, AI Art Engine"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:title" content="Free Canvas: Video Generation &amp; Reference Video — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine guide: build a minimal video generation chain on a free canvas — text-to-video, image-to-video, and connecting a local reference video to the model." />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta property="og:title" content="AI Video Generation, 2-Node Forensic Video Remake &amp; Multi-Track Timeline Guide — AI Art Engine" />
+    <meta
+      property="og:description"
+      content="Build Free Canvas reference-video pipelines, drive camera motion via 3D Director Stage offscreen .webm white-box clips (@2), run 4-axis forensic video breakdown &amp; 1:1 remake (semantic.analyze → semantic.rebuild), and finish in the 6-tab output.timeline with CapCut / JianyingPro draft export."
+    />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-video.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/video-timeline.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Free Canvas: Video Generation &amp; Reference Video — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine guide: build a minimal video generation chain on a free canvas — text-to-video, image-to-video, and connecting a local reference video to the model." />
+    <meta name="twitter:title" content="AI Video Generation, 2-Node Forensic Video Remake &amp; Multi-Track Timeline Guide — AI Art Engine" />
+    <meta
+      name="twitter:description"
+      content="Free Canvas reference video, 3D Director Stage .webm camera control (@2), 2-node forensic video breakdown &amp; 1:1 remake (semantic.analyze → semantic.rebuild), and 6-tab output.timeline CapCut draft export."
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/video-timeline.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html" />
@@ -49,7 +61,55 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "AI Video Generation, 2-Node Forensic Video Remake & Multi-Track Timeline Guide — AI Art Engine",
+            "description": "AI Art Engine v8.9.1 Video Production Guide covering Free Canvas video generation, 3D Director Stage offscreen .webm trajectory white-box video (@2), built-in 2-node forensic video breakdown and 1:1 remake (builtin.video-breakdown-remake: semantic.analyze → semantic.rebuild), and the CapCut-grade 6-tab output.timeline with JianyingPro / CapCut draft export.",
+            "inLanguage": "en",
+            "url": "https://justin-sky.github.io/ai-art-engine/guide-video.en.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/guide-video.en.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/video-timeline.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/index.en.html"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/index.en.html",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://justin-sky.github.io/ai-art-engine/index.en.html"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Video & Forensic Remake Guide",
+                "item": "https://justin-sky.github.io/ai-art-engine/guide-video.en.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#manual">Skip to content</a>
@@ -68,7 +128,7 @@
           </button>
           <div class="nav-drop-menu">
             <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
-            <a href="guide-video.en.html" aria-current="page"><strong>Video</strong><span>Free canvas & reference video</span></a>
+            <a href="guide-video.en.html" aria-current="page"><strong>Video</strong><span>Canvas video, 1:1 remake &amp; timeline NLE</span></a>
             <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
             <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
             <a href="guide-mcp.en.html"><strong>MCP setup</strong><span>Drive the app from Claude Code / Codex</span></a>
@@ -112,13 +172,14 @@
       <aside class="toc" aria-label="Table of contents">
         <h2>Contents</h2>
         <ol>
-          <li><a href="#prep">Preparation</a></li>
-          <li><a href="#create-canvas">Create a free canvas</a></li>
-          <li><a href="#add-nodes">Build a minimal video chain</a></li>
-          <li><a href="#ref-video">How to connect a reference video</a></li>
-          <li><a href="#frames">First/last frames and prompts</a></li>
-          <li><a href="#run">Run and inspect results</a></li>
-          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#prep">1. Preparation</a></li>
+          <li><a href="#create-canvas">2. Create a free canvas</a></li>
+          <li><a href="#add-nodes">3. Build a minimal video chain</a></li>
+          <li><a href="#ref-video">4. Reference video &amp; 3D Stage white-box (@2)</a></li>
+          <li><a href="#frames">5. First/last frames and prompts</a></li>
+          <li><a href="#forensic-remake">6. 2-Node Forensic Video Breakdown &amp; 1:1 Remake</a></li>
+          <li><a href="#run">7. 6-Tab Timeline NLE &amp; CapCut Draft Export</a></li>
+          <li><a href="#faq">8. FAQ</a></li>
           <li><a href="guide-short-video.en.html">Short-Drama Guide →</a></li>
           <li><a href="guide-comfyui.en.html">ComfyUI Guide →</a></li>
         </ol>
@@ -129,12 +190,11 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · Free Canvas</p>
-          <h1>Free Canvas: Video Generation &amp; Reference Video</h1>
+          <p class="eyebrow">Guide · v8.9.1 · Video Generation, Forensic Remake &amp; Timeline NLE</p>
+          <h1>AI Video Generation, 2-Node Forensic Remake &amp; Multi-Track Timeline</h1>
           <p class="lede">
-            Start from a new <strong>Free Canvas</strong> and build a minimal working video chain on a blank
-            node graph: text-to-video, image-to-video, and wiring a local reference video into the model. Ideal
-            for your first single-clip video run on canvas, without going through the full Film Workbench pipeline.
+            Start from a blank <strong>Free Canvas</strong> to wire text-to-video, image-to-video and <strong>3D Director Stage offscreen <code>.webm</code> trajectory white-box clips (<code>@2</code>)</strong>, run the built-in flagship
+            <strong><code>builtin.video-breakdown-remake</code> (<code>semantic.analyze</code> → <code>semantic.rebuild</code>)</strong> pipeline for 4-axis audio-visual forensic breakdown &amp; 1:1 video remake, and finish in the CapCut-grade 6-tab <strong><code>output.timeline</code></strong> with native JianyingPro / CapCut draft export.
           </p>
         </header>
 
@@ -144,13 +204,11 @@
             <li>
               <strong>Models</strong>: Settings → Models → add and enable a provider (Volcengine Ark, Kling,
               MiniMax, OpenRouter, …) → tick the models you want on the <strong>Video</strong> tab and set the
-              default video model.
+              default video model. For 2-node forensic video remakes, also configure default <strong>multimodal VLM / text</strong>, <strong>image</strong> and optional <strong>TTS</strong> models.
             </li>
             <li>
               <strong>Object storage (required for reference video)</strong>: Settings → Object Storage → add
-              and enable one of Volcengine TOS / Alibaba Cloud OSS / Tencent Cloud COS / Amazon S3–compatible. A local reference video
-              is first uploaded to a publicly reachable URL (a signed URL for private buckets) so the model can
-              fetch it.
+              and enable one of Volcengine TOS / Alibaba Cloud OSS / Tencent Cloud COS / Amazon S3–compatible. Local reference videos (including 3D Director Stage <code>.webm</code> trajectory clips) are automatically uploaded to signed URLs so cloud video APIs can fetch them.
             </li>
             <li>
               Make sure the provider account has credit — submission fails immediately when the balance is low
@@ -218,8 +276,7 @@
               port (depends on the model and frame mode — see the next section).
             </li>
             <li>
-              Add a <strong>Video Output</strong> node and wire the generation output into it for preview and
-              export.
+              Add a <strong>Video Output</strong> or <strong>Final Timeline (<code>output.timeline</code>)</strong> node and wire the generation output into it for preview and export.
             </li>
           </ol>
           <p>Sketch (text-to-video + reference video):</p>
@@ -234,30 +291,26 @@
               line-height: 1.5;
               overflow-x: auto;
             "
-          >[Text / Prompt] ─────► [Video Generation] ─────► [Video Output]
+          >[Text / Prompt] ──────────────► [Video Generation] ──► [Video Output / output.timeline]
                                         ▲
-[Select Video / Video Asset] ──────────┘   (Video port = reference video)</pre>
+[Select Video / 3D Stage .webm] ────────┘   (Video port = reference video)</pre>
         </section>
 
         <section id="ref-video">
-          <h2>4. How to connect a reference video</h2>
+          <h2>4. Reference video &amp; 3D Director Stage <code>.webm</code> white-box control (<code>@2</code>)</h2>
           <p>
-            The Video Generation node's <strong>Video</strong> input is for a <strong>reference video</strong>:
-            the model can borrow motion, camera work, character actions or scene pacing (actual capability
-            varies by provider and model).
+            The Video Generation node's <strong>Video</strong> input accepts a <strong>reference video</strong> so the model can follow motion, camera trajectories, acting beats or scene pacing.
           </p>
           <ul>
             <li>
               <strong>Source</strong>: videos imported into the asset library, a Select Video node, upstream
-              generated videos, or another host's video output.
+              generated videos, or <strong>offscreen trajectory white-box clips exported from the 3D Director Stage (<code>.dstage</code> / <code>director.stage3d</code>)</strong>.
             </li>
             <li>
-              <strong>Upload</strong>: at run time, if the reference is still a local path / data URL, the app
-              uploads it through the currently enabled object storage and passes the URL to the model API.
+              <strong>3D Director Stage offscreen <code>.webm</code> trajectory white-box video (<code>@2</code>)</strong>: block out characters, props and Cinemachine camera keyframes inside the 3D Director Stage — the stage renders an offscreen keyframe anchor (<code>@1</code>) alongside a clean <strong>camera-trajectory white-box video <code>.webm</code> (<code>@2</code>)</strong>. Wire both into a multimodal reference-capable video node and prompt “keep <code>@1</code> character/scene appearance while following <code>@2</code> camera trajectory” for deterministic 3D camera control.
             </li>
             <li>
-              <strong>Cleanup</strong>: temporary uploaded references are usually deleted once the task
-              finishes, so test files don't pile up in the bucket.
+              <strong>Upload &amp; cleanup</strong>: at run time, local paths / data URLs are uploaded via your enabled object storage into signed URLs, and temporary objects are cleaned up automatically when the run finishes.
             </li>
             <li>
               <strong>Multiple references</strong>: where the Video port accepts several links, you can attach
@@ -281,13 +334,12 @@
                 <li><strong>First frame</strong>: exposes a first-frame image port — good for image-to-video and frozen openings.</li>
                 <li>
                   <strong>First + last frame</strong>: constrains both the opening and closing shot (requires
-                  model support, e.g. some Hailuo / Kling capabilities).
+                  model support, e.g. Hailuo / Kling / Seedance capabilities).
                 </li>
               </ul>
             </li>
             <li>
-              Use <code>@</code> in the prompt to reference connected upstream media (same as image generation)
-              and describe motion, camera and pacing.
+              Use <code>@</code> (e.g. <code>@1</code>, <code>@2</code>) in the prompt to reference connected upstream images and reference videos cleanly.
             </li>
             <li>
               Duration, resolution and audio options depend on the current model capability catalog;
@@ -302,37 +354,86 @@
             <li>
               <strong>Segment Reshoot</strong>: connect the source video to the Segment Reshoot node and
               double-click to open the reshoot station — mark the start / end time to change and describe the
-              change (e.g. “make the umbrella transparent”); running it reshoots only that range (Seedance 2.5
-              timestamp-level editing) and leaves the rest untouched. The prompt box supports
-              <code>@</code> references to port media, and you can pick the video model on the right.
+              edit (e.g. “make the umbrella transparent”); running it reshoots only that timestamp window while leaving the rest untouched.
             </li>
           </ul>
         </section>
 
-        <section id="run">
-          <h2>6. Run and inspect results</h2>
+        <section id="forensic-remake">
+          <h2>6. Flagship: 2-Node Forensic Video Breakdown &amp; 1:1 Remake (<code>semantic.analyze</code> → <code>semantic.rebuild</code>)</h2>
+          <p>
+            Need to reverse-engineer a viral talking-head clip, e-commerce ad, trailer or short drama and <strong>remake it 1:1 with your own cast, product photos or art style while preserving its exact cut rhythm, camera moves and beat drops</strong>? AI Art Engine v8.9.1 ships the built-in core preset <strong><code>builtin.video-breakdown-remake</code> (<code>rea-video</code>)</strong> powered by two directly connected first-class nodes:
+          </p>
+          <pre
+            style="
+              margin: 0 0 14px;
+              padding: 14px 16px;
+              border-radius: 10px;
+              background: var(--bg-soft);
+              border: 1px solid var(--line);
+              font-size: 13px;
+              line-height: 1.55;
+              overflow-x: auto;
+            "
+          >[Source Video (in-video)] ──► [🧭 Video breakdown: semantic.analyze] ──(SemanticTimeline aiart.semantic-timeline@1)──► [🎬 Video remake: semantic.rebuild] ──► [out-video + compare.mp4]
+                                        ▲                                                                                          ▲
+[Replacement Subject / Product Images (in-images, @Image1..k)] ────────────────────────────────────────────────────────────────────┘</pre>
           <ol>
             <li>
-              Select the Video Generation or Video Output node → click <strong>Execute</strong> in the toolbar,
-              or hold <kbd>C</kbd> to open the execution ring.
+              <strong>4-Axis Audio-Visual Forensics (<code>semantic.analyze</code>)</strong>:
+              <ul>
+                <li><strong>Word-level ASR track (WhisperX)</strong>: extracts millisecond-accurate word timestamps and speaker utterances for lip-sync alignment and kinetic captions.</li>
+                <li><strong>Cut detection (PySceneDetect) + 3-frame VLM camera forensics</strong>: locates every shot boundary and samples the <strong>first / middle / last frames</strong> of each shot so a VLM can decode shot size, angle, camera movement, lighting and blocking.</li>
+                <li><strong>Musical beat grid (Librosa) &amp; audio stem separation (Demucs)</strong>: computes BPM and beat accents via Librosa while Demucs isolates clean instrumental/BGM stems from spoken vocals.</li>
+                <li>Outputs a unified, type-safe <strong><code>SemanticTimeline</code> (<code>aiart.semantic-timeline@1</code>)</strong> document you can inspect and edit by double-clicking the node.</li>
+              </ul>
             </li>
             <li>
-              You can also <strong>Add to Tasks</strong> on the output node and watch background progress in the
-              task list; upstream nodes shared by several chains are cooked only once.
+              <strong>Clean-Plate Background Anchor Extraction (Subtitle Removal)</strong>:
+              automatically detects and inpaints away burned-in subtitles, stickers and lower-thirds from source shots to extract clean background anchors without garbled text artifacts.
             </li>
             <li>
-              On success, play it back in the node preview area: <strong>Back to start</strong> on the left, the
-              progress bar in the middle, and <strong>Play / Pause</strong> on the right.
+              <strong>Dynamic-Programming Shot Batching, Lip-Sync &amp; Kinetic <code>.ass</code> Subtitles (<code>semantic.rebuild</code>)</strong>:
+              <ul>
+                <li><strong>DP shot batching</strong>: groups rapid-fire micro-cuts optimally via dynamic programming to match your video model's duration tiers, cutting API cost while keeping cut-on-beat precision.</li>
+                <li><strong>Subject swap, lip-sync &amp; kinetic <code>.ass</code> captions</strong>: swaps in new characters or products wired to <code>in-images</code> (<code>@Image1..k</code>), applies lip-sync to newly synthesized speech, mixes back clean Demucs stems, and burns beat-synced kinetic <strong><code>.ass</code> subtitles</strong> into the remade master (<code>out-video</code>).</li>
+              </ul>
             </li>
             <li>
-              To assemble a final cut, wire the result into the script asset's <strong>Final Timeline</strong>,
-              or export the media file.
+              <strong>Side-by-Side Verification Video (<code>compare.mp4</code>)</strong>:
+              alongside the clean remake MP4, automatically renders a frame-locked side-by-side <strong><code>compare.mp4</code></strong> (original on left, remake on right) so you can verify pacing, framing and beat alignment at a glance.
             </li>
           </ol>
         </section>
 
+        <section id="run">
+          <h2>7. 6-Tab Final Timeline (<code>output.timeline</code>) &amp; JianyingPro / CapCut Draft Export</h2>
+          <ol>
+            <li>
+              Select the Video Generation, <code>semantic.rebuild</code> or output node → click <strong>Execute</strong> in the toolbar (or hold <kbd>C</kbd>); shared upstream nodes cook only once.
+            </li>
+            <li>
+              <strong>CapCut-grade 6-tab Final Timeline (<code>output.timeline</code>)</strong>: wire or drag generated clips, dubbing and BGM into <strong><code>output.timeline</code></strong> and double-click to open the multi-track NLE studio:
+              <ul>
+                <li>Features <strong>6 creative asset tabs</strong> — <strong>Media</strong>, <strong>Effects</strong>, <strong>Transitions</strong>, <strong>Filters</strong>, <strong>Adjust</strong> and <strong>Templates</strong> — with 120+ effects, seamless transitions, LUTs and <strong>DOTween dual-layer keyframe curves</strong>.</li>
+                <li><strong>Dual export paths</strong>: render a finished <code>.mp4</code> directly inside the app, or export a native <strong>JianyingPro / CapCut multi-track project draft</strong> preserving separate video, dialogue, BGM and subtitle tracks for downstream editors.</li>
+              </ul>
+            </li>
+          </ol>
+          <figure class="shot">
+            <img
+              src="assets/imgs/video-timeline.webp"
+              alt="CapCut-grade 6-tab output.timeline: Media, Effects, Transitions, Filters, Adjust and Templates with JianyingPro & CapCut draft export"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>CapCut-grade 6-tab Final Timeline (<code>output.timeline</code>): 120+ effects/transitions/LUTs, DOTween dual-layer keyframes, and one-click MP4 or JianyingPro / CapCut draft export.</figcaption>
+          </figure>
+        </section>
+
         <section id="faq">
-          <h2>7. FAQ</h2>
+          <h2>8. FAQ</h2>
           <div class="table-scroll" role="region" aria-label="FAQ" tabindex="0">
             <table>
               <thead>
@@ -355,8 +456,8 @@
                   <td>The provider account is out of credit — top it up in the matching console (not an API Key mistake).</td>
                 </tr>
                 <tr>
-                  <td><code>ENOTFOUND …https</code></td>
-                  <td>Usually a malformed TOS presigned hostname; retry on a newer client build.</td>
+                  <td>How do I launch the 2-node forensic remake workflow?</td>
+                  <td>Pick the built-in preset <code>builtin.video-breakdown-remake</code> in One-Click Workflow, or right-click on any Free Canvas to wire <code>Video breakdown (semantic.analyze)</code> → <code>Video remake (semantic.rebuild)</code>.</td>
                 </tr>
                 <tr>
                   <td>Renaming a node also renamed the asset</td>

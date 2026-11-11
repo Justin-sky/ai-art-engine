@@ -1,0 +1,58 @@
+# AI Art Engine (AIArtEngine)
+
+> Open-source (GPL-3.0), local-first, agent-native multimodal AI production studio & game/film asset engine for Windows, macOS, and Linux (v8.9.1). Unlike chat-only or flat-image AIGC tools, AI Art Engine combines a typed multimodal DAG node graph, 10+ full-screen Dive workbenches, an embedded full-workspace AI Agent, and a 102-tool local MCP server (`127.0.0.1`) to ship editable engineering deliverables: layered `.psd` files with native `TySh` editable text layers, Unity UGUI/UXML & Godot 4 `.tscn` UI code, Spine 2D (`skeleton.json` + `.atlas`) bone rigs, Machinations game economy & systems balance simulations (with C#/GDScript export), 5-stage 21-genre AI Comic Drama (漫剧) episodes, JianyingPro/CapCut multi-track NLE drafts, `.glb` 3D assets, and headless-Chromium smoke-tested playable HTML5 games.
+
+- Official Website (ZH): https://justin-sky.github.io/ai-art-engine/
+- Official Website (EN): https://justin-sky.github.io/ai-art-engine/index.en.html
+- GitHub Repository: https://github.com/Justin-sky/ai-art-engine
+- Gitee Mirror: https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine
+- Releases (Windows `.exe`, macOS `.dmg`, Linux `.AppImage`): https://github.com/Justin-sky/ai-art-engine/releases
+- Full LLM Technical Reference: https://justin-sky.github.io/ai-art-engine/llms-full.txt
+
+## Flagship Capabilities & Deliverables
+
+- **Game UI Layer Split, PSD `TySh` & Engine Code Export (`image.layerSplit`, `ui.atlasCompose`, `ui.componentLib`)**: Recognizes 16 standard UI control classes, runs cross-platform offline/online OCR to extract exact text fill & stroke colors, inpaints clean 9-slice plates, previews layers in an interactive 3D exploded view, composes UI pages from uploaded texture atlases, and exports layered `.psd` (with native Photoshop `TySh` editable text layers), Unity UGUI / UI Toolkit `.uxml`, Godot 4 `.tscn`, and responsive HTML5.
+- **Machinations v2 Game Economy & Systems Studio (`game.economy`)**: 100% Machinations-aligned game mechanics & economy simulator with 59 verified building blocks, lossless Simple Macro ↔ Pro Blueprint toggle, zero-code Playable Card & HUD Prototype, 120fps Bezier slope control point (`◆`) & direct curve-drag inverse Goal-Seek formula solver (`k * pow(STEP, p)`), Monte Carlo P10/P50/P90 confidence bands, 2D parameter sensitivity heatmap, Quick-Fix balance diagnostics, and PNG/SVG/CSV/Unity C#/Godot GDScript export.
+- **AI Comic Drama (AI 漫剧 / Short Drama) 5-Stage Workbench (`film.workbench`)**: Built-in 21 vertical short-drama genre blueprints (`P01`–`P21`), covering Stage 1 Beat Breakdown (`A + B` dual rhythm), Stage 2 11-point Director Continuity & ≥67% Dialogue Audit, Stage 3 Character `#variant` / Scene / Prop / `STYLE01` Anchors + Cross-Episode TTS Voice Binding, Stage 4 `@1`–`@4` Locked Batch Video Shoot with Vision QC auto-reshoots & fingerprint caching, and Stage 5 Cover/Title Release Pack + Full Episode `.mp4`.
+- **2-Node Forensic Video Breakdown & Remake (`semantic.analyze` → `semantic.rebuild`, `rea-video`)**: Deconstructs any reference video across 4 axes (WhisperX word-level ASR, PySceneDetect cuts, Librosa BPM/beats, Demucs stems + 3-frame VLM camera forensics), generates clean-plate background anchors with subtitle removal, and remakes every shot with lip-sync, kinetic `.ass` subtitles, and side-by-side `compare.mp4`.
+- **CapCut-Grade NLE Timeline (`output.timeline`)**: Multi-track video/audio/subtitle editor with a 6-tab creative suite (120+ GPU/FFmpeg effects, transitions, LUTs, color wheels, curves, presets), DOTween dual-layer keyframe animations, TD-PSOLA pitch/singing synthesis, `.mp4` master rendering, and one-click JianyingPro / CapCut editable multi-track draft export.
+- **2D Bone Rigging & Spine 2D Export (`stage.2d`) + Wavelet Portrait Studio (`image.portrait`)**: Auto part segmentation, occluded-edge dilation inpainting, AI bone alignment (Alpha morphology + YOLOv8-Pose), IK constraints, keyframe baking to Spine 2D (`skeleton.json` + `.atlas` + `.png`), plus 4-band à-trous wavelet frequency-separation skin retouching and 7 camera/film color sciences.
+- **3D Director Stage (`director.stage`), World Labs 3DGS & Blender MCP**: 56-bone humanoid posing, 24 procedural motion clips, 38 pose presets, offscreen `.webm` camera trajectory white-box previz (`@2`), walkable World Labs Marble 3D Gaussian Splatting worlds, and a 9-tool Blender MCP bridge (`execute_blender_code` → viewport screenshot → `.glb` asset import).
+- **Agent-Native Workspace & 102-Tool Bi-Directional MCP Server**: Embedded DeepSeek Harness (`dsh`) AI chat with multi-project workspace switching, 24-hour (`00:00–23:59`) scheduled automations, Zero-Key instant live demo, and an HTTP Streamable MCP server (`93` core tools on `/mcp` + `9` Blender tools on `/mcp/blender`) for Claude Code, Cursor, Codex, and Windsurf.
+- **Workflow-in-PNG (`aiae:graph`) & Local ONNX Vision**: Every exported PNG embeds its reproducible node graph (`aiae:graph` chunk — drag the PNG back onto the canvas to restore the pipeline). Ships offline ONNX Runtime inference (YOLOv8 detect/seg/pose, 468-pt FaceMesh, SAM 2.1, Rembg) and native OS offline OCR on Windows, macOS, and Linux.
+
+## Documentation & Guides (English)
+
+- [Homepage (EN)](https://justin-sky.github.io/ai-art-engine/index.en.html): Product overview, deliverables matrix, interactive studio tour, PNG workflow recipes, and FAQ.
+- [Quickstart (EN)](https://justin-sky.github.io/ai-art-engine/quickstart.en.html): Zero-Key instant live demo, API provider setup, Skill Marketplace workflows, and first export in 3 minutes.
+- [User Manual Overview (EN)](https://justin-sky.github.io/ai-art-engine/manual.en.html): Complete 5-part reference manual index.
+- [Manual Part 1 · Workspaces & Settings (EN)](https://justin-sky.github.io/ai-art-engine/manual-setup.en.html): Multi-project workspaces, 30+ model providers, local ONNX vision, S3/OSS/R2 storage, and web search.
+- [Manual Part 2 · Canvas, Assets & AI Chat (EN)](https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html): GUID asset library, embedded AI chat, 24h scheduled automations, Wish Maiden, and Skill Marketplace.
+- [Manual Part 3 · Workflows, Node Graph & Game Studios (EN)](https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html): Typed DAG nodes, Game UI PSD/Unity/Godot split, UI Atlas Compose, Machinations v2 economy studio, and `rea-video` remake.
+- [Manual Part 4 · Film Workbench, Timeline, 2D Spine & 3D Director (EN)](https://justin-sky.github.io/ai-art-engine/manual-production.en.html): 5-stage 21-genre short-drama pipeline, 6-tab NLE timeline & CapCut export, 2D Spine rigging, and 3D camera blocking.
+- [Manual Part 5 · Shortcuts & Troubleshooting (EN)](https://justin-sky.github.io/ai-art-engine/manual-reference.en.html): Keyboard shortcuts, data directories, logs, and diagnostics.
+- [Short Drama & AI Comic Drama Guide (EN)](https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html): End-to-end 5-stage AI Comic Drama production tutorial.
+- [Video Generation & Forensic Remake Guide (EN)](https://justin-sky.github.io/ai-art-engine/guide-video.en.html): Multi-reference video nodes and 2-node `semantic.analyze` → `semantic.rebuild` video cloning.
+- [MCP Server & External Agent Guide (EN)](https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html): Connecting Claude Code, Cursor, and Codex to all 102 MCP tools (`/mcp` + `/mcp/blender`).
+- [Playable HTML5 Game Guide (EN)](https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html): Building headless-Chromium verified playable HTML5 games and game systems.
+- [ComfyUI Integration Guide (EN)](https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html): Connecting local/remote ComfyUI workflows and `comfy-api-proxy`.
+- [NewAPI Relay Gateway Guide (EN)](https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html): Connecting self-hosted OpenAI-compatible gateways.
+- [Developer & Skill Marketplace Guide (EN)](https://justin-sky.github.io/ai-art-engine/developers.en.html): Authoring and publishing workflow presets, node plugins, and agent skills.
+
+## 中文文档与教程索引 (Chinese)
+
+- [官方网站首页](https://justin-sky.github.io/ai-art-engine/): 核心亮点、工业产物对比矩阵、六大工作台巡礼、PNG 即工作流配方与常见问题。
+- [3 分钟快速上手](https://justin-sky.github.io/ai-art-engine/quickstart.html): 零 Key 极速体验、模型配置、技能市场模板与首个工程导出。
+- [完整使用手册总览](https://justin-sky.github.io/ai-art-engine/manual.html): 五卷完整功能手册目录。
+- [手册一 · 工作区与模型设置](https://justin-sky.github.io/ai-art-engine/manual-setup.html): 多工程工作区、30+ 模型服务商、本地 ONNX 视觉模型、S3 对象存储与联网搜索。
+- [手册二 · 资产库、AI 对话与定时任务](https://justin-sky.github.io/ai-art-engine/manual-workspace.html): GUID 资产管理、全工作区 AI 对话、24 小时定时自动化、祈愿巫女与技能市场。
+- [手册三 · 节点图、游戏 UI 拆层与数值沙盘](https://justin-sky.github.io/ai-art-engine/manual-workflow.html): 多模态 DAG 节点、游戏 UI 16 类拆层导出 PSD/Unity/Godot、图集拼装 UI、Machinations v2 经济仿真与双节点视频复刻。
+- [手册四 · 漫剧五阶段、成片时间线、Spine 与 3D 导演台](https://justin-sky.github.io/ai-art-engine/manual-production.html): 21 题材 AI 漫剧五阶段流水线、剪映专业版草稿导出、2D 骨骼绑定与 3D 机位预演。
+- [手册五 · 快捷键与故障排查](https://justin-sky.github.io/ai-art-engine/manual-reference.html): 快捷键速查、本地目录结构与常见问题排查。
+- [AI 漫剧 / 短剧全流程教程](https://justin-sky.github.io/ai-art-engine/guide-short-video.html)
+- [自由画布视频与逆向复刻教程](https://justin-sky.github.io/ai-art-engine/guide-video.html)
+- [MCP 接入教程（Claude Code / Cursor / Codex）](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)
+- [可玩 HTML5 游戏原型教程](https://justin-sky.github.io/ai-art-engine/guide-gameplay.html)
+- [ComfyUI 接入教程](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)
+- [NewAPI 中转网关教程](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)
+- [开发者与技能市场发布指南](https://justin-sky.github.io/ai-art-engine/developers.html)

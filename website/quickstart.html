@@ -20,14 +20,40 @@
         } catch (e) {}
       })()
     </script>
+    <title>快速上手（v8.9.1）— 零 Key 极速体验、一键工作流与 PNG 配方入画布 | AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine 快速上手：从安装、接入模型到一键工作流生成第一条成片，5 分钟跑通完整链路。"
+      content="AI Art Engine (AIArtEngine) v8.9.1 快速上手指南：进入工作区右侧 ◈ AI 对话一键运行「⚡ 零 Key 极速体验」（仙侠 RPG 装备 UI 3D 爆炸拆层导出可编辑 PSD / Unity / Godot），接入自带 API Key，通过内置预设、技能市场或拖拽 aiae:graph 配方 PNG 5 分钟跑通成片链路。"
     />
-    <title>快速上手 — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI Art Engine 快速上手, AIArtEngine 教程, 零 Key 极速体验, 游戏 UI 拆解 PSD, 一键工作流, 技能市场, aiae:graph 配方 PNG, AI 漫剧短剧工作流, 本地 AIGC 桌面引擎"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
-    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/quickstart.en.html" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="快速上手（v8.9.1）— 5 分钟跑通 AI Art Engine 生成管线" />
+    <meta
+      property="og:description"
+      content="支持工作区 ◈ AI 对话「⚡ 零 Key 极速体验」仙侠 RPG UI 拆层导出 PSD/Unity/Godot，或通过内置爆款复刻预设、技能市场与 aiae:graph 配方图拖拽 5 分钟出片。"
+    />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
+    <meta property="og:image:width" content="1600" />
+    <meta property="og:image:height" content="860" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="快速上手（v8.9.1）— 5 分钟跑通 AI Art Engine 生成管线" />
+    <meta
+      name="twitter:description"
+      content="支持工作区 ◈ AI 对话「⚡ 零 Key 极速体验」仙侠 RPG UI 拆层导出 PSD/Unity/Godot，或通过内置爆款复刻预设、技能市场与 aiae:graph 配方图拖拽 5 分钟出片。"
+    />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/quickstart.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
     <link rel="icon" href="assets/logo-mark.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -36,7 +62,77 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "HowTo",
+            "name": "AI Art Engine v8.9.1 快速上手：5 分钟跑通第一条 AI 美术与视频生产管线",
+            "description": "从安装客户端、体验零 Key 游戏 UI 拆层，到接入模型提供商、创建多工程工作区并用三种方式一键启动生成管线的完整步骤。",
+            "inLanguage": "zh-CN",
+            "url": "https://justin-sky.github.io/ai-art-engine/quickstart.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "totalTime": "PT5M",
+            "step": [
+              {
+                "@type": "HowToStep",
+                "position": 1,
+                "name": "安装与启动桌面端",
+                "text": "下载 Windows、macOS 或 Linux 安装包并启动 AI Art Engine，也可在工作区右侧 ◈ AI 对话中点击「⚡ 零 Key 极速体验」免密钥运行仙侠 RPG 装备 UI 3D 爆炸拆层管线。",
+                "url": "https://justin-sky.github.io/ai-art-engine/quickstart.html#step-install"
+              },
+              {
+                "@type": "HowToStep",
+                "position": 2,
+                "name": "接入模型提供商密钥",
+                "text": "在右上角「设置 → 模型」中添加提供商 API Key，拉取并勾选模型，指定默认文本、图片与视频模型。",
+                "url": "https://justin-sky.github.io/ai-art-engine/quickstart.html#step-model"
+              },
+              {
+                "@type": "HowToStep",
+                "position": 3,
+                "name": "新建多工程工作区",
+                "text": "选择本地空目录创建工作区（生成 workspace.json 与 project.json），后续可在 ◈ AI 对话左侧栏随时切换多工程。",
+                "url": "https://justin-sky.github.io/ai-art-engine/quickstart.html#step-project"
+              },
+              {
+                "@type": "HowToStep",
+                "position": 4,
+                "name": "三种方式一键铺设工作流",
+                "text": "通过内置「爆款视频拆解复刻」预设/自然语言规划、从「技能市场」安装领域工作流包，或将带 aiae:graph 元数据的配方 PNG 直接拖入画布。",
+                "url": "https://justin-sky.github.io/ai-art-engine/quickstart.html#step-workflow"
+              },
+              {
+                "@type": "HowToStep",
+                "position": 5,
+                "name": "运行链路并导出成片或工程",
+                "text": "运行节点链路并在 6 栏成片时间线或多阶段 Dive 工作台中精修，一键导出 MP4 成片、剪映草稿或游戏引擎 UI 资产。",
+                "url": "https://justin-sky.github.io/ai-art-engine/quickstart.html#step-run"
+              }
+            ]
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "首页",
+                "item": "https://justin-sky.github.io/ai-art-engine/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "快速上手",
+                "item": "https://justin-sky.github.io/ai-art-engine/quickstart.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#manual">跳到正文</a>
@@ -110,8 +206,8 @@
           <li class="toc-group">五分钟出第一条片</li>
           <li><a href="#step-install">2. 安装与启动</a></li>
           <li><a href="#step-model">3. 接入模型（最关键）</a></li>
-          <li><a href="#step-project">4. 新建工程</a></li>
-          <li><a href="#step-workflow">5. 用模板一键生成链路</a></li>
+          <li><a href="#step-project">4. 新建工作区</a></li>
+          <li><a href="#step-workflow">5. 三种方式一键起链路</a></li>
           <li><a href="#step-run">6. 跑起来，拿到成片</a></li>
           <li class="toc-group">继续深入</li>
           <li><a href="#next">7. 下一步去哪</a></li>
@@ -135,23 +231,23 @@
         <section id="before">
           <h2>1. 你需要准备什么</h2>
           <div class="tip">
-            <strong>⚡ 还没有 API Key？零配置即刻体验：</strong>启动应用后直接点击首页的 <strong>「⚡ 即刻体验示例工程」</strong>，无需填写任何密钥即可一键创建包含 4 镜赛博朋克短剧分镜、合成预演视频、可交互节点图与完整多轨时间线的本地工程，并直接导出剪映草稿包或体验本地视觉拆层。
+            <strong>⚡ 还没有 API Key？零 Key 极速体验：</strong>新建或进入任意工作区后，打开右侧 <strong><code>◈ AI 对话</code></strong> 面板，直接点击引导卡片上的 <strong>「⚡ 零 Key 极速体验」</strong>——无需配置任何云端密钥，即可在本地完整跑通一套<strong>仙侠 RPG 装备界面拆解 + 3D 爆炸拆层预览 → 导出原生可编辑 <code>TySh</code> 文本图层 <code>.psd</code> / Unity UGUI / Godot 4 场景</strong>的真实生产管线！
           </div>
           <ol>
             <li>
-              <strong>至少一个模型提供商的密钥（正式生成时）</strong>。本软件不绑定特定云厂商，文本、图片、视频生成都由你自己的
+              <strong>至少一个模型提供商的密钥（云端生成时）</strong>。本软件不绑定特定云厂商，文本、图片、视频、音频与 3D 生成都由你自己的
               提供商账号或本地模型完成（OpenRouter、DeepSeek、智谱、火山方舟、可灵、MiniMax、通义千问、ComfyUI、Ollama
-              等均可）。首次体验建议先准备<strong>一个文本模型 + 一个图片模型</strong>，视频模型可后续再加。
+              等均可）。首次体验云端生图/视频建议先准备<strong>一个文本模型 + 一个图片模型</strong>，视频模型可后续再加。
             </li>
             <li>
-              <strong>本机上一个空目录</strong>，用于存放工程。所有素材与产出都保存在你自己的磁盘上。
+              <strong>本机上一个空目录</strong>，用于存放<strong>工作区（Workspace）</strong>。所有素材、节点图与产出都保存在你自己的磁盘上。
             </li>
             <li>
-              <strong>约 3–5 分钟</strong>。首次配置完模型后，生成一条完整工作流或拆解一套游戏 UI 只需数分钟。
+              <strong>约 3–5 分钟</strong>。首次配置完模型后，生成一条完整工作流或拆解重组一套游戏 UI 只需数分钟。
             </li>
           </ol>
           <div class="tip">
-            使用云端 API 时<strong>不需要独立显卡</strong>；内置的跨平台离线 OCR 与本地 ONNX 视觉工具（抠图、检测、468 点人脸网格）在普通 CPU 上即可秒级运行。
+            使用云端 API 时<strong>不需要独立显卡</strong>；内置的跨平台离线 OCR 与本地 ONNX 视觉工具（抠图、检测、深度估计、468 点人脸网格、YOLOv8 姿态）在普通 CPU 上即可秒级运行。
           </div>
         </section>
 
@@ -214,39 +310,39 @@
         </section>
 
         <section id="step-project">
-          <h2>4. 新建工程</h2>
+          <h2>4. 新建工作区（多工程管理）</h2>
           <ol>
-            <li>回到首页，点击<strong>新建工程</strong>。</li>
-            <li>填写<strong>工程名称</strong>，点击<strong>浏览</strong>选择<strong>存储目录</strong>（选一个空文件夹）。</li>
-            <li>点击<strong>创建</strong>，进入工作区。</li>
+            <li>回到首页，点击<strong>新建工作区</strong>（或「打开工作区」加载已有目录）。</li>
+            <li>填写<strong>工作区 / 工程名称</strong>，点击<strong>浏览</strong>选择本地<strong>存储目录</strong>（选一个空文件夹）。</li>
+            <li>点击<strong>创建</strong>，直接进入画布工作区。</li>
           </ol>
           <p>
-            工程根目录会生成一个 <code>project.json</code>，之后随时可以通过「打开工程」选择它来恢复。
-            整个目录可以直接拷贝备份或迁移到别的机器。
+            v8.9.1 采用<strong>多工程工作区（Workspace）</strong>架构：目录内通过 <code>workspace.json</code> 与各子工程的
+            <code>project.json</code> 组织画布、资产与会话记录。进入工作区后，你可以随时展开右侧
+            <strong><code>◈ AI 对话</code> 面板的左侧边栏</strong>，在同一工作区下新建、切换多个子工程或直接用内置文件编辑器查阅项目文件；整个工作区目录可直接拷贝备份或跨机迁移。
           </p>
         </section>
 
         <section id="step-workflow">
-          <h2>5. 用模板一键生成链路</h2>
+          <h2>5. 三种方式一键启动生成链路</h2>
           <p>
-            这是本软件最省事的路径：<strong>不用拖节点、不用连线</strong>，选一个模板，系统自动铺好整条生成链路。
+            这是本软件最省事的路径：<strong>不用手拖零散节点、不用逐根连线</strong>。在 v8.9.1 中，你有<strong>三种即开即用的启动方式</strong>：
           </p>
           <ol>
-            <li>在工作区的「新建」里点击<strong>一键工作流</strong>。</li>
             <li>
-              在<strong>预设模板</strong>里选一个。首次建议：
-              <ul>
-                <li><strong>影视全流程</strong>（<code>short-drama</code>）——剧本 → 影视工作台（分镜拆解 → 导演审核 → 角色场景设定 → 批量拍摄）的完整短剧流水线，最能体现能力；</li>
-                <li><strong>影视精修·单镜头</strong>（<code>short-drama9</code>）——在影视工作台下游接「镜头」节点，抽出单镜做局部重绘与独立视频生成；</li>
-                <li><strong>产品广告 / 电商带货</strong>——做商品图与广告变体。</li>
-              </ul>
+              <strong>方式一：内置「一键工作流」预设或自然语言规划</strong>——点击工作区顶栏「新建 → <strong>一键工作流</strong>」，直接选用内置的
+              <strong>「爆款视频拆解复刻」</strong>（<code>builtin.video-breakdown-remake</code>，双节点四轴取证 + 1:1 复刻对比成片），或在<strong>工作流描述</strong>里用自然语言写下目标（例如
+              <em>「一句产品卖点 → 3 张分镜图 → 15 秒竖屏视频」</em>）让 AI 自动规划节点拓扑，预览确认后保存为<strong>宿主资产</strong>。
             </li>
             <li>
-              也可以直接在<strong>工作流描述</strong>里用自然语言写目标，例如
-              <em>「一句产品卖点 → 3 张分镜图 → 15 秒竖屏视频」</em>，再让 AI 规划。
+              <strong>方式二：从「技能市场」安装领域工作流包</strong>——点击顶栏右上角<strong>「技能市场」</strong>（设置图标左侧），按领域一键安装官方与社区工作流/技能包（如
+              <strong>AI 漫剧/短剧全流程 <code>short-drama</code></strong>、<strong>游戏 UI 图集重组</strong>、<strong>电商带货海报与视频</strong> 等）。安装后既可在「一键工作流」中选用，也可在
+              <code>◈ AI 对话</code> 中让 Agent 按工作流 ID 精确挂载执行。
             </li>
-            <li>点击<strong>预览模板</strong>，查看自动生成的节点与连线拓扑；确认后点击<strong>创建工作流</strong>。</li>
-            <li>选择保存目录与名称，资产库中会出现一个新的<strong>宿主资产</strong>——这就是你的成品流水线。</li>
+            <li>
+              <strong>方式三：直接拖拽 <code>aiae:graph</code> 配方 PNG 入画布（PNG 即工作流）</strong>——任何由 AI Art Engine 导出的配方卡片 PNG（例如官网提供的
+              <code>assets/recipe/recipe1.png</code> 或社区分享的配方图）都无损内嵌了完整 <code>aiae:graph</code> 拓扑元数据；把它<strong>直接从文件管理器或浏览器拖进画布</strong>，整条可运行节点链路瞬间原地展开！
+            </li>
           </ol>
           <figure class="shot">
             <img
@@ -256,11 +352,10 @@
               height="860"
               loading="lazy"
             />
-            <figcaption>专业 Dive 工作台：双击节点即可潜入图层分离、影视工作台、导演台等全屏精修界面。</figcaption>
+            <figcaption>专业 Dive 工作台：双击节点即可潜入图层分离、影视工作台、Machinations 数值沙盘、导演台等全屏精修界面。</figcaption>
           </figure>
           <div class="tip">
-            <strong>宿主资产</strong>是可复用组件：外层只暴露输入 / 输出，双击可进入内部节点图随意微调。
-            一次创建，之后多个工程反复使用。
+            <strong>宿主资产</strong>是可复用黑盒组件：外层只暴露干净的输入 / 输出端口，双击可潜入内部节点图随意微调。一次创建或安装，跨工程反复复用。
           </div>
         </section>
 
@@ -302,9 +397,9 @@
             <figcaption>示例输出：由节点链路生成的成片片段。</figcaption>
           </figure>
 
-          <h3>做短剧的话走这条更快的路</h3>
+          <h3>做漫剧 / 短剧的话走这条更快的路</h3>
           <p>
-            如果你选的是<strong>影视全流程</strong>（<code>short-drama</code>）模板，只需双击<strong>影视工作台</strong>（<code>film.workbench</code>）进入全屏 Dive 界面，即可在四个阶段页签（<strong>① 分镜拆解 → ② 导演审核 → ③ 角色场景设定 → ④ 批量拍摄</strong>）中一站式完成分镜、定妆锚点、导演审核与批量视频生成，或点右上角<strong>「一键跑完四阶段」</strong>全自动出片。
+            如果你使用<strong>短剧 / AI 漫剧全流程</strong>（<code>short-drama</code>）工作流，只需双击<strong>影视工作台</strong>（<code>film.workbench</code>）进入全屏 Dive 界面，选定 21 种题材母体（<code>P01</code>–<code>P21</code>）之一，即可在<strong>五阶段闭环页签</strong>（<strong>① A+B 双节拍分镜拆解 → ② 11 项导演连贯性与 ≥67% 对白审核 → ③ 角色 <code>#variant</code> 换装/场景/道具/<code>STYLE01</code> 与跨集 TTS 音色设定 → ④ <code>@1</code>–<code>@4</code> 锁定批量拍摄与视觉质检重拍 → ⑤ 封面标题宣发包与整集 <code>.mp4</code> 导出</strong>）中一站式出片。
             详见 <a href="guide-short-video.html">短剧制作教程</a>。
           </p>
         </section>
@@ -314,19 +409,19 @@
           <p>到这里你已经跑通了一条完整链路。按你的目标选择下一步：</p>
           <div class="path-grid">
             <a class="path-card" href="guide-short-video.html">
-              <span class="path-tag">短剧 / 短视频</span>
-              <strong>跑一整条短剧流水线</strong>
-              <span class="path-desc">影视工作台四阶段闭环（分镜拆解、导演审核、角色场景设定、批量拍摄）与单镜头精修完整讲解。</span>
+              <span class="path-tag">AI 漫剧 / 短剧</span>
+              <strong>跑一整条五阶段短剧流水线</strong>
+              <span class="path-desc">影视工作台 21 题材母体与五阶段闭环（分镜拆解、导演审核、设定与音色锚定、批量拍摄质检、宣发成片）完整讲解。</span>
             </a>
             <a class="path-card" href="guide-video.html">
               <span class="path-tag">视频生成</span>
               <strong>自由画布与参考视频</strong>
-              <span class="path-desc">想自己搭链路、接参考视频、控制首尾帧时看这一页。</span>
+              <span class="path-desc">想自己搭链路、接参考视频、做爆款视频四轴取证复刻或控制首尾帧时看这一页。</span>
             </a>
             <a class="path-card" href="manual.html">
               <span class="path-tag">完整参考</span>
-              <strong>使用手册</strong>
-              <span class="path-desc">全部界面与组件的逐项说明，含核心概念、快捷键与故障排查。</span>
+              <strong>使用手册（v8.9.1）</strong>
+              <span class="path-desc">全部界面、游戏 UI 拆层重组、Machinations v2 数值沙盘、快捷键与故障排查逐项说明。</span>
             </a>
             <a class="path-card" href="guide-comfyui.html">
               <span class="path-tag">本地部署</span>
@@ -334,14 +429,14 @@
               <span class="path-desc">想用本机显卡跑开源模型时，按这一页配置代理与 API 格式工作流。</span>
             </a>
             <a class="path-card" href="guide-mcp.html">
-              <span class="path-tag">AI Agent</span>
+              <span class="path-tag">AI Agent · 102 工具</span>
               <strong>AI 对话与 MCP 接入</strong>
-              <span class="path-desc">在应用内 AI 对话面板里 @ 引用资产并生成；或让 Claude Code 等 Agent 直接驱动应用。</span>
+              <span class="path-desc">在内置 ◈ AI 对话里 @ 引用资产与设置 24 小时定时任务；或让 Claude Code / Cursor / Codex 调用 102 个 MCP 工具驱动应用。</span>
             </a>
             <a class="path-card" href="manual-workspace.html#marketplace">
               <span class="path-tag">扩展能力</span>
-              <strong>插件市场</strong>
-              <span class="path-desc">在顶栏「插件市场」（「设置」左边）装社区工作流与技能包；装好的工作流在 AI 对话里按 id 精确复现。</span>
+              <strong>技能市场</strong>
+              <span class="path-desc">在顶栏「技能市场」（「设置」左侧）一键安装社区工作流与技能包，并在 AI 对话或一键工作流中精确复现。</span>
             </a>
           </div>
         </section>
@@ -380,7 +475,7 @@
             <summary>怎么让 Claude Code 等 AI 助手直接操作应用？（安装 MCP）</summary>
             <div class="trouble-body">
               <p>
-                应用自带 MCP 工具服务，接入后 Agent 就能在对话里规划工作流、运行生成。启动应用后打开
+                应用自带本地双向 MCP 工具服务（共 <strong>102 个工具</strong>：<code>/mcp</code> 93 个主工具 + <code>/mcp/blender</code> 9 个 Blender 实时建模桥工具），接入后外部 Agent 就能在对话里安装技能、编排 DAG 节点图、运行数值仿真与批量生成。启动应用后打开
                 <strong>设置 → MCP</strong>，复制「Claude Code 接入命令」到终端执行（或按 stdio 桥方式配置），
                 重启 Agent 会话即可生效。详见 <a href="guide-mcp.html">MCP 接入教程</a>。
               </p>

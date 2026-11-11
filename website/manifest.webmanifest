@@ -1,0 +1,17 @@
+{
+  "name": "AI Art Engine — Agent-Native Multimodal AI Production Engine",
+  "short_name": "AIArtEngine",
+  "description": "Open-source, local-first, agent-native multimodal AI studio that ships editable PSDs (native TySh text layers), Unity/Godot/HTML5 UI code, Machinations game economy simulations, Spine 2D rigs, 5-stage AI Comic Drama episodes, CapCut NLE drafts, and playable HTML5 games.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#05070d",
+  "theme_color": "#05070d",
+  "icons": [
+    {
+      "src": "assets/logo-mark.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    }
+  ]
+}

@@ -19,25 +19,36 @@
         } catch (e) {}
       })()
     </script>
+    <title>一句话生成可玩 HTML5 小游戏与游戏量产工具链教程 — AI Art Engine</title>
     <meta
       name="description"
-      content="AIArtEngine 教程：一句话经 dsh 多轮生成纯 Node（esbuild）可玩工程，cook 打成单文件 HTML，沙盒试玩 2D / 3D 小游戏。"
+      content="AI Art Engine (AIArtEngine) v8.9.1 可玩 HTML5 小游戏与游戏研发教程：一句话经 Agent 生成纯 Node/esbuild 2D/3D 工程，自动执行无头 Chromium 冒烟门禁（零控制台异常 + 模拟按键指针输入 + Canvas 帧差分校验），并联动 game_one_sentence_create、game_ui_suite_create、game_playable_preview_compile 与 game.economy Machinations v2 数值模拟工作台。"
     />
-    <title>可玩 HTML 小游戏教程 — AIArtEngine</title>
+    <meta
+      name="keywords"
+      content="AI一句话生成游戏, 可玩HTML5原型, Playable HTML5, Three.js小游戏生成, 无头Chromium冒烟测试, game_one_sentence_create, game_ui_suite_create, game_playable_preview_compile, game.economy, Machinations数值模拟, AI Art Engine"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
-    <meta property="og:site_name" content="AIArtEngine" />
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="可玩 HTML 小游戏教程 — AIArtEngine" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="一句话生成可玩 HTML5 小游戏与游戏量产工具链教程 — AI Art Engine" />
     <meta
       property="og:description"
-      content="一句话 → dsh 多轮 Node/esbuild 工程 → cook 单文件 → 沙盒试玩。"
+      content="一句话 → Node/esbuild 程序化 2D/3D 游戏工程 → 无头 Chromium 模拟输入与 Canvas 帧差分冒烟校验 → 单文件试玩，全面联动 Game UI 套件、数值经济模拟（game.economy）与 MCP 游戏量产工具。"
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="一句话生成可玩 HTML5 小游戏与游戏量产工具链教程 — AI Art Engine" />
+    <meta
+      name="twitter:description"
+      content="一句话生成自包含 2D/3D 可玩 HTML5 工程，内置无头 Chromium 零报错 + 模拟输入 + Canvas 帧差分门禁，并衔接 Game UI PSD 拆层与 Machinations v2 经济模拟。"
+    />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
@@ -50,7 +61,55 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20261009d" />
-    <link rel="stylesheet" href="site.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "headline": "一句话生成可玩 HTML5 小游戏与游戏量产工具链教程 — AI Art Engine",
+            "description": "AI Art Engine v8.9.1 可玩 HTML5 小游戏与游戏生产套件教程：涵盖 gameplay_prepare_project / gameplay_build 单文件构建、无头 Chromium 冒烟门禁（零控制台/页面报错、模拟输入与 Canvas 帧差分校验），以及 game_one_sentence_create、game_ui_suite_create、game_playable_preview_compile 与 game.economy Machinations v2 经济模拟工作台。",
+            "inLanguage": "zh-CN",
+            "url": "https://justin-sky.github.io/ai-art-engine/guide-gameplay.html",
+            "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/guide-gameplay.html",
+            "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
+            "dateModified": "2026-11-11",
+            "author": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "AI Art Engine",
+              "url": "https://justin-sky.github.io/ai-art-engine/",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://justin-sky.github.io/ai-art-engine/assets/logo-mark.png"
+              }
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "首页",
+                "item": "https://justin-sky.github.io/ai-art-engine/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "可玩 HTML 小游戏教程",
+                "item": "https://justin-sky.github.io/ai-art-engine/guide-gameplay.html"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#manual">跳到正文</a>
@@ -113,12 +172,13 @@
       <aside class="toc" aria-label="目录">
         <h2>目录</h2>
         <ol>
-          <li><a href="#overview">它是什么</a></li>
-          <li><a href="#chat">在 AI 对话里怎么做</a></li>
-          <li><a href="#assets">资产全部由代码生成</a></li>
-          <li><a href="#run">生成 → 构建 → 试玩</a></li>
-          <li><a href="#resume">迭代与工程目录</a></li>
-          <li><a href="#faq">常见问题</a></li>
+          <li><a href="#overview">1. 它是什么</a></li>
+          <li><a href="#chat">2. 在 AI 对话里怎么做</a></li>
+          <li><a href="#assets">3. 资产全部由代码生成</a></li>
+          <li><a href="#run">4. 构建与无头 Chromium 冒烟门禁</a></li>
+          <li><a href="#resume">5. 迭代与工程目录</a></li>
+          <li><a href="#companion">6. 配套游戏量产工具与数值模拟</a></li>
+          <li><a href="#faq">7. 常见问题</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
           <a href="manual-workflow.html#graph">← 返回手册 · 节点图</a>
@@ -127,16 +187,16 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · Playable HTML · v6.7+</p>
-          <h1>可玩 HTML 小游戏</h1>
+          <p class="eyebrow">Guide · v8.9.1 · Playable HTML5 &amp; Game Production</p>
+          <h1>可玩 HTML5 小游戏与游戏量产套件</h1>
           <p class="lede">
-            在 <strong>AI 对话面板</strong>里说一句话玩法，Agent 就写出一整个纯 Node（esbuild）工程：几何、贴图、材质、音效、关卡<strong>全部由代码程序化生成</strong>，宿主在本机 cook 成单文件，点卡片上的「试玩」即在浏览器里开玩。适合玩法草案与素材打样，不替代 Unity / Godot。
+            在 <strong>AI 对话面板</strong>（或外部 MCP 客户端）里说一句话玩法，Agent 就写出一整个纯 Node（esbuild）2D / 3D 工程：几何、贴图、材质、音效、关卡<strong>全部由代码程序化生成</strong>，宿主在本机打包单文件并自动执行<strong>无头 Chromium 冒烟门禁（零报错 + 模拟输入 + Canvas 帧差分校验）</strong>，点卡片上的「试玩」即在浏览器开玩；还可无缝衔接一句话游戏套装、16 类分层 PSD 游戏 UI 与 <strong><code>game.economy</code> Machinations v2 数值模拟工作台</strong>。
           </p>
         </header>
 
         <section id="overview">
           <h2>1. 它是什么</h2>
-          <p>从 v6.7 起，这条链路由对话面板驱动（图内不再有「可玩 HTML 生成 / 可玩 HTML」节点）：</p>
+          <p>这条链路由内置对话面板或 <a href="guide-mcp.html">MCP 游戏生产工具组</a>驱动（画布内不再保留旧版「可玩 HTML 生成」加工节点）：</p>
           <table>
             <thead>
               <tr>
@@ -165,25 +225,25 @@
                 <td>程序化资产 + 玩法（几何 / Canvas 贴图 / 音效 / 关卡）</td>
               </tr>
               <tr>
-                <td>构建</td>
-                <td>工具 <code>gameplay_build</code>（宿主跑 npm）</td>
-                <td><code>dist/single.html</code> 单文件</td>
+                <td>构建与门禁</td>
+                <td>工具 <code>gameplay_build</code>（宿主执行 esbuild + 无头 Chromium 冒烟测试）</td>
+                <td>自包含 <code>dist/single.html</code> 单文件 + <code>smoke</code> 实机校验报告</td>
               </tr>
               <tr>
                 <td>试玩</td>
                 <td>对话产物卡上的「试玩」</td>
-                <td>系统默认程序（浏览器）里开玩；同时自动登记一个 gamePlay 资产</td>
+                <td>系统默认程序（浏览器）里开玩；同时自动登记一个 <code>gamePlay</code> 资产</td>
               </tr>
             </tbody>
           </table>
           <div class="tip">
-            需要已配置<strong>文本模型</strong>（推荐 DeepSeek；也可用其它兼容提供商）与<strong>本机 Node / npm</strong>（cook 用）。生成走对话面板里的 dsh Agent，<strong>npm 只由宿主执行</strong>，不要在工程目录里抢跑。
+            需要已配置<strong>文本模型</strong>（推荐 DeepSeek、Claude 或兼容推理模型）与<strong>本机 Node / npm</strong>（cook 用）。生成走对话面板里的 Agent（或外部 MCP），<strong>npm 与冒烟校验均由宿主安全执行</strong>，不要在工程目录里手动抢跑。
           </div>
         </section>
 
         <section id="chat">
           <h2>2. 在 AI 对话里怎么做</h2>
-          <p>打开右侧 <strong>AI 对话</strong>面板（模式选 <strong>Craft</strong>），直接说玩法即可，例如：</p>
+          <p>打开右侧 <strong>AI 对话</strong>面板（模式选 <strong>Agent</strong>），直接说玩法即可，例如：</p>
           <pre><code>低多边形太空站走廊里捡能量块，WASD 移动，鼠标转向，捡满 10 个过关；用 Three.js</code></pre>
           <p>Agent 会依次调用三个工具：</p>
           <ol>
@@ -194,12 +254,12 @@
             <li>它自己写 <code>src/assets/**</code>（程序化资产）与 <code>src/game/**</code>（玩法）。</li>
             <li>
               <code>gameplay_build</code>：宿主执行 <code>npm install</code> + <code>node
-              build.mjs</code>，返回 <code>jobId</code>；用 <code>gameplay_job_status</code> 轮询到
+              build.mjs</code> 并启动无头 Chromium 冒烟门禁，返回 <code>jobId</code>；用 <code>gameplay_job_status</code> 轮询到
               <code>done</code>。
             </li>
           </ol>
           <p>
-            构建完成后对话流里出现一张游戏卡，卡上<strong>只有一个「试玩」按钮</strong>，点击直接用系统默认程序打开游戏。
+            构建与冒烟通过后，对话流里出现一张游戏卡，卡上<strong>只有一个「试玩」按钮</strong>，点击直接用系统默认程序打开游戏。
           </p>
           <div class="tip">
             2D 还是 3D 由你一句话里的意思决定；想稳定出 3D 就明确说「用 Three.js」。资产层约定（目录结构、<code>defineAsset</code> 契约、贴图与音效配方）写在内置技能
@@ -222,15 +282,19 @@
         </section>
 
         <section id="run">
-          <h2>4. 生成 → 构建 → 试玩</h2>
+          <h2>4. 生成 → 构建 → 无头 Chromium 冒烟门禁 → 试玩</h2>
           <ol>
             <li>
-              <strong>生成</strong>：对话里说玩法；日志里能看到 Agent 反复改
-              <code>src/**</code>。选 3D 时脚手架会带 <code>three</code> 依赖与 3D 样例入口。
+              <strong>生成</strong>：对话里说玩法；日志里能看到 Agent 编写
+              <code>src/**</code>。选 3D 时脚手架自带 <code>three</code> 依赖与标准入口。
             </li>
             <li>
-              <strong>构建</strong>：<code>gameplay_build</code> 起手，对话里先出现一张「运行中」的工具卡；日志出现
-              <code>npm install</code>、<code>node build.mjs</code>、单文件体积即成功。构建成功后宿主还会<strong>自动跑一次试玩门禁</strong>——把游戏在隐藏窗口里真跑几秒，抓未捕获异常 / 加载失败 / 黑屏 / 画面静止，结论在 <code>gameplay_job_status</code> 的 <code>smoke</code> 字段；<code>smoke.ok === false</code> 时 Agent 会按报告再改一轮。
+              <strong>构建与无头 Chromium 冒烟门禁（Headless Chromium Smoke Verification）</strong>：<code>gameplay_build</code> 完成单文件打包后，宿主会自动拉起一个隐藏的<strong>无头 Chromium 沙盒实例</strong>真实运行编译出的 <code>dist/single.html</code> 数秒，执行三重硬核验收：
+              <ul>
+                <li><strong>零控制台与页面异常（Zero Console / Page Errors）</strong>：全程监听 <code>console.error</code>、未捕获的运行时 <code>pageerror</code>、WebGL 着色器编译报错与资源加载失败。</li>
+                <li><strong>模拟真实玩家输入（Simulated Input）</strong>：向页面自动派发指针点击（Pointer/Click）与键盘方向键 / <code>WASD</code> / 空格输入事件，自动跨过「点击开始」标题页并驱动角色运动。</li>
+                <li><strong>Canvas 像素帧差分校验（Canvas Frame-Diff Validation）</strong>：连续截取多帧 Canvas 画面比对像素分布与帧间差分，严查整屏纯黑/纯白（未渲染）或画面完全静止（主循环卡死）；结果写入 <code>gameplay_job_status</code> 的 <code>smoke</code> 字段，若 <code>smoke.ok === false</code>，Agent 会依据报错堆栈自动修复代码并重新构建，确保交到你手里的卡片「点开就能玩」。</li>
+              </ul>
             </li>
             <li>
               <strong>试玩</strong>：点游戏卡上的「试玩」——自包含的单文件用浏览器打开，能全屏、能开 DevTools；若产物不自包含（用了 ES 模块或相对引用），会自动退回应用内试玩窗口并说明原因。
@@ -258,8 +322,29 @@
           </ul>
         </section>
 
+        <section id="companion">
+          <h2>6. 配套游戏量产工具与 Machinations v2 数值模拟</h2>
+          <p>
+            当玩法原型跑通后，AI Art Engine v8.9.1 还提供一整套面向商业游戏研发的节点与 <a href="guide-mcp.html#catalog">MCP 游戏工业化工具组</a>，将「原型验证 → 数值平衡 → 美术资产与 UI 拆层 → 引擎导出」串成完整管线：
+          </p>
+          <ul>
+            <li>
+              <strong><code>game_one_sentence_create</code>（一句话游戏全案生成）</strong>：输入一句核心创意，自动协同产出游戏策划结构、配置数据表、核心美术资产与可交互原型骨架。
+            </li>
+            <li>
+              <strong><code>game_ui_suite_create</code>（16 类游戏 UI 套件与原生 <code>TySh</code> 分层 PSD）</strong>：一键生成主界面 HUD、背包、商城、抽卡结算、技能栏等 16 类成套游戏 UI，自动拆分前景图标、九宫格底板并写入<strong>原生 Photoshop <code>TySh</code> 可编辑文字图层（<code>.psd</code>）</strong>，可直接导入 Unity UGUI 或 Godot 工程。
+            </li>
+            <li>
+              <strong><code>game_playable_preview_compile</code>（可玩预览整合编译）</strong>：将画布或工具生成的关卡瓦片地图（<code>game_level_map_generate</code>）、JSON/CSV 数值配置表（<code>game_data_table_generate</code>）、着色器粒子（<code>game_shader_particle_generate</code>）与 UI 资源编译为即点即试的 HTML5 买量试玩包（Playable Ads）或交互预览页，并可通过 <code>game_bundle_export</code> 导出 Unity / Godot / Unreal 引擎目录包。
+            </li>
+            <li>
+              <strong><code>game.economy</code> 节点 &amp; <code>machinations_studio</code>（Machinations v2 经济数值模拟工作台）</strong>：内置完整 <strong>59 类建筑积木块</strong>（资源池 Pools、源点 Sources、转换器 Converters、门控 Gates、随机触发器、延时管道与公式寄存器，可通过 <code>machinations_building_blocks</code> 查询），支持可视化绘制游戏养成/抽卡/战斗循环图，执行单步确定性推演与<strong>千次级蒙特卡洛（Monte Carlo）随机模拟</strong>，在写正式业务代码前提前定位通胀崩盘与卡关瓶颈。
+            </li>
+          </ul>
+        </section>
+
         <section id="faq">
-          <h2>6. 常见问题</h2>
+          <h2>7. 常见问题</h2>
           <details>
             <summary>构建报 npm / build 失败？</summary>
             <p>
@@ -284,37 +369,37 @@
           <details>
             <summary>画面黑屏或着色器报错？</summary>
             <p>
-              先看 <code>gameplay_job_status</code> 的 <code>smoke</code>：构建成功后宿主会自动在隐藏窗口里跑一次试玩门禁，<strong>未捕获异常 / 加载失败 / 整屏黑 / 一帧都没渲染</strong>都会写进 <code>smoke.errors</code>，画面几秒不动则进 <code>smoke.warnings</code>。把报告交给 Agent 让它再改一轮即可。
+              先看 <code>gameplay_job_status</code> 的 <code>smoke</code>：构建成功后宿主会在无头 Chromium 里执行冒烟校验（模拟按键/指针输入 + Canvas 帧差分检测），<strong>控制台报错 / 未捕获异常 / 加载失败 / 整屏全黑 / 帧画面零变化</strong>都会记录在 <code>smoke.errors</code> 或 <code>smoke.warnings</code> 中。把报告交给 Agent 让它再改一轮即可。
             </p>
             <p>
-              如果门禁是通过的、只是画面不理想：复杂自定义 WebGL（如 <code>dFdx</code>）对 WebGL1/2 扩展较敏感，可要求改用 Three 标准材质。这是原型链路，门禁只保证「跑得起来、画面在动」，不保证任意着色器都好看。
+              如果门禁是通过的、只是画面不理想：复杂自定义 WebGL（如 <code>dFdx</code>）对 WebGL1/2 扩展较敏感，可要求改用 Three 标准材质。
             </p>
           </details>
           <details>
             <summary>图里原来的「可玩 HTML 生成 / 可玩 HTML」节点呢？</summary>
             <p>
-              已下线：游戏生成改为对话驱动。旧工程里的生成节点会<strong>迁成备注节点</strong>（保留玩法需求原文）并提示改用对话；旧的「可玩 HTML」资产节点保留可用（能显示、能双击试玩），但不再出现在右键菜单里。
+              已下线：游戏生成改为对话与 MCP 驱动。旧工程里的生成节点会<strong>迁成备注节点</strong>（保留玩法需求原文）并提示改用对话；旧的「可玩 HTML」资产节点保留可用（能显示、能双击试玩），但不再出现在右键菜单里。
             </p>
           </details>
           <details>
-            <summary>和影视成片有什么关系？</summary>
+            <summary>如何从 Claude Code / Cursor 通过 MCP 调用这套游戏工具？</summary>
             <p>
-              没有强绑定。可玩 HTML 是<strong>轻量玩法原型</strong>；短剧 / 广告成片仍走节点图 +
-              时间线 / 导演台。见手册
-              <a href="manual-workflow.html#graph">§8 节点图</a>与
-              <a href="guide-short-video.html">短剧制作教程</a>。
+              开启「设置 → MCP 服务」后，外部 Agent 可直接调用 <code>gameplay_prepare_project</code>、<code>gameplay_build</code>、<code>gameplay_job_status</code> 以及 <code>game_one_sentence_create</code>、<code>game_ui_suite_create</code>、<code>game_playable_preview_compile</code>、<code>machinations_studio</code> 等 15 个游戏工业化工具，详见 <a href="guide-mcp.html">MCP 接入完整指南</a>。
             </p>
           </details>
         </section>
 
         <nav class="doc-pager" aria-label="相关文档">
-          <a href="manual-workflow.html#ai-workflow">← 手册 · 一键工作流</a>
-          <a href="manual-workflow.html#graph">手册 · 节点图 →</a>
+          <a href="guide-mcp.html">
+            <span class="pager-dir">上一步</span>
+            <span class="pager-title">← MCP 接入指南</span>
+          </a>
+          <a href="developers.html">
+            <span class="pager-dir">下一步</span>
+            <span class="pager-title">开发者文档 →</span>
+          </a>
         </nav>
       </article>
-    </div>
-
-      
     </div>
 
     <footer class="foot">
