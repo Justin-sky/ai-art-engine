@@ -4376,7 +4376,10 @@ export async function openHarnessFile(input: OpenHarnessFileInput): Promise<Open
       if (input.mode === 'read') {
         return { ok: false, absPath, error: `无法在工作区直接打开文件夹：${absPath}` } // cjk-ok
       }
-      shell.showItemInFolder(absPath)
+      const err = await shell.openPath(absPath)
+      if (err) {
+        shell.showItemInFolder(absPath)
+      }
       return { ok: true, absPath, fileName, ext, kind: 'binary' }
     }
     if (input.mode === 'read') {

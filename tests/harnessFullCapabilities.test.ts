@@ -194,4 +194,27 @@ describe('DeepSeek Harness (@deepseek-ai/dsh) 全能力接入校验', () => {
     expect(BUILTINS_SRC).toContain("id: 'fileEditor'")
     expect(FILE_EDITOR_SRC).toContain('class="workspace-file-editor"')
   })
+
+  it('13. Projects 工程树支持放大镜一键分析响应保障、右键常用操作菜单（在文件夹打开/复制工程名与路径/重命名）与双击改名', () => {
+    // 主进程 openHarnessFile 对目录使用 shell.openPath 打开文件夹内部
+    expect(SERVICE_SRC).toContain('if (stat.isDirectory())')
+    expect(SERVICE_SRC).toContain('await shell.openPath(absPath)')
+
+    // ChatPanel 工程放大镜分析（附带 rootPath、关闭遮挡面板、展开工程并在未就绪时给出可见提示）
+    expect(CHAT_PANEL_SRC).toContain(
+      'onAnalyzeChatProject(group.scope, group.name, group.rootPath)'
+    )
+    expect(CHAT_PANEL_SRC).toContain('setProjectCollapsed(targetScope, false)')
+    expect(CHAT_PANEL_SRC).toContain('function appendStatusNotice(text: string): void')
+
+    // 右键菜单与双击行内重命名
+    expect(CHAT_PANEL_SRC).toContain(
+      '@contextmenu.prevent.stop="onProjectContextMenu($event, group)"'
+    )
+    expect(CHAT_PANEL_SRC).toContain('@dblclick.stop.prevent="startRenameChatProject(group, true)"')
+    expect(CHAT_PANEL_SRC).toContain('onOpenChatProjectInFolder(projectCtxMenu.group.rootPath)')
+    expect(CHAT_PANEL_SRC).toContain('onCopyProjectName(projectCtxMenu.group.name)')
+    expect(CHAT_PANEL_SRC).toContain('onCopyProjectPath(projectCtxMenu.group.rootPath)')
+    expect(CHAT_PANEL_SRC).toContain('class="chat-project-ctx-menu"')
+  })
 })

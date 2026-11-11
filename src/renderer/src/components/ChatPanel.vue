@@ -42,7 +42,8 @@ import {
   useChatHistory,
   type ChatAutomationFrequency,
   type ChatAutomationItem,
-  type ChatMsg
+  type ChatMsg,
+  type ChatProjectTreeGroup
 } from '../composables/useChatHistory'
 import { attachAnimatedImagePlayback } from '../features/media/animatedImagePlayback'
 import { resolveAssetFileUrl, resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
@@ -199,6 +200,8 @@ const {
   addExternalProject: addExternalChatProject,
   removeProject: removeChatProject,
   toggleProjectCollapsed,
+  setProjectCollapsed,
+  renameProject: renameChatProject,
   createAutomation: createChatAutomation,
   removeAutomation: removeChatAutomation,
   toggleAutomationEnabled,
@@ -474,9 +477,162 @@ function onSelectProjectSession(targetScope: string, sessionId: string): void {
   }
 }
 
+/** 工程树：双击行内重命名状态与右键上下文菜单状态 */
+const renamingProjectScope = ref<string | null>(null)
+const renamingProjectDraft = ref('')
+const projectRenameInputRef = ref<HTMLInputElement[] | HTMLInputElement | null>(null)
+const preClickCollapsedMap = new Map<string, boolean>()
+let renameCanceling = false
+
+const projectCtxMenu = ref<{
+  x: number
+  y: number
+  group: ChatProjectTreeGroup
+} | null>(null)
+const projectCtxMenuRef = ref<HTMLElement | null>(null)
+
+function closeProjectCtxMenu(): void {
+  projectCtxMenu.value = null
+}
+
+function onDocumentContextMenu(e: MouseEvent): void {
+  if (!projectCtxMenu.value) return
+  if (projectCtxMenuRef.value && projectCtxMenuRef.value.contains(e.target as Node)) return
+  projectCtxMenu.value = null
+}
+
+function onProjectFolderBtnClick(event: MouseEvent, group: ChatProjectTreeGroup): void {
+  if (renamingProjectScope.value === group.scope) return
+  if (event.detail > 1) return
+  preClickCollapsedMap.set(group.scope, Boolean(group.collapsed))
+  toggleProjectCollapsed(group.scope)
+}
+
+function focusProjectRenameInput(): void {
+  void nextTick(() => {
+    const raw = projectRenameInputRef.value
+    const el = Array.isArray(raw) ? raw[0] : raw
+    if (el instanceof HTMLInputElement) {
+      el.focus()
+      el.select()
+    }
+  })
+}
+
+function startRenameChatProject(group: ChatProjectTreeGroup, restoreBeforeClick = false): void {
+  projectCtxMenu.value = null
+  if (restoreBeforeClick && preClickCollapsedMap.has(group.scope)) {
+    setProjectCollapsed(group.scope, Boolean(preClickCollapsedMap.get(group.scope)))
+  }
+  renameCanceling = false
+  renamingProjectScope.value = group.scope
+  renamingProjectDraft.value = group.name
+  focusProjectRenameInput()
+}
+
+function cancelRenameChatProject(): void {
+  renameCanceling = true
+  renamingProjectScope.value = null
+  renamingProjectDraft.value = ''
+}
+
+function commitRenameChatProject(): void {
+  if (renameCanceling) {
+    renameCanceling = false
+    return
+  }
+  const targetScope = renamingProjectScope.value
+  if (!targetScope) return
+  const nextName = renamingProjectDraft.value.trim()
+  renamingProjectScope.value = null
+  renamingProjectDraft.value = ''
+  if (!nextName) return
+  const existing = chatProjectTree.value.find((g) => g.scope === targetScope)
+  if (existing && existing.name === nextName) return
+  const ok = renameChatProject(targetScope, nextName)
+  if (ok) {
+    pushStatus(t('studio.chat.renamedProjectStatus', { name: nextName }), 'waiting')
+  }
+}
+
+function onProjectContextMenu(event: MouseEvent, group: ChatProjectTreeGroup): void {
+  const menuWidth = 224
+  const menuHeight = group.scope !== currentProjectChatScope.value ? 344 : 306
+  const x = Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8))
+  const y = Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8))
+  projectCtxMenu.value = { x, y, group }
+}
+
+async function onOpenChatProjectInFolder(rootPath: string): Promise<void> {
+  projectCtxMenu.value = null
+  const cleaned = String(rootPath ?? '').trim()
+  if (!cleaned || typeof window.studio?.openHarnessFile !== 'function') return
+  const res = await window.studio
+    .openHarnessFile({
+      path: cleaned,
+      workspace: cleaned,
+      extraWorkspaces: [cleaned],
+      mode: 'open'
+    })
+    .catch((err): OpenHarnessFileResult => ({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err)
+    }))
+  if (!res?.ok && res?.error) {
+    pushStatus(res.error, 'error')
+  }
+}
+
+async function onCopyProjectName(name: string): Promise<void> {
+  projectCtxMenu.value = null
+  const cleaned = String(name ?? '').trim()
+  if (!cleaned) return
+  const ok = await copyTextToClipboard(cleaned)
+  if (ok) {
+    pushStatus(t('studio.chat.copiedProjectName', { name: cleaned }), 'waiting')
+  }
+}
+
+async function onCopyProjectPath(rootPath: string): Promise<void> {
+  projectCtxMenu.value = null
+  const cleaned = String(rootPath ?? '').trim()
+  if (!cleaned) return
+  const ok = await copyTextToClipboard(cleaned)
+  if (ok) {
+    pushStatus(t('studio.chat.copiedProjectPath'), 'waiting')
+  }
+}
+
+function onFilterByChatProject(name: string): void {
+  projectCtxMenu.value = null
+  projectsFilterOpen.value = true
+  projectsFilterQuery.value = name
+}
+
+function onToggleProjectCollapsedFromMenu(targetScope: string): void {
+  projectCtxMenu.value = null
+  toggleProjectCollapsed(targetScope)
+}
+
 /** Codex 风格：在指定项目文件夹下新建对话并切换过去 */
-function onNewSessionInProject(targetScope: string): void {
-  if (running.value) return
+async function onNewSessionInProject(targetScope: string): Promise<void> {
+  projectCtxMenu.value = null
+  automationsViewOpen.value = false
+  skillsOpen.value = false
+  searchModalOpen.value = false
+  setProjectCollapsed(targetScope, false)
+  if (running.value && !preparingTask) {
+    await refreshStatus()
+    if (!status.value?.running) {
+      running.value = false
+    }
+  }
+  if (running.value || preparingTask) {
+    const busyMsg = t('studio.chat.projectBusySwitchHint')
+    pushStatus(busyMsg, 'warn')
+    appendStatusNotice(busyMsg)
+    return
+  }
   commitMessages([...messages.value])
   commitContextUsed(harnessContextUsed.value)
   commitTodos([...sessionTodos.value])
@@ -492,25 +648,62 @@ function onNewSessionInProject(targetScope: string): void {
 }
 
 /** Codex 风格：一键发起对指定项目架构与代码的 AI 深度分析 */
-async function onAnalyzeChatProject(targetScope: string, projectName: string): Promise<void> {
-  if (running.value || preparingTask) return
-  if (targetScope.trim() !== activeChatScope.value) {
-    commitMessages([...messages.value])
-    commitContextUsed(harnessContextUsed.value)
-    commitTodos([...sessionTodos.value])
-    commitGoal(sessionGoal.value)
-    persistHistory()
-    const group = chatProjectTree.value.find((g) => g.scope === targetScope.trim())
-    const targetSessionId = group?.activeSessionId || group?.sessions[0]?.id || ''
-    if (targetSessionId) {
-      activateProjectSession(targetScope, targetSessionId)
-    } else {
-      createSessionInProject(targetScope)
+async function onAnalyzeChatProject(
+  targetScope: string,
+  projectName: string,
+  rootPath?: string
+): Promise<void> {
+  projectCtxMenu.value = null
+  automationsViewOpen.value = false
+  skillsOpen.value = false
+  searchModalOpen.value = false
+  setProjectCollapsed(targetScope, false)
+
+  const initialGroup = chatProjectTree.value.find((g) => g.scope === targetScope.trim())
+  const resolvedName = initialGroup?.name || projectName
+  const resolvedRoot = (rootPath ?? initialGroup?.rootPath ?? '').trim()
+  const promptBase = t('studio.chat.analyzeProjectPrompt', { name: resolvedName })
+  const promptText = resolvedRoot ? `${promptBase}\n(${resolvedRoot})` : promptBase
+
+  if (running.value && !preparingTask) {
+    await refreshStatus()
+    if (!status.value?.running) {
+      running.value = false
     }
-    loadActiveMessages()
-    clearSendQueue()
   }
-  const promptText = t('studio.chat.analyzeProjectPrompt', { name: projectName })
+  if (running.value || preparingTask) {
+    if (targetScope.trim() === activeChatScope.value) {
+      enqueueSend(promptText)
+      pushStatus(t('studio.chat.resendQueued'), 'waiting')
+      return
+    }
+    const busyMsg = t('studio.chat.projectBusySwitchHint')
+    pushStatus(busyMsg, 'warn')
+    appendStatusNotice(busyMsg)
+    return
+  }
+
+  commitMessages([...messages.value])
+  commitContextUsed(harnessContextUsed.value)
+  commitTodos([...sessionTodos.value])
+  commitGoal(sessionGoal.value)
+  persistHistory()
+
+  const group = chatProjectTree.value.find((g) => g.scope === targetScope.trim())
+  const activeInGroup = group?.sessions.find((s) => s.id === group.activeSessionId)
+  const emptySession =
+    activeInGroup && activeInGroup.messages.length === 0
+      ? activeInGroup
+      : group?.sessions.find((s) => s.messages.length === 0)
+  if (emptySession) {
+    activateProjectSession(targetScope, emptySession.id)
+  } else {
+    createSessionInProject(targetScope)
+  }
+  loadActiveMessages()
+  clearSendQueue()
+  composing.value = false
+  scrollToBottom()
   await runTask(promptText)
 }
 
@@ -540,6 +733,7 @@ async function onDeleteProjectSession(targetScope: string, sessionId: string): P
 
 /** Codex 风格：从 Projects 树中移除某个外部项目文件夹（不删除磁盘文件） */
 function onRemoveChatProjectFolder(targetScope: string): void {
+  projectCtxMenu.value = null
   if (running.value) return
   const wasActiveScope = targetScope.trim() === activeChatScope.value
   if (wasActiveScope) {
@@ -1689,7 +1883,8 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
     !skillsOpen.value &&
     !scheduleMenuOpen.value &&
     !searchModalOpen.value &&
-    !automationTimeDropdownOpen.value
+    !automationTimeDropdownOpen.value &&
+    !projectCtxMenu.value
   ) {
     return
   }
@@ -1702,6 +1897,7 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
       scheduleMenuOpen.value = false
       searchModalOpen.value = false
       automationTimeDropdownOpen.value = false
+      projectCtxMenu.value = null
     }
     return
   }
@@ -1725,6 +1921,9 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
   }
   if (automationTimeComboRef.value && !automationTimeComboRef.value.contains(e.target as Node)) {
     automationTimeDropdownOpen.value = false
+  }
+  if (projectCtxMenuRef.value && !projectCtxMenuRef.value.contains(e.target as Node)) {
+    projectCtxMenu.value = null
   }
 }
 const draft = ref('')
@@ -2252,9 +2451,11 @@ const workspace = computed(
     ''
 )
 const workspaceLabel = computed(() => {
+  const custom = activeChatProject.value?.name?.trim()
+  if (custom) return custom
   const w = workspace.value
   if (!w) return ''
-  return extractProjectFolderName(w, activeChatProject.value?.name)
+  return extractProjectFolderName(w)
 })
 
 function scrollToBottom(): void {
@@ -2318,6 +2519,21 @@ function pushStatus(text: string, phase: Exclude<ActivityPhase, 'idle'> = 'waiti
     activityPhase.value = 'idle'
     activityTimer = null
   }, ACTIVITY_TTL_MS)
+}
+
+/** 在对话流末尾展示一条可见状态提示（去重相邻同名提示，避免窄侧栏下顶栏状态被挤没导致“点击无反应”） */
+function appendStatusNotice(text: string): void {
+  const cleaned = String(text ?? '').trim()
+  if (!cleaned) return
+  const last = messages.value[messages.value.length - 1]
+  if (last?.kind === 'status' && last.text === cleaned) {
+    scrollToBottom()
+    return
+  }
+  messages.value.push({ kind: 'status', text: cleaned })
+  commitMessages([...messages.value])
+  persistHistory()
+  scrollToBottom()
 }
 
 /** 重新拉取 harness 状态；失败时保留上一次状态，不影响会话本身 */
@@ -3806,7 +4022,9 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     // 环境未就绪时不静默丢弃：把原因作为状态消息告知用户
     if (!ready.value) {
       running.value = false
-      pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
+      const unavailMsg = status.value?.message ?? t('studio.chat.unavailable')
+      pushStatus(unavailMsg, 'error')
+      appendStatusNotice(unavailMsg)
       return
     }
     const task = text
@@ -3841,17 +4059,27 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
   }
   const { providerId, modelId } = splitModelKey(selectedKey.value)
   const canvasContext = buildActiveCanvasContext()
-  const result = await window.studio.runHarnessTask({
-    task: taskForHarness,
-    // 会话 id：dsh 据此恢复/创建持久化 session，模型通过原生会话历史记住之前的聊天内容
-    sessionId: activeSession.value?.id,
-    model: modelId.trim() || undefined,
-    ...(providerId ? { providerId } : {}),
-    ...(workspace.value ? { workspace: workspace.value } : {}),
-    // 当前 agent 模式：main 进程按 craft/ask/plan 切换 dsh 的 system-prompt
-    mode: mode.value,
-    ...(canvasContext ? { canvasContext } : {})
-  })
+  let result: { started: boolean; message?: string }
+  try {
+    result = await window.studio.runHarnessTask({
+      task: taskForHarness,
+      // 会话 id：dsh 据此恢复/创建持久化 session，模型通过原生会话历史记住之前的聊天内容
+      sessionId: activeSession.value?.id,
+      model: modelId.trim() || undefined,
+      ...(providerId ? { providerId } : {}),
+      ...(workspace.value ? { workspace: workspace.value } : {}),
+      // 当前 agent 模式：main 进程按 craft/ask/plan 切换 dsh 的 system-prompt
+      mode: mode.value,
+      ...(canvasContext ? { canvasContext } : {})
+    })
+  } catch (err) {
+    if (clientAbortSeq !== myAbortSeq) return
+    const errText = err instanceof Error ? err.message : String(err)
+    pushStatus(errText, 'error')
+    appendStatusNotice(errText)
+    running.value = false
+    return
+  }
   if (clientAbortSeq !== myAbortSeq) {
     return
   }
@@ -3862,7 +4090,9 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
       running.value = true
       return
     }
-    pushStatus(result.message ?? 'failed to start', 'error')
+    const failMsg = result.message ?? 'failed to start'
+    pushStatus(failMsg, 'error')
+    appendStatusNotice(failMsg)
     running.value = false
   }
 }
@@ -4270,6 +4500,7 @@ onMounted(async () => {
   // 模式选择下拉：点外部或 ESC 收起；用 document 监听，trigger 用 .stop 防止冒泡立即关
   document.addEventListener('click', onModeOutside)
   document.addEventListener('keydown', onModeOutside)
+  document.addEventListener('contextmenu', onDocumentContextMenu)
   await loadModels()
   automationTimer = window.setInterval(checkDueAutomations, 15_000)
   // 闲时预热常驻 dsh：就绪后首条消息跳过 Cordis/MCP 冷启动
@@ -4290,6 +4521,7 @@ onBeforeUnmount(() => {
   stopAssetRemoved?.()
   document.removeEventListener('click', onModeOutside)
   document.removeEventListener('keydown', onModeOutside)
+  document.removeEventListener('contextmenu', onDocumentContextMenu)
   window.removeEventListener('dragend', clearAssetDragOver)
   if (copyTimer !== null) window.clearTimeout(copyTimer)
   if (historyTimer !== null) window.clearTimeout(historyTimer)
@@ -4462,7 +4694,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 滚动内容区：上半部分为 Projects 树，紧接其下方为重构后的 Conversations 历史会话 -->
-      <div class="codex-sidebar-scroll">
+      <div class="codex-sidebar-scroll" @scroll="closeProjectCtxMenu">
         <div v-if="!filteredChatProjectTree.length" class="codex-projects-empty">
           <span>{{ t('studio.chat.projectsEmptyHint') }}</span>
         </div>
@@ -4474,15 +4706,67 @@ onBeforeUnmount(() => {
             class="codex-project-group"
             :class="{
               'is-active-project': group.scope === activeChatScope,
-              'is-expanded': !group.collapsed
+              'is-expanded': !group.collapsed,
+              'is-ctx-open': projectCtxMenu?.group.scope === group.scope
             }"
           >
-            <div class="codex-project-folder-row" :title="group.rootPath">
+            <div
+              class="codex-project-folder-row"
+              :title="`${group.rootPath}\n${t('studio.chat.doubleClickRenameHint')}`"
+              @contextmenu.prevent.stop="onProjectContextMenu($event, group)"
+            >
+              <div
+                v-if="renamingProjectScope === group.scope"
+                class="codex-project-folder-btn is-renaming"
+                @click.stop
+              >
+                <svg
+                  class="codex-folder-icon"
+                  viewBox="0 0 16 16"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.35"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path
+                    v-if="group.collapsed"
+                    d="M2 4.2A1.2 1.2 0 0 1 3.2 3h3l1.4 1.6h5.2A1.2 1.2 0 0 1 14 5.8v6A1.2 1.2 0 0 1 12.8 13H3.2A1.2 1.2 0 0 1 2 11.8V4.2Z"
+                  />
+                  <template v-else>
+                    <path
+                      d="M2 11.8V4.2A1.2 1.2 0 0 1 3.2 3h3l1.4 1.6h4.6A1.2 1.2 0 0 1 13.4 5.8v1.7"
+                    />
+                    <path
+                      d="M2.1 12.1 3.5 8.3a1 1 0 0 1 .94-.65h9.2a.8.8 0 0 1 .76 1.05l-1.25 3.6a1.1 1.1 0 0 1-1.04.7H3.1a1 1 0 0 1-1-.9Z"
+                    />
+                  </template>
+                </svg>
+                <input
+                  ref="projectRenameInputRef"
+                  v-model="renamingProjectDraft"
+                  type="text"
+                  class="codex-project-rename-input"
+                  :aria-label="t('studio.chat.renameProject')"
+                  @click.stop
+                  @dblclick.stop
+                  @keydown.stop
+                  @keydown.enter.prevent="commitRenameChatProject"
+                  @keydown.esc.prevent="cancelRenameChatProject"
+                  @blur="commitRenameChatProject"
+                />
+              </div>
               <button
+                v-else
                 type="button"
                 class="codex-project-folder-btn"
                 :aria-expanded="!group.collapsed"
-                @click.stop="toggleProjectCollapsed(group.scope)"
+                @click.stop="onProjectFolderBtnClick($event, group)"
+                @dblclick.stop.prevent="startRenameChatProject(group, true)"
+                @keydown.f2.prevent.stop="startRenameChatProject(group, false)"
               >
                 <svg
                   class="codex-folder-icon"
@@ -4515,10 +4799,9 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="codex-folder-action-btn"
-                  :disabled="running"
                   :title="t('studio.chat.analyzeProjectAction')"
                   :aria-label="t('studio.chat.analyzeProjectAction')"
-                  @click.stop="onAnalyzeChatProject(group.scope, group.name)"
+                  @click.stop="onAnalyzeChatProject(group.scope, group.name, group.rootPath)"
                 >
                   <svg
                     viewBox="0 0 16 16"
@@ -4538,7 +4821,6 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="codex-folder-action-btn"
-                  :disabled="running"
                   :title="t('studio.chat.newProjectConversation')"
                   :aria-label="t('studio.chat.newProjectConversation')"
                   @click.stop="onNewSessionInProject(group.scope)"
@@ -6786,6 +7068,226 @@ onBeforeUnmount(() => {
       @confirm="onSaveAssetConfirm"
       @cancel="closeSaveAssetDialog"
     />
+
+    <!-- Projects 工程文件夹右键上下文菜单 -->
+    <Teleport to="body">
+      <div
+        v-if="projectCtxMenu"
+        ref="projectCtxMenuRef"
+        class="chat-project-ctx-menu"
+        role="menu"
+        :style="{ left: `${projectCtxMenu.x}px`, top: `${projectCtxMenu.y}px` }"
+        @click.stop
+        @contextmenu.prevent.stop
+      >
+        <div class="chat-project-ctx-head" :title="projectCtxMenu.group.rootPath">
+          <span class="chat-project-ctx-title">{{ projectCtxMenu.group.name }}</span>
+        </div>
+        <div class="chat-project-ctx-divider" />
+
+        <button
+          type="button"
+          class="chat-project-ctx-item"
+          role="menuitem"
+          @click="onNewSessionInProject(projectCtxMenu.group.scope)"
+        >
+          <span class="chat-project-ctx-icon" aria-hidden="true">+</span>
+          <span class="chat-project-ctx-label">{{ t('studio.chat.newProjectConversation') }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="chat-project-ctx-item"
+          role="menuitem"
+          @click="
+            onAnalyzeChatProject(
+              projectCtxMenu.group.scope,
+              projectCtxMenu.group.name,
+              projectCtxMenu.group.rootPath
+            )
+          "
+        >
+          <span class="chat-project-ctx-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="7" cy="7" r="4" />
+              <path d="M10.2 10.2 13.5 13.5" />
+            </svg>
+          </span>
+          <span class="chat-project-ctx-label">{{ t('studio.chat.analyzeProjectAction') }}</span>
+        </button>
+
+        <div class="chat-project-ctx-divider" />
+
+        <button
+          type="button"
+          class="chat-project-ctx-item"
+          role="menuitem"
+          @click="onOpenChatProjectInFolder(projectCtxMenu.group.rootPath)"
+        >
+          <span class="chat-project-ctx-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.45"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M2 11.8V4.2A1.2 1.2 0 0 1 3.2 3h3l1.4 1.6h4.6A1.2 1.2 0 0 1 13.4 5.8v1.7" />
+              <path
+                d="M2.1 12.1 3.5 8.3a1 1 0 0 1 .94-.65h9.2a.8.8 0 0 1 .76 1.05l-1.25 3.6a1.1 1.1 0 0 1-1.04.7H3.1a1 1 0 0 1-1-.9Z"
+              />
+            </svg>
+          </span>
+          <span class="chat-project-ctx-label">{{ t('studio.chat.openProjectInFolder') }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="chat-project-ctx-item"
+          role="menuitem"
+          @click="startRenameChatProject(projectCtxMenu.group, false)"
+        >
+          <span class="chat-project-ctx-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.45"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M11.2 2.5a1.5 1.5 0 0 1 2.1 2.1L5.6 12.3l-3 .7.7-3 7.9-7.5Z" />
+            </svg>
+          </span>
+          <span class="chat-project-ctx-label">{{ t('studio.chat.renameProject') }}</span>
+          <span class="chat-project-ctx-shortcut">F2</span>
+        </button>
+
+        <div class="chat-project-ctx-divider" />
+
+        <button
+          type="button"
+          class="chat-project-ctx-item"
+          role="menuitem"
+          @click="onCopyProjectName(projectCtxMenu.group.name)"
+        >
+          <span class="chat-project-ctx-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.45"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+              <path
+                d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V3A1.5 1.5 0 0 1 3 1.5h6A1.5 1.5 0 0 1 10.5 3v.5"
+              />
+            </svg>
+          </span>
+          <span class="chat-project-ctx-label">{{ t('studio.chat.copyProjectName') }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="chat-project-ctx-item"
+          role="menuitem"
+          @click="onCopyProjectPath(projectCtxMenu.group.rootPath)"
+        >
+          <span class="chat-project-ctx-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.45"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M6.5 9.5 9.5 6.5" />
+              <path d="M8.8 11.2 7.3 12.7a2.4 2.4 0 0 1-3.4-3.4l1.5-1.5" />
+              <path d="M7.2 4.8 8.7 3.3a2.4 2.4 0 0 1 3.4 3.4l-1.5 1.5" />
+            </svg>
+          </span>
+          <span class="chat-project-ctx-label">{{ t('studio.chat.copyProjectPath') }}</span>
+        </button>
+
+        <div class="chat-project-ctx-divider" />
+
+        <button
+          type="button"
+          class="chat-project-ctx-item"
+          role="menuitem"
+          @click="onFilterByChatProject(projectCtxMenu.group.name)"
+        >
+          <span class="chat-project-ctx-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.45"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M2 3.5h12L9.4 8.6v3.9l-2.8 1V8.6L2 3.5Z" />
+            </svg>
+          </span>
+          <span class="chat-project-ctx-label">{{ t('studio.chat.filterThisProject') }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="chat-project-ctx-item"
+          role="menuitem"
+          @click="onToggleProjectCollapsedFromMenu(projectCtxMenu.group.scope)"
+        >
+          <span class="chat-project-ctx-icon" aria-hidden="true">
+            {{ projectCtxMenu.group.collapsed ? '▸' : '▾' }}
+          </span>
+          <span class="chat-project-ctx-label">
+            {{
+              projectCtxMenu.group.collapsed
+                ? t('studio.chat.expandProjectSessions')
+                : t('studio.chat.collapseProjectSessions')
+            }}
+          </span>
+        </button>
+
+        <template v-if="projectCtxMenu.group.scope !== currentProjectChatScope">
+          <div class="chat-project-ctx-divider" />
+          <button
+            type="button"
+            class="chat-project-ctx-item danger"
+            role="menuitem"
+            :disabled="running"
+            @click="onRemoveChatProjectFolder(projectCtxMenu.group.scope)"
+          >
+            <span class="chat-project-ctx-icon" aria-hidden="true">×</span>
+            <span class="chat-project-ctx-label">{{ t('studio.chat.removeProjectFolder') }}</span>
+          </button>
+        </template>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -6796,13 +7298,14 @@ onBeforeUnmount(() => {
   flex-direction: row;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
   background: var(--bg-panel);
   color: var(--text);
 }
 
 .chat-main {
-  flex: 1 1 220px;
-  min-width: 220px;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -6884,10 +7387,14 @@ onBeforeUnmount(() => {
 }
 
 .chat-status .chat-activity.warn {
+  flex-shrink: 0;
+  max-width: 55%;
   color: var(--warning);
 }
 
 .chat-status .chat-activity.error {
+  flex-shrink: 0;
+  max-width: 55%;
   color: var(--danger);
 }
 
@@ -7133,7 +7640,8 @@ onBeforeUnmount(() => {
   border-radius: 6px;
 }
 
-.codex-project-folder-row:hover {
+.codex-project-folder-row:hover,
+.codex-project-group.is-ctx-open .codex-project-folder-row {
   background: var(--bg-hover);
 }
 
@@ -7151,6 +7659,27 @@ onBeforeUnmount(() => {
   font-size: 12.5px;
   text-align: left;
   cursor: pointer;
+}
+
+.codex-project-folder-btn.is-renaming {
+  cursor: text;
+  color: var(--text);
+}
+
+.codex-project-rename-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 1px 5px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  outline: none;
 }
 
 .codex-project-group.is-active-project .codex-project-folder-btn,
@@ -7180,7 +7709,8 @@ onBeforeUnmount(() => {
 }
 
 .codex-project-folder-row:hover .codex-project-folder-actions,
-.codex-project-group.is-active-project .codex-project-folder-actions {
+.codex-project-group.is-active-project .codex-project-folder-actions,
+.codex-project-group.is-ctx-open .codex-project-folder-actions {
   opacity: 1;
 }
 
@@ -7200,6 +7730,11 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.codex-folder-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .codex-folder-action-btn:hover:not(:disabled) {
   color: var(--text);
   background: var(--bg-hover);
@@ -7207,6 +7742,112 @@ onBeforeUnmount(() => {
 
 .codex-folder-action-btn.danger:hover:not(:disabled) {
   color: var(--danger);
+}
+
+.chat-project-ctx-menu {
+  position: fixed;
+  z-index: 9600;
+  min-width: 210px;
+  max-width: 260px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.36),
+    0 2px 6px rgba(0, 0, 0, 0.2);
+  user-select: none;
+}
+
+.chat-project-ctx-head {
+  padding: 4px 8px 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-project-ctx-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.chat-project-ctx-divider {
+  height: 1px;
+  margin: 4px 4px;
+  background: var(--border);
+}
+
+.chat-project-ctx-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+}
+
+.chat-project-ctx-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.chat-project-ctx-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-project-ctx-item.danger {
+  color: var(--danger);
+}
+
+.chat-project-ctx-item.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-hover));
+}
+
+.chat-project-ctx-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.chat-project-ctx-item:hover:not(:disabled) .chat-project-ctx-icon {
+  color: currentColor;
+}
+
+.chat-project-ctx-item.danger .chat-project-ctx-icon {
+  color: var(--danger);
+}
+
+.chat-project-ctx-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-project-ctx-shortcut {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-family: var(--mono);
 }
 
 .codex-session-list {

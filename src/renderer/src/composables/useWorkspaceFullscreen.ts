@@ -12,6 +12,7 @@ import { computed, ref } from 'vue'
  *    用户在原生全屏下按 `Esc` 退出时，通过 `fullscreenchange` 自动同步还原工作区布局。
  */
 const workspaceFullscreenRef = ref(false)
+const chatFullscreenRef = ref(false)
 const nativeHtmlFullscreenRef = ref(false)
 let listenersInstalled = false
 
@@ -20,9 +21,10 @@ function syncNativeFullscreenState(): void {
   const active = Boolean(document.fullscreenElement)
   const wasActive = nativeHtmlFullscreenRef.value
   nativeHtmlFullscreenRef.value = active
-  // 用户按 Esc 退出了浏览器/OS 原生全屏时，同步退出工作区沉浸态
-  if (wasActive && !active && workspaceFullscreenRef.value) {
-    workspaceFullscreenRef.value = false
+  // 用户按 Esc 退出了浏览器/OS 原生全屏时，同步退出工作区或 AI 对话沉浸态
+  if (wasActive && !active) {
+    if (workspaceFullscreenRef.value) workspaceFullscreenRef.value = false
+    if (chatFullscreenRef.value) chatFullscreenRef.value = false
   }
 }
 
@@ -43,13 +45,22 @@ export function installWorkspaceFullscreenListeners(): () => void {
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'F11') {
       event.preventDefault()
+      if (chatFullscreenRef.value) {
+        exitChatFullscreen()
+        return
+      }
+      const target = event.target as HTMLElement | null
+      if (!workspaceFullscreenRef.value && target?.closest?.('.chat-panel')) {
+        enterChatFullscreen()
+        return
+      }
       toggleWorkspaceFullscreen()
       return
     }
-    // 若仅处于窗口内工作区全屏（例如未进入原生全屏），按 Esc 在无弹窗/输入框焦点时也可退出
+    // 若仅处于窗口内全屏（例如未进入原生全屏），按 Esc 在无弹窗/输入框焦点时也可退出
     if (
       event.key === 'Escape' &&
-      workspaceFullscreenRef.value &&
+      (workspaceFullscreenRef.value || chatFullscreenRef.value) &&
       !nativeHtmlFullscreenRef.value &&
       !event.defaultPrevented
     ) {
@@ -61,7 +72,11 @@ export function installWorkspaceFullscreenListeners(): () => void {
         return
       }
       event.preventDefault()
-      exitWorkspaceFullscreen()
+      if (chatFullscreenRef.value) {
+        exitChatFullscreen()
+      } else {
+        exitWorkspaceFullscreen()
+      }
     }
   }
 
@@ -75,8 +90,9 @@ export function installWorkspaceFullscreenListeners(): () => void {
   }
 }
 
-export function enterWorkspaceFullscreen(options?: { requestBrowserFullscreen?: boolean }): void {
-  workspaceFullscreenRef.value = true
+function requestNativeBrowserFullscreenIfDesired(options?: {
+  requestBrowserFullscreen?: boolean
+}): void {
   const wantNative = options?.requestBrowserFullscreen ?? true
   if (
     wantNative &&
@@ -90,15 +106,29 @@ export function enterWorkspaceFullscreen(options?: { requestBrowserFullscreen?: 
   }
 }
 
-export function exitWorkspaceFullscreen(): void {
-  workspaceFullscreenRef.value = false
+function exitNativeBrowserFullscreenIfIdle(): void {
   if (
+    !workspaceFullscreenRef.value &&
+    !chatFullscreenRef.value &&
     typeof document !== 'undefined' &&
     document.fullscreenElement &&
     typeof document.exitFullscreen === 'function'
   ) {
     void document.exitFullscreen().catch(() => {})
   }
+}
+
+export function enterWorkspaceFullscreen(options?: { requestBrowserFullscreen?: boolean }): void {
+  if (chatFullscreenRef.value) {
+    chatFullscreenRef.value = false
+  }
+  workspaceFullscreenRef.value = true
+  requestNativeBrowserFullscreenIfDesired(options)
+}
+
+export function exitWorkspaceFullscreen(): void {
+  workspaceFullscreenRef.value = false
+  exitNativeBrowserFullscreenIfIdle()
 }
 
 export function toggleWorkspaceFullscreen(options?: {
@@ -112,12 +142,38 @@ export function toggleWorkspaceFullscreen(options?: {
   return true
 }
 
+export function enterChatFullscreen(options?: { requestBrowserFullscreen?: boolean }): void {
+  if (workspaceFullscreenRef.value) {
+    workspaceFullscreenRef.value = false
+  }
+  chatFullscreenRef.value = true
+  requestNativeBrowserFullscreenIfDesired(options)
+}
+
+export function exitChatFullscreen(): void {
+  chatFullscreenRef.value = false
+  exitNativeBrowserFullscreenIfIdle()
+}
+
+export function toggleChatFullscreen(options?: { requestBrowserFullscreen?: boolean }): boolean {
+  if (chatFullscreenRef.value) {
+    exitChatFullscreen()
+    return false
+  }
+  enterChatFullscreen(options)
+  return true
+}
+
 export function useWorkspaceFullscreen() {
   return {
     isWorkspaceFullscreen: computed(() => workspaceFullscreenRef.value),
+    isChatFullscreen: computed(() => chatFullscreenRef.value),
     isNativeHtmlFullscreen: computed(() => nativeHtmlFullscreenRef.value),
     enterWorkspaceFullscreen,
     exitWorkspaceFullscreen,
-    toggleWorkspaceFullscreen
+    toggleWorkspaceFullscreen,
+    enterChatFullscreen,
+    exitChatFullscreen,
+    toggleChatFullscreen
   }
 }

@@ -5,8 +5,15 @@
       {{ t('studio.backHome') }}
     </button>
   </div>
-  <div v-else class="studio" :class="{ 'is-workspace-fullscreen': isWorkspaceFullscreen }">
-    <div v-show="!isWorkspaceFullscreen" class="studio-toolbar">
+  <div
+    v-else
+    class="studio"
+    :class="{
+      'is-workspace-fullscreen': isWorkspaceFullscreen,
+      'is-chat-fullscreen': isChatFullscreen
+    }"
+  >
+    <div v-show="!isAnyFullscreen" class="studio-toolbar">
       <div class="toolbar-panel-toggles toolbar-panel-toggles-left">
         <button
           type="button"
@@ -171,23 +178,22 @@
           </svg>
           <span class="panel-toggle-label">{{ t('studio.panel.chat') }}</span>
         </button>
-        <span class="toolbar-sep" aria-hidden="true" />
-        <WorkspaceFullscreenBtn />
       </div>
     </div>
     <div class="studio-main">
-      <WorkspaceToolbar v-show="!isWorkspaceFullscreen" class="studio-left-tool-rail" />
+      <WorkspaceToolbar v-show="!isAnyFullscreen" class="studio-left-tool-rail" />
       <DockviewVue
         class="studio-dock"
         :theme="dockTheme"
         :components="dockComponents"
         :tab-components="dockTabComponents"
         default-tab-component="editorTab"
+        :right-header-actions-component="dockRightHeaderActionsComponent"
         :get-tab-context-menu-items="getTabContextMenuItems"
         floating-group-bounds="boundedWithinViewport"
         @ready="onReady"
       />
-      <StudioSideToolBar v-show="!isWorkspaceFullscreen" :dock-api="dockApi" />
+      <StudioSideToolBar v-show="!isAnyFullscreen" :dock-api="dockApi" />
     </div>
     <SaveAssetDialog
       :open="saveDialogOpen"
@@ -233,8 +239,8 @@ import { useMcpActivitiesStore } from '../stores/mcpActivities'
 import { useDraftSave } from '../composables/useDraftSave'
 import SaveAssetDialog from '../components/SaveAssetDialog.vue'
 import EditorDockTab from '../components/EditorDockTab.vue'
+import EditorDockRightActions from '../components/EditorDockRightActions.vue'
 import StudioSideToolBar from '../components/StudioSideToolBar.vue'
-import WorkspaceFullscreenBtn from '../components/WorkspaceFullscreenBtn.vue'
 import WorkspaceToolbar from '../components/WorkspaceToolbar.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
@@ -314,7 +320,9 @@ const editor = useEditorKernel()
 const taskStore = useGraphTaskStore()
 const runLogsStore = useGraphRunLogsStore()
 const mcpActivities = useMcpActivitiesStore()
-const { isWorkspaceFullscreen, exitWorkspaceFullscreen } = useWorkspaceFullscreen()
+const { isWorkspaceFullscreen, isChatFullscreen, exitWorkspaceFullscreen, exitChatFullscreen } =
+  useWorkspaceFullscreen()
+const isAnyFullscreen = computed(() => isWorkspaceFullscreen.value || isChatFullscreen.value)
 
 /**
  * 任务按钮角标：工作流任务 + 运行中的 MCP 旁路活动（外部 Agent 触发的
@@ -480,8 +488,9 @@ function onGlobalKeyDown(e: KeyboardEvent): void {
   if (!e.shiftKey && !e.altKey && !isEditableKeyboardTarget(target)) {
     if (key === 'b') {
       e.preventDefault()
-      if (isWorkspaceFullscreen.value) {
-        exitWorkspaceFullscreen()
+      if (isAnyFullscreen.value) {
+        if (isWorkspaceFullscreen.value) exitWorkspaceFullscreen()
+        if (isChatFullscreen.value) exitChatFullscreen()
         requestAnimationFrame(() => toggleSidePanel('assets'))
         return
       }
@@ -490,8 +499,9 @@ function onGlobalKeyDown(e: KeyboardEvent): void {
     }
     if (key === 'i') {
       e.preventDefault()
-      if (isWorkspaceFullscreen.value) {
-        exitWorkspaceFullscreen()
+      if (isAnyFullscreen.value) {
+        if (isWorkspaceFullscreen.value) exitWorkspaceFullscreen()
+        if (isChatFullscreen.value) exitChatFullscreen()
         requestAnimationFrame(() => toggleSidePanel('inspector'))
         return
       }
@@ -500,6 +510,10 @@ function onGlobalKeyDown(e: KeyboardEvent): void {
     }
     if (key === 'j') {
       e.preventDefault()
+      if (isChatFullscreen.value) {
+        exitChatFullscreen()
+        return
+      }
       if (isWorkspaceFullscreen.value) {
         exitWorkspaceFullscreen()
         requestAnimationFrame(() => toggleChatPanel())
@@ -552,6 +566,8 @@ const dockTabComponents: Record<string, VueComponent> = {
     })
   ) as unknown as VueComponent
 }
+
+const dockRightHeaderActionsComponent = markRaw(EditorDockRightActions) as unknown as VueComponent
 
 const dockComponents: Record<string, VueComponent> = createEditorWindowComponents({
   t: (key, params) => t(key, params ?? {})
@@ -699,7 +715,7 @@ function createDefaultLayout(api: DockviewApi): void {
 }
 
 function ensureCorePanels(api: DockviewApi): void {
-  if (layoutMutating || isWorkspaceFullscreen.value || api.hasMaximizedGroup()) return
+  if (layoutMutating || isAnyFullscreen.value || api.hasMaximizedGroup()) return
 
   const legacyTools = api.getPanel(WORKSPACE_TOOLS_PANEL_ID)
   if (legacyTools) api.removePanel(legacyTools)
@@ -797,7 +813,7 @@ function isStoredLayoutCompatible(raw: string): boolean {
 }
 
 function persistLayout(api: DockviewApi): void {
-  if (layoutMutating || isWorkspaceFullscreen.value || api.hasMaximizedGroup()) return
+  if (layoutMutating || isAnyFullscreen.value || api.hasMaximizedGroup()) return
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     try {
@@ -918,7 +934,7 @@ function onReady(event: DockviewReadyEvent): void {
     }
   })
   layoutDisposable = api.onDidLayoutChange(() => {
-    if (isWorkspaceFullscreen.value || api.hasMaximizedGroup()) return
+    if (isAnyFullscreen.value || api.hasMaximizedGroup()) return
     persistLayout(api)
     handleSidePanelLayoutMaybeStacked(api)
     syncChatPanelState(api)
@@ -926,8 +942,9 @@ function onReady(event: DockviewReadyEvent): void {
     configureSidePanelStackDropTargets(api)
   })
   maximizedGroupDisposable = api.onDidMaximizedGroupChange((event) => {
-    if (!event.isMaximized && isWorkspaceFullscreen.value) {
-      exitWorkspaceFullscreen()
+    if (!event.isMaximized) {
+      if (isWorkspaceFullscreen.value) exitWorkspaceFullscreen()
+      if (isChatFullscreen.value) exitChatFullscreen()
     }
   })
   willShowOverlayDisposable = api.onWillShowOverlay((event) => {
@@ -1046,6 +1063,9 @@ function onReady(event: DockviewReadyEvent): void {
     }
     if (panel.id === CHAT_PANEL_ID) {
       chatPanelVisible.value = false
+      if (isChatFullscreen.value) {
+        exitChatFullscreen()
+      }
     }
     if ((PANEL_IDS as readonly string[]).includes(panel.id)) {
       ensureCorePanels(api)
@@ -1097,17 +1117,22 @@ watch(isWorkspaceFullscreen, (fs) => {
   const api = dockApi.value
   if (!api) return
   if (fs) {
-    if (!api.hasMaximizedGroup()) {
-      const target = resolveCenterTargetPanel(api)
-      if (target) {
-        try {
-          api.maximizeGroup(target)
-        } catch (err) {
-          console.warn('[studio] maximizeGroup failed', err)
-        }
+    const target = resolveCenterTargetPanel(api)
+    if (api.hasMaximizedGroup() && (!target || !target.api.isMaximized())) {
+      try {
+        api.exitMaximizedGroup()
+      } catch {
+        // ignore
       }
     }
-  } else if (api.hasMaximizedGroup()) {
+    if (!api.hasMaximizedGroup() && target) {
+      try {
+        api.maximizeGroup(target)
+      } catch (err) {
+        console.warn('[studio] maximizeGroup failed', err)
+      }
+    }
+  } else if (!isChatFullscreen.value && api.hasMaximizedGroup()) {
     try {
       api.exitMaximizedGroup()
     } catch (err) {
@@ -1116,7 +1141,67 @@ watch(isWorkspaceFullscreen, (fs) => {
   }
   requestAnimationFrame(() => {
     relayoutDockToContainer(api)
-    if (!fs && dockApi.value === api) {
+    if (!fs && !isChatFullscreen.value && dockApi.value === api) {
+      applySidePanelCollapseSync(api)
+    }
+  })
+})
+
+watch(isChatFullscreen, (fs) => {
+  const api = dockApi.value
+  if (!api) return
+  if (fs) {
+    let chatPanel = api.getPanel(CHAT_PANEL_ID)
+    if (!chatPanel) {
+      const { chat } = defaultSideWidths()
+      chatPanel = api.addPanel({
+        id: CHAT_PANEL_ID,
+        component: 'chat',
+        title: t('studio.panel.chat'),
+        position: {
+          referencePanel: api.getPanel('inspector')?.id ?? CENTER_PANEL_ID,
+          direction: 'right'
+        },
+        initialWidth: chat,
+        minimumWidth: CHAT_PANEL_MIN_WIDTH
+      })
+    }
+    if (!chatPanel.api.isVisible) {
+      const { chat } = defaultSideWidths()
+      setChatPanelVisible(api, true, chat)
+    }
+    if (chatPanel.api.location.type === 'floating') {
+      const refPanel = api.getPanel('inspector') ?? api.getPanel(CENTER_PANEL_ID)
+      if (refPanel?.group) {
+        chatPanel.api.moveTo({ group: refPanel.group, position: 'right' })
+      }
+    }
+    if (api.hasMaximizedGroup() && !chatPanel.api.isMaximized()) {
+      try {
+        api.exitMaximizedGroup()
+      } catch {
+        // ignore
+      }
+    }
+    if (!api.hasMaximizedGroup()) {
+      try {
+        api.maximizeGroup(chatPanel)
+      } catch (err) {
+        console.warn('[studio] maximizeGroup(chat) failed', err)
+      }
+    }
+    chatPanel.api.setActive()
+    syncChatPanelState(api)
+  } else if (!isWorkspaceFullscreen.value && api.hasMaximizedGroup()) {
+    try {
+      api.exitMaximizedGroup()
+    } catch (err) {
+      console.warn('[studio] exitMaximizedGroup failed', err)
+    }
+  }
+  requestAnimationFrame(() => {
+    relayoutDockToContainer(api)
+    if (!fs && !isWorkspaceFullscreen.value && dockApi.value === api) {
       applySidePanelCollapseSync(api)
     }
   })
@@ -1591,9 +1676,10 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.toolbar-panel-toggles :deep(.ws-fullscreen-btn) {
-  height: 22px;
-  font-size: 11px;
+.studio.is-chat-fullscreen
+  .studio-main
+  :deep(.studio-dock .dv-tab .editor-tab .dv-default-tab-action) {
+  display: none !important;
 }
 
 .studio.is-workspace-fullscreen .studio-main :deep(.studio-dock) {

@@ -162,6 +162,8 @@ export interface ChatProjectEntry {
   updatedAt: number
   /** 是否在 Projects 树中折叠该项目的会话列表 */
   collapsed?: boolean
+  /** 用户手动重命名后的自定义显示名标记 */ // cjk-ok
+  customName?: boolean
 }
 
 /** Projects 树中的分组视图：项目信息 + 该项目下的会话列表与激活会话 */
@@ -436,14 +438,15 @@ function readChatProjects(workspaceScope = ''): ChatProjectEntry[] {
       )
       .map((item) => ({
         scope: item.scope.trim(),
-        name: extractProjectFolderName(item.rootPath, item.name),
+        name: (item.name ?? '').trim() || extractProjectFolderName(item.rootPath, item.name),
         rootPath: item.rootPath.trim(),
         ...(item.projectId?.trim() ? { projectId: item.projectId.trim() } : {}),
         updatedAt:
           typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt)
             ? item.updatedAt
             : Date.now(),
-        ...(item.collapsed ? { collapsed: true } : {})
+        ...(item.collapsed ? { collapsed: true } : {}),
+        ...(item.customName ? { customName: true } : {})
       }))
   } catch {
     return []
@@ -666,10 +669,11 @@ export function useChatHistory() {
     let entry: ChatProjectEntry
     if (existingIdx >= 0) {
       const prev = projects.value[existingIdx]!
+      const explicitName = (input.name ?? '').trim()
       entry = {
         ...prev,
         scope: prev.scope || targetScope,
-        name: folderName || prev.name,
+        name: explicitName || (prev.customName && prev.name ? prev.name : folderName || prev.name),
         rootPath,
         ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
         updatedAt: now
@@ -734,6 +738,70 @@ export function useChatHistory() {
     projects.value = nextList
     writeChatProjects(projects.value, workspaceScope.value)
     bumpTree()
+  }
+
+  function setProjectCollapsed(targetScope: string, collapsed: boolean): void {
+    const norm = targetScope.trim()
+    const idx = projects.value.findIndex((p) => p.scope === norm)
+    if (idx < 0) return
+    const cur = projects.value[idx]!
+    if (Boolean(cur.collapsed) === collapsed) return
+    const nextList = [...projects.value]
+    nextList[idx] = {
+      ...cur,
+      collapsed
+    }
+    projects.value = nextList
+    writeChatProjects(projects.value, workspaceScope.value)
+    bumpTree()
+  }
+
+  function renameProject(targetScope: string, nextName: string): boolean {
+    const norm = targetScope.trim()
+    const trimmedName = String(nextName ?? '').trim()
+    if (!norm || !trimmedName) return false
+    const idx = projects.value.findIndex((p) => p.scope === norm)
+    if (idx < 0) return false
+    const cur = projects.value[idx]!
+    const defaultFolderName = extractProjectFolderName(cur.rootPath)
+    const isCustom = trimmedName !== defaultFolderName
+    const nextList = [...projects.value]
+    nextList[idx] = {
+      ...cur,
+      name: trimmedName,
+      customName: isCustom,
+      updatedAt: Date.now()
+    }
+    projects.value = nextList
+    writeChatProjects(projects.value, workspaceScope.value)
+    bumpTree()
+    return true
+  }
+
+  function renameProjectSession(
+    targetScope: string,
+    sessionId: string,
+    nextTitle: string
+  ): boolean {
+    const norm = targetScope.trim()
+    const trimmed = String(nextTitle ?? '').trim()
+    if (!sessionId || !trimmed) return false
+    if (!norm || norm === scope.value) {
+      const idx = sessions.value.findIndex((s) => s.id === sessionId)
+      if (idx < 0) return false
+      const copy = [...sessions.value]
+      copy[idx] = { ...copy[idx]!, title: trimmed, updatedAt: Date.now() }
+      sessions.value = copy
+      persist()
+      return true
+    }
+    const list = readSessions(norm)
+    const idx = list.findIndex((s) => s.id === sessionId)
+    if (idx < 0) return false
+    list[idx] = { ...list[idx]!, title: trimmed, updatedAt: Date.now() }
+    writeSessions(list, norm)
+    bumpTree()
+    return true
   }
 
   /** 当前激活的项目条目 */
@@ -1157,6 +1225,9 @@ export function useChatHistory() {
     addExternalProject,
     removeProject,
     toggleProjectCollapsed,
+    setProjectCollapsed,
+    renameProject,
+    renameProjectSession,
     createAutomation,
     removeAutomation,
     toggleAutomationEnabled,

@@ -383,4 +383,36 @@ describe('useChatHistory 的上下文用量持久化', () => {
     history2.removeAutomation(created!.id)
     expect(history2.automations.value).toHaveLength(0)
   })
+
+  it('Projects 工程支持重命名（customName 持久化且不因重新注册目录被覆盖）与展开/折叠显式设置', () => {
+    const history = useChatHistory()
+    const wsScope = resolveProjectChatScope('ws_demo21', 'F:/workspaces/demo21')
+    history.setWorkspaceScope(wsScope, 'F:/workspaces/demo21')
+    history.load(wsScope)
+
+    const ext = history.addExternalProject('F:/work/Parking+Loop')
+    expect(ext?.name).toBe('Parking+Loop')
+
+    // 重命名工程
+    const renamed = history.renameProject(ext!.scope, '停车场循环关卡系统')
+    expect(renamed).toBe(true)
+    expect(history.projectTree.value[0]?.name).toBe('停车场循环关卡系统')
+    expect(history.activeProject.value?.name).toBe('停车场循环关卡系统')
+
+    // 显式控制展开/折叠
+    history.setProjectCollapsed(ext!.scope, true)
+    expect(history.projectTree.value[0]?.collapsed).toBe(true)
+    history.setProjectCollapsed(ext!.scope, false)
+    expect(history.projectTree.value[0]?.collapsed).toBe(false)
+
+    // 再次注册同一目录不应把自定义工程名覆盖回目录名 Parking+Loop
+    history.registerProject({ rootPath: 'F:/work/Parking+Loop' })
+    expect(history.projectTree.value[0]?.name).toBe('停车场循环关卡系统')
+
+    // 模拟应用重开后自定义工程名依然保留
+    const historyReloaded = useChatHistory()
+    historyReloaded.setWorkspaceScope(wsScope, 'F:/workspaces/demo21')
+    historyReloaded.load(wsScope)
+    expect(historyReloaded.projectTree.value[0]?.name).toBe('停车场循环关卡系统')
+  })
 })

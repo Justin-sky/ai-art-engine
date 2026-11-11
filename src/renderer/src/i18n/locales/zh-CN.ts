@@ -1285,7 +1285,9 @@ export default {
       enter: '全屏',
       exit: '退出全屏',
       enterTitle: '一键全屏展开当前画布或 Dive 工作台 (F11)',
-      exitTitle: '退出全屏并恢复侧栏布局 (F11 / Esc)'
+      exitTitle: '退出全屏并恢复侧栏布局 (F11 / Esc)',
+      enterChatTitle: '全屏展开 AI 对话窗口 (Esc 退出)',
+      exitChatTitle: '退出 AI 对话全屏并恢复分栏布局 (Esc)'
     },
     inspector: {
       unsupported: '当前对象没有可用的检查器',
@@ -1405,6 +1407,18 @@ export default {
       analyzeProjectPrompt:
         '请帮我全面分析当前工程（{name}）：梳理其目录结构、技术栈、核心模块与关键业务/玩法机制，并给出架构摘要与优化或转化建议。',
       removeProjectFolder: '从当前工作空间移除此工程',
+      openProjectInFolder: '在文件夹中打开',
+      copyProjectName: '复制工程名',
+      copyProjectPath: '复制工程路径',
+      renameProject: '重命名工程',
+      expandProjectSessions: '展开会话列表',
+      collapseProjectSessions: '折叠会话列表',
+      filterThisProject: '筛选此工程会话',
+      copiedProjectName: '已复制工程名：{name}',
+      copiedProjectPath: '已复制路径：{path}',
+      renamedProjectStatus: '工程已重命名为：{name}',
+      projectBusySwitchHint: '当前有对话正在运行，请等待完成或点击停止后再切换工程分析',
+      doubleClickRenameHint: '双击可重命名，右键查看更多操作',
       projectAddedStatus: '已添加工程到当前工作空间：{name}',
       projectSwitchedStatus: '已切换当前工程会话至：{name}',
       projectsEmptyHint: '点击右上角「文件夹+」可将任意其它工程添加到当前工作空间进行 AI 深度分析',

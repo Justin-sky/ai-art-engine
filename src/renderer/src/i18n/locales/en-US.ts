@@ -1312,7 +1312,9 @@ export default {
       enter: 'Fullscreen',
       exit: 'Exit Fullscreen',
       enterTitle: 'Expand canvas or Dive workbench to fullscreen (F11)',
-      exitTitle: 'Exit fullscreen and restore side panels (F11 / Esc)'
+      exitTitle: 'Exit fullscreen and restore side panels (F11 / Esc)',
+      enterChatTitle: 'Expand AI Chat window to fullscreen (Esc to exit)',
+      exitChatTitle: 'Exit AI Chat fullscreen and restore layout (Esc)'
     },
     inspector: {
       unsupported: 'No inspector is available for the selected object',
@@ -1437,6 +1439,19 @@ export default {
       analyzeProjectPrompt:
         'Please analyze this project ({name}): inspect its directory structure, tech stack, core modules, and key mechanics, and summarize the architecture.',
       removeProjectFolder: 'Remove project from workspace',
+      openProjectInFolder: 'Open in Folder',
+      copyProjectName: 'Copy Project Name',
+      copyProjectPath: 'Copy Project Path',
+      renameProject: 'Rename Project',
+      expandProjectSessions: 'Expand Conversations',
+      collapseProjectSessions: 'Collapse Conversations',
+      filterThisProject: 'Filter Project Conversations',
+      copiedProjectName: 'Copied project name: {name}',
+      copiedProjectPath: 'Copied path: {path}',
+      renamedProjectStatus: 'Renamed project to: {name}',
+      projectBusySwitchHint:
+        'A conversation is currently running. Please wait or stop it before switching projects.',
+      doubleClickRenameHint: 'Double-click to rename, right-click for more actions',
       projectAddedStatus: 'Added project to workspace: {name}',
       projectSwitchedStatus: 'Switched project conversation to: {name}',
       projectsEmptyHint: 'Click Folder+ to add any local project to this workspace for AI analysis',
