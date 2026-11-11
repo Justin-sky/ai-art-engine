@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.9.2] — 2026-11-11
+
+8.9.2 功能与体验升级版：**本地 MCP 服务（`mcpServerService`）** 全面开放 **102 项全栈生产工具**（涵盖 Machinations 官方积木库装配、沙盘曲线反推求解器、本地离线视觉/OCR、会话定时调度与 Git 工具链）；**AI 对话与多工程工作区** 升级 **工程树右键菜单、双击行内重命名、Tab 栏最右侧专属全屏按钮与 24 小时制全时段定时自动化**；**游戏机制沙盘（`game.economy`）** 新增 **满容量池余量门控与死区门锁自动检测及自愈引擎**；并全面重构升级 **中英双语 README、官方站点与 `llms.txt` 结构化文档体系**。
+
+- **新增 · 本地 MCP 服务全能力开放至 102 项工具（`mcpServerService` + `mcpModeAccess` + `mcpToolOperationSummary`）**：完整暴露 Machinations 59 款官方标准积木检索与装配、沙盘曲线拖拽反推（Goal-Seek）与蒙特卡洛/灵敏度求解器、本地 ONNX 视觉与离线 OCR 推理、AI 会话 24h 定时任务调度及工程 Git 状态/提交工具，并补齐 `Agent / Plan / Ask` 三档权限分流与操作摘要。
+- **新增 · AI 对话工程树上下文菜单、行内重命名、专属全屏与 24h 定时调度（`ChatPanel` + `EditorDockRightActions` + `useWorkspaceFullscreen` + `useChatHistory`）**：`Projects` 树修复放大镜一键分析点击响应，新增右键菜单（在系统文件夹打开、复制工程名与完整路径、重命名、筛选会话、展开/折叠、移除记录）与双击工程名行内改名持久化；全屏按钮移至 `AI 对话` Dockview 标签栏最右侧，点击仅对 AI 对话面板独立全屏；定时自动化支持 24 小时制手动输入与 `00:00–23:59` 全时段下拉选择。
+- **优化 · Machinations 满容量池余量门控与死区门锁自愈（`machinationsV2` + `gameNodes` + `mcpGraphEdit` + `GameNodeInspector`）**：自动识别并自愈受限容量池余量门控死锁（capped pool headroom gates）与区间死区门锁（deadzone gate locks），确保复杂经济循环稳定流转；精简移除 `game.economy` 节点检查器中的冗余预设下拉选择器。
+- **升级 · 官方网站、中英双语 README 与 GEO/SEO 文档重构（`README` + `website/*` + `docs/*`）**：全新设计中英双语 README 与官方站点首页，新增 `llms.txt` / `llms-full.txt` 大模型索引、JSON-LD 软件元数据、祈愿巫女与零 Key 极速体验横幅及全量手册对齐。
+- **说明（发版提示）**：8.9.2 涉及主进程 MCP 服务、共享仿真层与渲染进程多项能力升级，升级后请**重启应用**。
+
 ## [8.9.1] — 2026-11-10
 
 8.9.1 优化版：**游戏机制沙盘（`game.economy` Machinations Studio）** 深度升级 **「贝塞尔斜率控制点（`◆`）+ 120fps 零卡顿折线拖拽反推配平引擎」**，支持像调整贝塞尔曲线一样直接弯曲折线斜率并自动合成 `k * pow(STEP, p)` 动态速率公式，同时修复 **门控关断资源连线与状态连线视觉混淆问题**。
