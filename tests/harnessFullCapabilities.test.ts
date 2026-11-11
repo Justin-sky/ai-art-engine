@@ -136,7 +136,7 @@ describe('DeepSeek Harness (@deepseek-ai/dsh) 全能力接入校验', () => {
       expect(SERVICE_SRC).toContain(ipcCase)
     }
     expect(RUNNER_SRC).toContain('Boolean(agent.inbox?.hasPending)')
-    expect(SERVICE_SRC).toContain('running: turnActive')
+    expect(SERVICE_SRC).toContain('runningSessionIds')
     // 1) session-query-sqlite 在 dsh-base 已存在，必须作为顶层 patch 覆盖而非放进 - insert: 造成 duplicate loader entry id
     expect(SERVICE_SRC).toContain("'- id: session-query-sqlite'")
     expect(SERVICE_SRC).not.toContain("'    - id: session-query-sqlite'")
@@ -146,10 +146,10 @@ describe('DeepSeek Harness (@deepseek-ai/dsh) 全能力接入校验', () => {
     // 3) resetWorkerState 立即以 false 唤醒 readyWaiters，避免子进程异常退出后 waitUntilReady 空等 180s
     expect(SERVICE_SRC).toContain('for (const w of pendingReady) w(false)')
     expect(SERVICE_SRC).toContain('if (wasPersistent && !wasReady)')
-    // 4) ChatPanel 在预检/技能展开异步窗口内维持 preparingTask + running 守卫
+    // 4) ChatPanel 在预检/技能展开异步窗口内维持 preparingTask + running 守卫，且按会话判定主进程在途任务
     expect(CHAT_PANEL_SRC).toContain('let preparingTask = false')
     expect(CHAT_PANEL_SRC.replace(/\r\n/g, '\n')).toContain(
-      'if (status.value?.running) {\n      running.value = true\n      enqueueSend(text'
+      'if (isSessionRunningInMain(targetSessionId)) {\n      rt.running = true\n      enqueueSend(text'
     )
     // 5) 中断与发送队列强制插队同步守卫：杜绝非队首项卡在「正在中断…」及旧进程异步退出误杀新轮次
     expect(SERVICE_SRC).toContain('if (procAborted || child !== proc) return')
@@ -216,5 +216,21 @@ describe('DeepSeek Harness (@deepseek-ai/dsh) 全能力接入校验', () => {
     expect(CHAT_PANEL_SRC).toContain('onCopyProjectName(projectCtxMenu.group.name)')
     expect(CHAT_PANEL_SRC).toContain('onCopyProjectPath(projectCtxMenu.group.rootPath)')
     expect(CHAT_PANEL_SRC).toContain('class="chat-project-ctx-menu"')
+  })
+
+  it('14. 多会话并行执行：常驻 worker 池、槽位隔离请求头、按会话事件路由与无阻塞切换', () => {
+    expect(SERVICE_SRC).toContain('const MAX_PARALLEL_HARNESS_WORKERS = 6')
+    expect(SERVICE_SRC).toContain('MCP_WORKER_SLOT_HEADER')
+    expect(SERVICE_SRC).toContain('function emitForSession(')
+    expect(SERVICE_SRC).toContain('export function abortHarnessTask(sessionId?: string): void')
+
+    expect(CHAT_PANEL_SRC).toContain('const sessionRuntimes = reactive')
+    expect(CHAT_PANEL_SRC).toContain('function handleBackgroundHarnessEvent(')
+    expect(CHAT_PANEL_SRC).toContain('function markSessionStoppedInStatus(')
+    expect(CHAT_PANEL_SRC).toContain('window.studio.abortHarnessTask(targetSid || undefined)')
+    expect(CHAT_PANEL_SRC).toContain('class="chat-parallel-badge"')
+    expect(CHAT_PANEL_SRC).toContain('class="session-live-spinner"')
+    expect(CHAT_PANEL_SRC).toContain('class="quad-dot quad-dot-1"')
+    expect(CHAT_PANEL_SRC).toContain('session-done-dot codex-session-right-indicator')
   })
 })

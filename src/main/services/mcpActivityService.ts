@@ -19,6 +19,12 @@ const MAX_ACTIVITIES = 50
 
 class McpActivityService {
   private activities: McpActivity[] = []
+  private sessionResolver: (() => string | undefined) | null = null
+
+  /** 注入当前请求上下文的会话归属解析器（供多会话并行时自动打上 sessionId） */
+  setSessionResolver(resolver: (() => string | undefined) | null): void {
+    this.sessionResolver = resolver
+  }
 
   /** 当前活动列表（最新的在前） */
   list(): McpActivity[] {
@@ -34,7 +40,10 @@ class McpActivityService {
     detail?: string
     /** 运行中即可定位的关联资产（精修的目标资产已存在）：素材库卡片据此显示「进行中」角标 */
     assetId?: string
+    /** 可选：显式指定会话 ID；缺省由 sessionResolver 自动从当前异步调用链提取 */
+    sessionId?: string
   }): string {
+    const resolvedSessionId = input.sessionId ?? this.sessionResolver?.()
     const activity: McpActivity = {
       id: `mcp-activity-${randomUUID()}`,
       tool: input.tool,
@@ -42,6 +51,7 @@ class McpActivityService {
       model: input.model,
       detail: input.detail,
       assetId: input.assetId,
+      ...(resolvedSessionId ? { sessionId: resolvedSessionId } : {}),
       status: 'running',
       startedAt: Date.now()
     }

@@ -771,7 +771,7 @@ export function registerIpcHandlers(): void {
     (input: import('@shared/gameAssets').SyncGameEngineBundleInput) =>
       syncGameEngineBundleToDirectory(input)
   )
-  handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
+  handle(IpcChannels.HARNESS_ABORT, (sessionId?: string) => abortHarnessTask(sessionId))
   handle(IpcChannels.HARNESS_PREWARM, () => prewarmHarness())
   handle(IpcChannels.HARNESS_DELETE_SESSION, (sessionId: string) => deleteHarnessSession(sessionId))
   handle(

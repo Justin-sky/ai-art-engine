@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import {
@@ -73,17 +74,23 @@ import {
 import { isDraftAssetId, type AssetInfo } from '@shared/domain'
 import {
   denialReasonForTool,
+  isCancelAnswer,
   isToolVisible,
   MCP_MODE_HEADER,
   MCP_RUN_ID_HEADER,
+  MCP_WORKER_SLOT_HEADER,
   normalizeChatMode,
   toolAccessOf,
   type McpAccessView
 } from '@shared/mcpModeAccess'
 import {
   clearActiveHarnessRunState,
+  clearAllWorkerSlotHarnessRunStates,
+  clearWorkerSlotHarnessRunState,
   resolveHarnessAwareAccessView,
-  setActiveHarnessRunState
+  resolveHarnessRunForContext,
+  setActiveHarnessRunState,
+  setWorkerSlotHarnessRunState
 } from '@shared/harnessActiveRunAccess'
 import {
   createMcpProtocolHandler,
@@ -2610,12 +2617,14 @@ const TOOL_DEFS: McpToolDef[] = [
             .slice(0, 6)
         : []
       const requestId = randomUUID()
+      const runInfo = currentMcpRunInfo()
       pendingAskUserAnswers.delete(requestId)
       broadcastToAllWindows(IpcChannels.MCP_ASK_USER, {
         requestId,
         question,
         options: options.length >= 2 ? options : undefined,
-        hint: optionalString(args, 'hint')
+        hint: optionalString(args, 'hint'),
+        ...(runInfo.sessionId ? { sessionId: runInfo.sessionId } : {})
       })
       // 等待渲染层回传用户选择（默认 5 分钟超时，agent 内部卡住时避免永久挂起）
       for (let i = 0; i < 1000; i++) {
@@ -2623,6 +2632,13 @@ const TOOL_DEFS: McpToolDef[] = [
         const answer = pendingAskUserAnswers.get(requestId)
         if (answer) {
           pendingAskUserAnswers.delete(requestId)
+          if (
+            runInfo.runId &&
+            runInfo.mode === 'plan' &&
+            !isCancelAnswer(answer.answer, answer.fromCustom === true)
+          ) {
+            confirmHarnessRunAccess(runInfo.runId)
+          }
           return { answer: answer.answer, cancelled: answer.answer === null }
         }
       }
@@ -8194,6 +8210,8 @@ const taskReportCleanups = new Map<string, NodeJS.Timeout>()
 const pendingMcpTaskActivities = new Map<string, string>()
 /** assetId → 当前正在执行中的 mcpTaskId，避免 Agent 重复调用 task_run 产生多条失败活动卡片 */
 const activeMcpTaskByAssetId = new Map<string, string>()
+/** mcpTaskId → 发起该画布运行的对话 sessionId（多会话并行时按会话定向中止） */
+const mcpTaskSessionByTaskId = new Map<string, string>()
 
 /**
  * 派发一次画布运行（task_run 与「一句话生成游戏」的自动运行 / 游戏卡「运行」按钮共用）：
@@ -8209,8 +8227,12 @@ function dispatchMcpCanvasRun(asset: { id: string; name: string }, nodeIds: stri
     }
   }
   const mcpTaskId = randomUUID()
+  const ownerSessionId = currentMcpSessionId()
   pendingMcpTaskReports.delete(mcpTaskId)
   activeMcpTaskByAssetId.set(asset.id, mcpTaskId)
+  if (ownerSessionId) {
+    mcpTaskSessionByTaskId.set(mcpTaskId, ownerSessionId)
+  }
   pendingMcpTaskActivities.set(
     mcpTaskId,
     mcpActivityService.begin({
@@ -8219,7 +8241,8 @@ function dispatchMcpCanvasRun(asset: { id: string; name: string }, nodeIds: stri
       detail: nodeIds.length
         ? `实时执行画布节点 (${nodeIds.join(', ')})` // cjk-ok
         : '按拓扑序实时执行画布节点', // cjk-ok
-      assetId: asset.id
+      assetId: asset.id,
+      ...(ownerSessionId ? { sessionId: ownerSessionId } : {})
     })
   )
   broadcastToAllWindows(IpcChannels.MCP_TASK_RUN, {
@@ -8270,7 +8293,8 @@ export function receiveAskUserAnswer(payload: AskUserAnswer): void {
   if (payload && typeof payload.requestId === 'string') {
     pendingAskUserAnswers.set(payload.requestId, {
       requestId: payload.requestId,
-      answer: typeof payload.answer === 'string' ? payload.answer : null
+      answer: typeof payload.answer === 'string' ? payload.answer : null,
+      ...(payload.fromCustom === true ? { fromCustom: true } : {})
     })
   }
 }
@@ -8338,10 +8362,11 @@ export function readVisualCheckImagesForRelativePaths(
   return out
 }
 
-let canvasTaskSettledHook: ((report: McpTaskReportPayload) => void) | null = null
+let canvasTaskSettledHook:
+  ((report: McpTaskReportPayload, ownerSessionId?: string) => void) | null = null
 
 export function setCanvasTaskSettledHook(
-  hook: ((report: McpTaskReportPayload) => void) | null
+  hook: ((report: McpTaskReportPayload, ownerSessionId?: string) => void) | null
 ): void {
   canvasTaskSettledHook = hook
 }
@@ -8350,6 +8375,7 @@ export interface McpToolSettledEvent {
   tool: string
   args: Record<string, unknown>
   result?: unknown
+  sessionId?: string
 }
 
 let mcpToolSettledHook: ((event: McpToolSettledEvent) => void) | null = null
@@ -8375,6 +8401,8 @@ export function setHarnessScheduleHandlers(handlers: HarnessScheduleHandlers | n
  * 受理失败 / 停止等异常路径同样收尾，避免活动一直挂在「运行中」。
  */
 function settleMcpTaskActivity(report: McpTaskReportPayload): void {
+  const ownerSessionId = mcpTaskSessionByTaskId.get(report.mcpTaskId)
+  mcpTaskSessionByTaskId.delete(report.mcpTaskId)
   for (const [assetId, activeTaskId] of activeMcpTaskByAssetId.entries()) {
     if (activeTaskId === report.mcpTaskId) {
       activeMcpTaskByAssetId.delete(assetId)
@@ -8395,7 +8423,10 @@ function settleMcpTaskActivity(report: McpTaskReportPayload): void {
   }
   if (canvasTaskSettledHook) {
     try {
-      canvasTaskSettledHook(report)
+      canvasTaskSettledHook(
+        ownerSessionId && !report.sessionId ? { ...report, sessionId: ownerSessionId } : report,
+        ownerSessionId
+      )
     } catch {
       /* ignore hook error */
     }
@@ -8403,10 +8434,12 @@ function settleMcpTaskActivity(report: McpTaskReportPayload): void {
 }
 
 /**
- * 对话中止时主动结算所有进行中的 MCP 画布运行任务与旁路活动，
+ * 对话中止时主动结算进行中的 MCP 画布运行任务与旁路活动，
  * 避免 dsh 进程被强杀后 `activeMcpTaskByAssetId` 或 `pendingMcpTaskActivities` 残留。
+ * 传入 `targetSessionId` 时仅结算该会话发起的画布运行任务，不影响其他并行会话。
  */
-export function abortActiveMcpCanvasRuns(reason = '已中止'): void {
+export function abortActiveMcpCanvasRuns(reason = '已中止', targetSessionId?: string): void {
+  const normalizedTarget = typeof targetSessionId === 'string' ? targetSessionId.trim() : ''
   const activeIds = new Set<string>([
     ...pendingMcpTaskActivities.keys(),
     ...activeMcpTaskByAssetId.values()
@@ -8415,6 +8448,9 @@ export function abortActiveMcpCanvasRuns(reason = '已中止'): void {
     if (report.phase === 'accepted') activeIds.add(mcpTaskId)
   }
   for (const mcpTaskId of activeIds) {
+    if (normalizedTarget && mcpTaskSessionByTaskId.get(mcpTaskId) !== normalizedTarget) {
+      continue
+    }
     const existing = pendingMcpTaskReports.get(mcpTaskId)
     const stoppedReport: McpTaskReportPayload = {
       ...existing,
@@ -8427,7 +8463,10 @@ export function abortActiveMcpCanvasRuns(reason = '已中止'): void {
     settleMcpTaskActivity(stoppedReport)
     scheduleTaskReportCleanup(mcpTaskId)
   }
-  activeMcpTaskByAssetId.clear()
+  if (!normalizedTarget) {
+    activeMcpTaskByAssetId.clear()
+    mcpTaskSessionByTaskId.clear()
+  }
 }
 
 /** MCP graph_edit 的渲染层回报（应用结果），graph_edit 等待并返回 */
@@ -8575,13 +8614,23 @@ function authorized(req: IncomingMessage): boolean {
  * 只有对话面板那条 mcp-client 配置会带（writeDshConfig 每轮重写）；stdio 桥 / HTTP 直连的
  * 外部 Agent 不带 → 返回空上下文 = 完全不做模式限制。
  */
-function requestModeContext(req: IncomingMessage): { mode?: ChatMode; runId?: string } {
+function requestModeContext(req: IncomingMessage): {
+  mode?: ChatMode
+  runId?: string
+  workerSlot?: string
+} {
+  const rawSlot = req.headers[MCP_WORKER_SLOT_HEADER]
+  const workerSlot = (Array.isArray(rawSlot) ? rawSlot[0] : rawSlot)?.trim()
   const rawMode = req.headers[MCP_MODE_HEADER]
   const value = Array.isArray(rawMode) ? rawMode[0] : rawMode
-  if (!value) return {}
+  if (!value) return workerSlot ? { workerSlot } : {}
   const rawRunId = req.headers[MCP_RUN_ID_HEADER]
   const runId = (Array.isArray(rawRunId) ? rawRunId[0] : rawRunId)?.trim()
-  return { mode: normalizeChatMode(value), ...(runId ? { runId } : {}) }
+  return {
+    mode: normalizeChatMode(value),
+    ...(runId ? { runId } : {}),
+    ...(workerSlot ? { workerSlot } : {})
+  }
 }
 
 let mcpPort = 0
@@ -8677,52 +8726,94 @@ function appendMcpAudit(entry: {
 }
 
 const genGate = new AsyncSemaphore(MCP_GEN_LIMIT, MCP_GEN_LIMIT * 2)
+/** 多会话并行同时调用 graph_edit 时串行落图，避免并发竞态读写 uiActiveCanvasAssetId / uiDraftCanvasCache */
+const graphEditGate = new AsyncSemaphore(1, 32)
+const mcpCallContextStorage = new AsyncLocalStorage<McpRequestContext | undefined>()
+
+function currentMcpRunInfo(): {
+  runId?: string
+  mode?: ChatMode
+  sessionId?: string
+  workerSlot?: string
+} {
+  const ctx = mcpCallContextStorage.getStore()
+  const active = resolveHarnessRunForContext(ctx)
+  return {
+    runId: active?.runId ?? ctx?.runId,
+    mode: active?.mode ?? ctx?.mode,
+    sessionId: active?.sessionId,
+    workerSlot: ctx?.workerSlot
+  }
+}
+
+function currentMcpSessionId(): string | undefined {
+  return currentMcpRunInfo().sessionId
+}
+
+mcpActivityService.setSessionResolver(() => currentMcpSessionId())
 
 async function handleToolCall(
   name: string,
   body: string,
-  ctx?: { signal?: AbortSignal }
+  ctx?: McpRequestContext
 ): Promise<unknown> {
-  const tool = TOOL_DEFS.find((item) => item.name === name)
-  if (!tool) throw new Error(`未知工具：${name}`)
-  let args: Record<string, unknown> = {}
-  if (body.trim()) {
-    const parsed: unknown = JSON.parse(body)
-    if (parsed && typeof parsed === 'object') {
-      const raw = (parsed as { arguments?: unknown }).arguments
-      if (raw && typeof raw === 'object') args = raw as Record<string, unknown>
-    }
-  }
-  const startedAt = Date.now()
-  const gated = GATED_TOOLS.has(name)
-  if (gated) {
-    const acquired = await genGate.acquire()
-    if (!acquired) {
-      throw new Error(
-        `生成并发已达上限（同时 ${MCP_GEN_LIMIT} 个、排队 ${genGate.waiting} 个），请稍后重试或调高 AIAE_MCP_GEN_LIMIT`
-      )
-    }
-  }
-  try {
-    const result = await tool.handler(args, { signal: ctx?.signal })
-    const durationMs = Date.now() - startedAt
-    const bytes = JSON.stringify(result).length
-    appendMcpAudit({ tool: name, ok: true, durationMs, args })
-    if (mcpToolSettledHook) {
-      try {
-        mcpToolSettledHook({ tool: name, args, result })
-      } catch {
-        /* ignore hook error */
+  return mcpCallContextStorage.run(ctx, async () => {
+    const tool = TOOL_DEFS.find((item) => item.name === name)
+    if (!tool) throw new Error(`未知工具：${name}`)
+    let args: Record<string, unknown> = {}
+    if (body.trim()) {
+      const parsed: unknown = JSON.parse(body)
+      if (parsed && typeof parsed === 'object') {
+        const raw = (parsed as { arguments?: unknown }).arguments
+        if (raw && typeof raw === 'object') args = raw as Record<string, unknown>
       }
     }
-    console.log(`[mcp] tool ${name} ok ${durationMs}ms ${bytes}B`)
-    return { ok: true, result }
-  } catch (err) {
-    appendMcpAudit({ tool: name, ok: false, durationMs: Date.now() - startedAt, args, error: err })
-    throw err
-  } finally {
-    if (gated) genGate.release()
-  }
+    const startedAt = Date.now()
+    const gated = GATED_TOOLS.has(name)
+    const serializeGraphEdit = name === 'graph_edit'
+    if (gated) {
+      const acquired = await genGate.acquire()
+      if (!acquired) {
+        throw new Error(
+          `生成并发已达上限（同时 ${MCP_GEN_LIMIT} 个、排队 ${genGate.waiting} 个），请稍后重试或调高 AIAE_MCP_GEN_LIMIT`
+        )
+      }
+    }
+    if (serializeGraphEdit) {
+      const acquiredEdit = await graphEditGate.acquire()
+      if (!acquiredEdit) {
+        if (gated) genGate.release()
+        throw new Error('画布图编辑排队已满，请稍后重试')
+      }
+    }
+    try {
+      const result = await tool.handler(args, { signal: ctx?.signal })
+      const durationMs = Date.now() - startedAt
+      const bytes = JSON.stringify(result).length
+      appendMcpAudit({ tool: name, ok: true, durationMs, args })
+      if (mcpToolSettledHook) {
+        try {
+          mcpToolSettledHook({ tool: name, args, result, sessionId: currentMcpSessionId() })
+        } catch {
+          /* ignore hook error */
+        }
+      }
+      console.log(`[mcp] tool ${name} ok ${durationMs}ms ${bytes}B`)
+      return { ok: true, result }
+    } catch (err) {
+      appendMcpAudit({
+        tool: name,
+        ok: false,
+        durationMs: Date.now() - startedAt,
+        args,
+        error: err
+      })
+      throw err
+    } finally {
+      if (serializeGraphEdit) graphEditGate.release()
+      if (gated) genGate.release()
+    }
+  })
 }
 
 /**
@@ -8757,12 +8848,16 @@ function activeHarnessRunPath(): string {
   return join(app.getPath('userData'), 'dsh-harness', 'active-run.json')
 }
 
-export function setActiveHarnessRun(runId: string, mode: ChatMode): void {
-  setActiveHarnessRunState(runId, mode)
+export function setActiveHarnessRun(runId: string, mode: ChatMode, sessionId?: string): void {
+  setActiveHarnessRunState(runId, mode, sessionId)
   try {
     const dir = join(app.getPath('userData'), 'dsh-harness')
     mkdirSync(dir, { recursive: true })
-    writeFileSync(activeHarnessRunPath(), JSON.stringify({ runId, mode, ts: Date.now() }), 'utf8')
+    writeFileSync(
+      activeHarnessRunPath(),
+      JSON.stringify({ runId, mode, ...(sessionId ? { sessionId } : {}), ts: Date.now() }),
+      'utf8'
+    )
   } catch {
     /* 写盘失败不影响内存授权 */
   }
@@ -8776,6 +8871,21 @@ export function clearActiveHarnessRun(): void {
   } catch {
     /* ignore */
   }
+}
+
+export function setWorkerSlotActiveHarnessRun(
+  slotId: string,
+  state: { runId: string; mode: ChatMode; sessionId?: string; workspace?: string }
+): void {
+  setWorkerSlotHarnessRunState(slotId, state)
+}
+
+export function clearWorkerSlotActiveHarnessRun(slotId: string): void {
+  clearWorkerSlotHarnessRunState(slotId)
+}
+
+export function clearAllWorkerSlotActiveHarnessRuns(): void {
+  clearAllWorkerSlotHarnessRunStates()
 }
 
 /** 把请求头里的模式 + runId 折算成授权视图；无模式声明的请求（外部客户端）不做任何限制 */
@@ -9016,7 +9126,7 @@ const handleBlenderMcpProtocolMessage = createMcpProtocolHandler({
     }
     if (callCtx?.signal?.aborted) return { error: '调用已取消' }
     const startedAt = Date.now()
-    const outcome = await runBlenderTool(spec, args)
+    const outcome = await mcpCallContextStorage.run(callCtx, () => runBlenderTool(spec, args))
     appendMcpAudit({
       tool: `blender.${name}`,
       ok: !outcome.error,

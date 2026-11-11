@@ -17,6 +17,8 @@ export interface McpRequestContext {
   mode?: ChatMode
   /** 对话面板某次运行的标识（请求头 `X-AIArt-Run-Id`）：Plan 模式据此查询用户是否已确认计划 */
   runId?: string
+  /** 常驻 Harness worker 槽位标识（请求头 `X-AIArt-Worker-Slot`）：多会话并行时按槽位隔离模式与会话归属 */
+  workerSlot?: string
 }
 
 export interface McpToolDescriptor {

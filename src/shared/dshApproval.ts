@@ -51,6 +51,8 @@ export interface ApprovalRequestView {
   callId?: string
   reason?: string
   displayReason?: string
+  /** 触发该审批请求的会话 ID（多会话并行时用于精确落入对应会话消息流） */
+  sessionId?: string
 }
 
 /** 渲染层 → 主进程：用户对某条审批的决定 */

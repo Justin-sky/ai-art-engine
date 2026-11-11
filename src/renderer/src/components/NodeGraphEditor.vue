@@ -562,6 +562,10 @@
         :prompt-text="wishShrineChatBridge.promptText"
         :activity-text="wishShrineChatBridge.activityText"
         :outcome="wishShrineChatBridge.outcome"
+        :active-session-count="wishShrineChatBridge.activeCount"
+        :wave-completed-count="wishShrineChatBridge.waveCompletedCount"
+        :companion-sessions="wishShrineChatBridge.companionSessions"
+        :milestone="wishShrineChatBridge.latestMilestone"
         :cooking-targets="wishCookingTargets"
         :is-en="/^en/i.test(locale)"
       />

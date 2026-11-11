@@ -46,7 +46,13 @@ import {
   type HarnessSandboxMode
 } from '@shared/ipc'
 import { parseClaudeSkillMarkdown, parseGitHubSkillSourceUrl } from '@shared/claudeSkill'
-import { accessHeaders, isCancelAnswer, normalizeChatMode } from '@shared/mcpModeAccess'
+import {
+  accessHeaders,
+  isCancelAnswer,
+  MCP_WORKER_SLOT_HEADER,
+  normalizeChatMode
+} from '@shared/mcpModeAccess'
+import { getWorkerSlotHarnessRunState } from '@shared/harnessActiveRunAccess'
 import {
   isCustomProvider,
   MODEL_PROVIDER_KINDS,
@@ -99,6 +105,8 @@ import { dshHome, dshSkillsDir } from './dshPaths'
 import {
   abortActiveMcpCanvasRuns,
   clearActiveHarnessRun,
+  clearAllWorkerSlotActiveHarnessRuns,
+  clearWorkerSlotActiveHarnessRun,
   confirmHarnessRunAccess,
   getBlenderMcpEndpoint,
   getMcpServerInfo,
@@ -108,6 +116,7 @@ import {
   setCanvasTaskSettledHook,
   setHarnessScheduleHandlers,
   setMcpToolSettledHook,
+  setWorkerSlotActiveHarnessRun,
   syncActiveCanvasFromWorkspaceContext
 } from './mcpServerService'
 import { stripMcpToolPrefix, summarizeMcpToolOperation } from '@shared/mcpToolOperationSummary'
@@ -166,57 +175,209 @@ const DSH_IDLE_PROGRESS_HINT_MS = 15_000
 const PERSISTENT_PLACEHOLDER_TASK = '__AIART_PERSISTENT__'
 /** 空闲回收：无对话后关闭常驻进程 */
 const WORKER_IDLE_MS = 12 * 60 * 1000
+/** 多会话并行 worker 池上限（同一时刻最多并行运行 6 个独立会话常驻进程，超出自动排队） */
+export const MAX_PARALLEL_HARNESS_WORKERS = 6
 
-let child: ChildProcess | null = null
-/** 当前是否有一轮 prompt 在跑（常驻时 child 非空 ≠ 忙碌） */
-let turnActive = false
-let workerFingerprint = ''
-let workerModelId = ''
-let workerReady = false
-let workerPersistent = false
-let workerRunId = ''
-let lastPreferredProviderId = ''
-let lastPreferredModelId = ''
-let idleTimer: ReturnType<typeof setTimeout> | null = null
-let lastSettingsWriteHash = ''
-let lastHarnessWriteHash = ''
-let readyWaiters: Array<(ready: boolean) => void> = []
-let lastWorkerBootError = ''
-let runSeq = 0
-let abortSeq = 0
-/** 串行化常驻 worker 拉起，避免 Chat 双挂载 / 连点预热并发出两个进程（终端打两次 ready） */
-let ensureWorkerChain: Promise<void> = Promise.resolve()
 type HarnessQueueItem = {
   input: HarnessRunInput
   waiters: Array<(result: HarnessJobWaitResult) => void>
   onStart?: () => void
 }
-const harnessQueue: HarnessQueueItem[] = []
-let activeWaiters: Array<(result: HarnessJobWaitResult) => void> = []
 
-function completeActiveJob(result: HarnessJobWaitResult): void {
-  const waiters = activeWaiters
-  activeWaiters = []
-  for (const wait of waiters) wait(result)
-  pumpHarnessQueue()
+interface WorkerSlot {
+  slotId: string
+  child: ChildProcess | null
+  detachChild: (() => void) | null
+  /** 当前槽位是否有一轮 prompt 在跑（常驻时 child 非空 ≠ 忙碌） */
+  turnActive: boolean
+  /** 当前正在执行的会话 ID */
+  sessionId: string
+  /** 最近一次绑定过的会话 ID（用于亲和复用内存中的 Agent 实例） */
+  lastSessionId: string
+  /** 当前槽位绑定的项目工作区目录 */
+  workspace: string
+  workerFingerprint: string
+  workerModelId: string
+  workerReady: boolean
+  workerPersistent: boolean
+  workerRunId: string
+  idleTimer: ReturnType<typeof setTimeout> | null
+  readyWaiters: Array<(ready: boolean) => void>
+  lastWorkerBootError: string
+  abortSeq: number
+  ensureChain: Promise<void>
+  /** 同会话串行排队队列 */
+  queue: HarnessQueueItem[]
+  activeWaiters: Array<(result: HarnessJobWaitResult) => void>
+  lastStatusText: string
+  activeSkillTurn: ActiveSkillTurnContext | null
+  activeScheduleCount: number
+  lastGoalSnapshot: HarnessGoalView | null
+  lastSchedulesSnapshot: HarnessScheduleView[]
+  sessionReleaseWaiters: Array<() => void>
 }
 
-function pumpHarnessQueue(): void {
-  if (turnActive || activeWaiters.length) return
-  const next = harnessQueue.shift()
+const workerSlots = new Map<string, WorkerSlot>()
+const overflowQueue: HarnessQueueItem[] = []
+let lastPreferredProviderId = ''
+let lastPreferredModelId = ''
+let lastSettingsWriteHash = ''
+const lastHarnessWriteHashes = new Map<string, string>()
+let runSeq = 0
+/** 串行化常驻 worker 配置文件写入与 spawn 瞬间动作（不阻塞 ready 等待，支持多槽位并发冷启动） */
+let configWriteChain: Promise<void> = Promise.resolve()
+
+function createWorkerSlot(slotId: string): WorkerSlot {
+  const slot: WorkerSlot = {
+    slotId,
+    child: null,
+    detachChild: null,
+    turnActive: false,
+    sessionId: '',
+    lastSessionId: '',
+    workspace: '',
+    workerFingerprint: '',
+    workerModelId: '',
+    workerReady: false,
+    workerPersistent: false,
+    workerRunId: '',
+    idleTimer: null,
+    readyWaiters: [],
+    lastWorkerBootError: '',
+    abortSeq: 0,
+    ensureChain: Promise.resolve(),
+    queue: [],
+    activeWaiters: [],
+    lastStatusText: '',
+    activeSkillTurn: null,
+    activeScheduleCount: 0,
+    lastGoalSnapshot: null,
+    lastSchedulesSnapshot: [],
+    sessionReleaseWaiters: []
+  }
+  workerSlots.set(slotId, slot)
+  return slot
+}
+
+function getOrCreatePrimarySlot(): WorkerSlot {
+  return workerSlots.get('slot-1') ?? createWorkerSlot('slot-1')
+}
+
+function allocateNewWorkerSlot(): WorkerSlot | null {
+  for (let i = 1; i <= MAX_PARALLEL_HARNESS_WORKERS; i++) {
+    const id = `slot-${i}`
+    if (!workerSlots.has(id)) {
+      return createWorkerSlot(id)
+    }
+  }
+  return null
+}
+
+function isSlotIdle(slot: WorkerSlot): boolean {
+  return !slot.turnActive && slot.activeWaiters.length === 0 && slot.queue.length === 0
+}
+
+function findBusySlotForSession(sessionId: string): WorkerSlot | undefined {
+  const clean = sessionId.trim()
+  if (!clean) return undefined
+  for (const slot of workerSlots.values()) {
+    if (!isSlotIdle(slot) && slot.sessionId === clean) {
+      return slot
+    }
+    if (slot.queue.some((item) => (item.input.sessionId ?? '').trim() === clean)) {
+      return slot
+    }
+  }
+  return undefined
+}
+
+function findSlotForSession(sessionId?: string): WorkerSlot | undefined {
+  const clean = (sessionId ?? '').trim()
+  if (clean) {
+    for (const slot of workerSlots.values()) {
+      if (slot.turnActive && slot.sessionId === clean) return slot
+    }
+    for (const slot of workerSlots.values()) {
+      if (slot.child && (slot.sessionId === clean || slot.lastSessionId === clean)) return slot
+    }
+    return undefined
+  }
+  const activeSlots = [...workerSlots.values()].filter((s) => s.turnActive)
+  if (activeSlots.length === 1) return activeSlots[0]
+  const liveSlots = [...workerSlots.values()].filter((s) => s.child && s.workerReady)
+  return liveSlots[0]
+}
+
+function countActiveWorkerTurns(): number {
+  let count = 0
+  for (const slot of workerSlots.values()) {
+    if (slot.turnActive) count += 1
+  }
+  return count
+}
+
+function listRunningSessionIds(): string[] {
+  const ids = new Set<string>()
+  for (const slot of workerSlots.values()) {
+    if (slot.turnActive && slot.sessionId) ids.add(slot.sessionId)
+    for (const q of slot.queue) {
+      const sid = (q.input.sessionId ?? '').trim()
+      if (sid) ids.add(sid)
+    }
+  }
+  for (const q of overflowQueue) {
+    const sid = (q.input.sessionId ?? '').trim()
+    if (sid) ids.add(sid)
+  }
+  return [...ids]
+}
+
+function syncLegacyActiveHarnessRunMirror(): void {
+  const activeSlots = [...workerSlots.values()].filter((s) => s.turnActive && s.workerRunId)
+  if (activeSlots.length === 1) {
+    const only = activeSlots[0]!
+    const slotMode = getWorkerSlotHarnessRunState(only.slotId)?.mode ?? 'craft'
+    setActiveHarnessRun(only.workerRunId, slotMode, only.sessionId || undefined)
+  } else if (activeSlots.length === 0) {
+    clearActiveHarnessRun()
+  }
+}
+
+function completeSlotActiveJob(slot: WorkerSlot, result: HarnessJobWaitResult): void {
+  const waiters = slot.activeWaiters
+  slot.activeWaiters = []
+  for (const wait of waiters) wait(result)
+  pumpSlotQueue(slot)
+}
+
+function pumpSlotQueue(slot: WorkerSlot): void {
+  if (slot.turnActive || slot.activeWaiters.length) return
+  const next = slot.queue.shift() ?? overflowQueue.shift()
   if (!next) return
-  activeWaiters = next.waiters
+  slot.activeWaiters = next.waiters
   next.onStart?.()
-  void startHarnessNow(next.input).then((started) => {
+  void startHarnessOnSlot(slot, next.input).then((started) => {
     if (!started.started) {
-      completeActiveJob({ ok: false, error: started.message || 'GRAPH_MODEL_DSH_START' })
+      completeSlotActiveJob(slot, {
+        ok: false,
+        error: started.message || 'GRAPH_MODEL_DSH_START'
+      })
     }
   })
 }
-/** 最近一次下发的 status 文本，用于合并连续重复行，避免同文刷屏 */
-let lastStatusText = ''
-/** 已提示过的工作区路径：仅在切换时提示，避免每条消息都重复输出 */
-let workspaceNotified = ''
+
+function pumpAllIdleSlotsForOverflow(): void {
+  if (!overflowQueue.length) return
+  for (const slot of workerSlots.values()) {
+    if (!overflowQueue.length) break
+    if (isSlotIdle(slot)) {
+      pumpSlotQueue(slot)
+    }
+  }
+}
+
+/** 已提示过的工作区路径（按会话去重）：仅在切换时提示，避免每条消息都重复输出 */
+const workspaceNotifiedBySession = new Map<string, string>()
 /**
  * 待回传的 ask_user_question 提问：requestId（harness: 前缀）→ 回答文件与题号。
  * 渲染层选择经 MCP_ASK_USER_RESPONSE 回传 → handleAskUserResponse 写 answerFile，
@@ -224,7 +385,7 @@ let workspaceNotified = ''
  */
 const harnessAskUserRequests = new Map<
   string,
-  { runId: string; answerFile: string; questionId: string }
+  { runId: string; sessionId?: string; slotId?: string; answerFile: string; questionId: string }
 >()
 
 /**
@@ -236,26 +397,40 @@ const harnessAskUserRequests = new Map<
  */
 const harnessApprovalRequests = new Map<
   string,
-  { runId: string; answerFile: string; toolName: string }
+  { runId: string; sessionId?: string; slotId?: string; answerFile: string; toolName: string }
 >()
 
 function emit(event: HarnessEvent): void {
   broadcastToAllWindows(IpcChannels.HARNESS_EVENT, event)
 }
 
+function emitForSession(
+  sessionId: string | undefined,
+  runId: string | undefined,
+  event: HarnessEvent
+): void {
+  const sid = sessionId?.trim()
+  const rid = runId?.trim()
+  emit({
+    ...event,
+    ...(sid ? { sessionId: sid } : {}),
+    ...(rid && !('runId' in event && event.runId) ? { runId: rid } : {})
+  })
+}
+
 /**
- * 下发一条状态行；与上一行完全相同的文本会被合并，只保留一次。
+ * 下发一条状态行；与同一槽位上一行完全相同的文本会被合并，只保留一次。
  *
  * tone 由这里按语义给出：状态文案随语言与上游措辞变化，渲染层不该靠关键字猜。
  * 缺省 waiting，只报错与降级两种情形需要显式指定。
  */
 type StatusTone = 'waiting' | 'warn' | 'error'
 
-function emitStatus(text: string, tone: StatusTone = 'waiting'): void {
+function emitSlotStatus(slot: WorkerSlot, text: string, tone: StatusTone = 'waiting'): void {
   if (!text) return
-  if (text === lastStatusText) return
-  lastStatusText = text
-  emit({ type: 'status', text, tone })
+  if (text === slot.lastStatusText) return
+  slot.lastStatusText = text
+  emitForSession(slot.sessionId, slot.workerRunId, { type: 'status', text, tone })
 }
 
 /** 剥离 ANSI 颜色码 / 控制字符，保留可读文本 */
@@ -271,7 +446,14 @@ let activeWorkspaceOverride = ''
  * 未打开工程时回退应用数据目录（仅可做纯对话）。
  */
 function resolveWorkspace(preferredWorkspace?: string): string {
-  const explicit = preferredWorkspace?.trim() || activeWorkspaceOverride.trim()
+  if (typeof preferredWorkspace === 'string') {
+    const trimmed = preferredWorkspace.trim()
+    if (trimmed && existsSync(trimmed)) return trimmed
+    const root = projectService.getOpenProjectState()?.rootPath?.trim()
+    if (root && existsSync(root)) return root
+    return app.getPath('userData')
+  }
+  const explicit = activeWorkspaceOverride.trim()
   if (explicit && existsSync(explicit)) return explicit
   const root = projectService.getOpenProjectState()?.rootPath?.trim()
   if (root && existsSync(root)) return root
@@ -480,6 +662,10 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
   const workspace = projectRoot && existsSync(projectRoot) ? projectRoot : undefined
   if (!workspace) hints.push('未打开工程：AI 工作区将回退为应用数据目录')
 
+  const runningSessionIds = listRunningSessionIds()
+  const runningCount = countActiveWorkerTurns()
+  const turnActive = runningCount > 0 || runningSessionIds.length > 0
+
   return {
     nodeVersion: usingEmbedded && nodeVersion ? `${nodeVersion}（内置）` : nodeVersion || '未知',
     nodeOk,
@@ -489,7 +675,9 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
     hasDeepseekKey: !!provider,
     message: hints.join('；') || undefined,
     workspace,
-    running: turnActive
+    running: turnActive,
+    runningSessionIds,
+    runningCount
   }
 }
 
@@ -623,6 +811,7 @@ function writeDshConfig(
     '      toolCallTimeoutMs: 7200000',
     '      headers:',
     '        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"',
+    `        ${MCP_WORKER_SLOT_HEADER}: !!js "String(process.env.AIART_WORKER_SLOT || '')"`,
     // 面板模式与本次运行 id：MCP 侧据此收窄工具面并拒绝越权调用。
     // 值一律经 yamlScalar 序列化成 YAML 字符串：dsh-mcp-client 的 headers schema 是
     // `{ [key: string]: string }`，裸写纯数字的 runId 会被 YAML 解析成 number，整棵插件树
@@ -647,6 +836,7 @@ function writeDshConfig(
       '      headers:',
       // 与主工具面共用同一个 token：Blender 工具面挂在同一个服务上，不需要独立凭据。
       '        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"',
+      `        ${MCP_WORKER_SLOT_HEADER}: !!js "String(process.env.AIART_WORKER_SLOT || '')"`,
       // 模式与 runId 同样下发：Blender 侧会改场景（execute_blender_code 等属 write），
       // 必须和主工具面一样受面板模式约束，而不是成为绕过 Plan/Ask 的后门。
       ...Object.entries(accessHeaders(mode, runId)).map(
@@ -680,6 +870,7 @@ function writeDshConfig(
       `      toolCallTimeoutMs: ${configured.timeoutMs}`,
       '      headers:',
       '        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"',
+      `        ${MCP_WORKER_SLOT_HEADER}: !!js "String(process.env.AIART_WORKER_SLOT || '')"`,
       // 与内建工具面同样受面板模式约束：这是「第三方工具不成为绕过 Plan/Ask 后门」的关键
       ...Object.entries(accessHeaders(mode, runId)).map(
         ([key, value]) => `        ${key}: ${yamlScalar(value)}`
@@ -817,9 +1008,6 @@ function writeDshSettings(provider: {
   lastSettingsWriteHash = hash
   writeFileSync(join(home, 'settings.yaml'), content, 'utf8')
 }
-
-/** 当前正在执行的斜杠技能运行时上下文（用于 allowed-tools 自动放行与生命周期 Hooks） */
-let activeSkillTurn: ActiveSkillTurnContext | null = null
 
 /** dsh 示例技能模板文件名：不带 .md 后缀，避免被 dsh 的 skill-filesystem 扫描成真技能 */
 const DSH_SKILLS_TEMPLATE_FILE = 'my-skill.example'
@@ -1346,7 +1534,18 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
 function writeAiartHarness(
   dshNodeModules: string,
   mode: ChatMode = 'craft',
-  projectMemory?: string | null
+  projectMemory?: string | null,
+  slotOpts?: {
+    slotId?: string
+    workspace?: string
+    llm?: {
+      baseUrl?: string
+      modelId: string
+      modelName?: string
+      inputModalities: ReadonlyArray<'text' | 'image'>
+      provider?: ModelProviderInstance
+    }
+  }
 ): string | null {
   try {
     const home = dshHome()
@@ -1361,7 +1560,7 @@ function writeAiartHarness(
     const approvalPath = join(home, 'aiart-approval-answerer.mjs')
     const approvalSource = AIART_APPROVAL_ANSWERER_TEMPLATE
     const approvalUrl = pathToFileURL(approvalPath).href
-    const workspace = resolveWorkspace()
+    const workspace = slotOpts?.workspace?.trim() || resolveWorkspace()
     const hasPkg = (pkgName: string): boolean => existsSync(join(dshNodeModules, pkgName))
     const hasClaudeHooksConfig =
       existsSync(join(workspace, '.claude', 'hooks.json')) ||
@@ -1448,6 +1647,55 @@ function writeAiartHarness(
       '    personaPrefix: >-',
       ...buildPersona(mode, projectMemory).map((line) => `      ${line}`)
     ]
+    if (slotOpts?.llm?.modelId) {
+      const llm = slotOpts.llm
+      const catalogEntries = buildDshCatalogModelEntries(llm)
+      const isDeepSeek = isDeepSeekOfficialProvider(llm.provider, llm.baseUrl)
+      const routeId = resolveDshRouteId(llm.provider, llm.baseUrl)
+      patch.push(
+        '- id: agent-default-model',
+        '  config:',
+        `    provider: ${routeId}`,
+        `    model: ${yamlScalar(llm.modelId)}`
+      )
+      if (isDeepSeek) {
+        const dsBaseUrl = normalizeDeepSeekMessagesBaseUrl(llm.baseUrl)
+        patch.push(
+          '- id: llm-deepseek',
+          '  config:',
+          `    baseURL: ${yamlScalar(dsBaseUrl)}`,
+          '    models:',
+          ...catalogEntries.flatMap((entry) => [
+            `      - id: ${yamlScalar(entry.id)}`,
+            `        name: ${yamlScalar(entry.name)}`,
+            '        inputModalities:',
+            ...entry.inputModalities.map((m) => `          - ${m}`)
+          ])
+        )
+      } else {
+        const openAiBaseUrl =
+          (llm.baseUrl ?? '').trim().replace(/\/+$/, '') || 'https://api.openai.com/v1'
+        patch.push(
+          '- id: llm-pi-ai',
+          '  config:',
+          '    providers:',
+          `      ${routeId}:`,
+          '        apiKeyEnv: DEEPSEEK_API_KEY',
+          '        api: openai-completions',
+          `        baseURL: ${yamlScalar(openAiBaseUrl)}`,
+          '        compat:',
+          '          supportsStore: false',
+          '          supportsDeveloperRole: false',
+          '        models:',
+          ...catalogEntries.flatMap((entry) => [
+            `          - id: ${yamlScalar(entry.id)}`,
+            `            name: ${yamlScalar(entry.name)}`,
+            '            input:',
+            ...entry.inputModalities.map((m) => `              - ${m}`)
+          ])
+        )
+      }
+    }
     const patchBody = patch.join('\n') + '\n'
     const hash = createHash('sha1')
       .update(runnerSource)
@@ -1456,9 +1704,12 @@ function writeAiartHarness(
       .update('\0')
       .update(patchBody)
       .digest('hex')
-    const patchPath = join(home, 'aiart.patch.yml')
+    const patchFileName = slotOpts?.slotId
+      ? `aiart.${slotOpts.slotId}.patch.yml`
+      : 'aiart.patch.yml'
+    const patchPath = join(home, patchFileName)
     if (
-      hash !== lastHarnessWriteHash ||
+      hash !== lastHarnessWriteHashes.get(patchFileName) ||
       !existsSync(runnerPath) ||
       !existsSync(approvalPath) ||
       !existsSync(patchPath)
@@ -1466,7 +1717,10 @@ function writeAiartHarness(
       writeFileSync(runnerPath, runnerSource, 'utf8')
       writeFileSync(approvalPath, approvalSource, 'utf8')
       writeFileSync(patchPath, patchBody, 'utf8')
-      lastHarnessWriteHash = hash
+      if (patchFileName !== 'aiart.patch.yml' && !existsSync(join(home, 'aiart.patch.yml'))) {
+        writeFileSync(join(home, 'aiart.patch.yml'), patchBody, 'utf8')
+      }
+      lastHarnessWriteHashes.set(patchFileName, hash)
     }
     return patchPath
   } catch {
@@ -1561,103 +1815,123 @@ function applyBrowserGuardPatch(dshModules: string): void {
   }
 }
 
-function clearIdleTimer(): void {
-  if (idleTimer) {
-    clearTimeout(idleTimer)
-    idleTimer = null
+function clearSlotIdleTimer(slot: WorkerSlot): void {
+  if (slot.idleTimer) {
+    clearTimeout(slot.idleTimer)
+    slot.idleTimer = null
   }
 }
 
-let activeScheduleCount = 0
-let lastGoalSnapshot: HarnessGoalView | null = null
-let lastSchedulesSnapshot: HarnessScheduleView[] = []
-let sessionReleaseWaiters: Array<() => void> = []
-
-function notifySessionReleased(): void {
-  const list = sessionReleaseWaiters
-  sessionReleaseWaiters = []
+function notifySlotSessionReleased(slot: WorkerSlot): void {
+  const list = slot.sessionReleaseWaiters
+  slot.sessionReleaseWaiters = []
   for (const fn of list) fn()
 }
 
-function scheduleIdleShutdown(): void {
-  clearIdleTimer()
+function scheduleSlotIdleShutdown(slot: WorkerSlot): void {
+  clearSlotIdleTimer(slot)
+  const activeScheduleCount = slot.activeScheduleCount
   // 有会话内定时提醒待触发时保持常驻进程存活，否则定时器随进程销毁而丢失
-  if (!workerPersistent || !child || turnActive || activeScheduleCount > 0) return
-  idleTimer = setTimeout(() => {
-    idleTimer = null
-    if (turnActive || !child || activeScheduleCount > 0) return
-    emitStatus('dsh 空闲回收，已关闭常驻进程')
-    sendWorkerCommand({ op: 'shutdown' })
+  if (!slot.workerPersistent || !slot.child || slot.turnActive || activeScheduleCount > 0) return
+  slot.idleTimer = setTimeout(() => {
+    slot.idleTimer = null
+    const latestSchedules = slot.activeScheduleCount
+    if (slot.turnActive || !slot.child || latestSchedules > 0) return
+    emitSlotStatus(slot, 'dsh 空闲回收，已关闭常驻进程')
+    sendSlotWorkerCommand(slot, { op: 'shutdown' })
     setTimeout(() => {
-      if (child && !turnActive) {
-        child.kill()
-        resetWorkerState()
+      if (slot.child && !slot.turnActive) {
+        slot.child.kill()
+        resetSlotWorkerState(slot)
       }
     }, 2000)
   }, WORKER_IDLE_MS)
 }
 
-function resetWorkerState(): void {
-  child = null
-  workerFingerprint = ''
-  workerModelId = ''
-  workerReady = false
-  workerPersistent = false
-  workerRunId = ''
-  activeScheduleCount = 0
-  const pendingReady = readyWaiters
-  readyWaiters = []
+function resetSlotWorkerState(slot: WorkerSlot): void {
+  slot.detachChild?.()
+  slot.detachChild = null
+  slot.child = null
+  slot.workerFingerprint = ''
+  slot.workerModelId = ''
+  slot.workerReady = false
+  slot.workerPersistent = false
+  slot.workerRunId = ''
+  slot.activeScheduleCount = 0
+  clearWorkerSlotActiveHarnessRun(slot.slotId)
+  syncLegacyActiveHarnessRunMirror()
+  const pendingReady = slot.readyWaiters
+  slot.readyWaiters = []
   for (const w of pendingReady) w(false)
-  notifySessionReleased()
+  notifySlotSessionReleased(slot)
   /**
-   * 进程没了，等待中的审批也就无从回传（回答文件写下去也没人读）。
-   * 清空待决定表，`handleApprovalResponse` 随后的调用会返回 false —— 界面据此知道
-   * 这一条已经作废，而不是以为自己同意了什么。
+   * 进程没了，该槽位等待中的审批也就无从回传（回答文件写下去也没人读）。
+   * 仅清理属于该槽位的待决定表，绝不误伤其他并行会话正在等待用户确认的审批卡片。
    */
-  harnessApprovalRequests.clear()
-  clearIdleTimer()
+  for (const [id, entry] of harnessApprovalRequests) {
+    if (!entry.slotId || entry.slotId === slot.slotId) {
+      harnessApprovalRequests.delete(id)
+    }
+  }
+  for (const [id, entry] of harnessAskUserRequests) {
+    if (entry.slotId && entry.slotId === slot.slotId) {
+      harnessAskUserRequests.delete(id)
+    }
+  }
+  clearSlotIdleTimer(slot)
 }
 
-function notifyReady(): void {
-  workerReady = true
-  lastWorkerBootError = ''
-  const waiters = readyWaiters
-  readyWaiters = []
+function resetAllWorkerSlots(): void {
+  for (const slot of workerSlots.values()) {
+    resetSlotWorkerState(slot)
+  }
+  harnessApprovalRequests.clear()
+  harnessAskUserRequests.clear()
+  clearAllWorkerSlotActiveHarnessRuns()
+  clearActiveHarnessRun()
+}
+
+function notifySlotReady(slot: WorkerSlot): void {
+  slot.workerReady = true
+  slot.lastWorkerBootError = ''
+  const waiters = slot.readyWaiters
+  slot.readyWaiters = []
   for (const w of waiters) w(true)
 }
 
-function waitUntilReady(timeoutMs = 120_000): Promise<boolean> {
-  if (workerReady) return Promise.resolve(true)
+function waitUntilSlotReady(slot: WorkerSlot, timeoutMs = 120_000): Promise<boolean> {
+  if (slot.workerReady) return Promise.resolve(true)
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
-      readyWaiters = readyWaiters.filter((w) => w !== onSettled)
+      slot.readyWaiters = slot.readyWaiters.filter((w) => w !== onSettled)
       resolve(false)
     }, timeoutMs)
     const onSettled = (ready: boolean): void => {
       clearTimeout(timer)
       resolve(ready)
     }
-    readyWaiters.push(onSettled)
+    slot.readyWaiters.push(onSettled)
   })
 }
 
-function sendWorkerCommand(payload: Record<string, unknown>): boolean {
-  if (!child || child.killed) return false
-  if (child.connected && typeof child.send === 'function') {
+function sendSlotWorkerCommand(slot: WorkerSlot, payload: Record<string, unknown>): boolean {
+  const proc = slot.child
+  if (!proc || proc.killed) return false
+  if (proc.connected && typeof proc.send === 'function') {
     try {
-      child.send(payload)
+      proc.send(payload)
       return true
     } catch {
       // 回落到 stdin JSONL
     }
   }
-  if (!child.stdin) return false
+  if (!proc.stdin) return false
   try {
     const line = `${JSON.stringify(payload)}\n`
-    const ok = child.stdin.write(line, 'utf8')
+    const ok = proc.stdin.write(line, 'utf8')
     if (!ok) {
       // 背压：仍视为已入队，让 drain 继续；失败才算写不进
-      child.stdin.once('drain', () => undefined)
+      proc.stdin.once('drain', () => undefined)
     }
     return true
   } catch {
@@ -1666,7 +1940,7 @@ function sendWorkerCommand(payload: Record<string, unknown>): boolean {
 }
 
 /** 常驻 worker 协议版本：改 runner 交互或 MCP 核心工具集时递增，强制热进程重建 */
-const WORKER_PROTOCOL = '15'
+const WORKER_PROTOCOL = '16'
 const RUNNER_TEMPLATE_FP = createHash('sha1')
   .update(AIART_RUNNER_TEMPLATE)
   .update('\0')
@@ -1728,14 +2002,19 @@ function externalMcpFingerprint(): string {
  * 拉起 / 复用常驻 dsh 进程，或回退 one-shot（无自定义 runner / npx）。
  */
 function attachWorkerIo(opts: {
+  slot: WorkerSlot
   proc: ChildProcess
   runId: string
   dshEntry: string | null
   persistent: boolean
 }): void {
-  const { proc, dshEntry, persistent } = opts
+  const { slot, proc, dshEntry, persistent } = opts
+  let child: ChildProcess | null = proc
+  slot.detachChild = () => {
+    if (child === proc) child = null
+  }
   let currentRunId = opts.runId
-  workerRunId = currentRunId
+  slot.workerRunId = currentRunId
   const startedAt = Date.now()
   let sawOutput = false
   /** runner 已确认收到本轮 prompt（上游仍可能卡在 TTFT） */
@@ -1751,9 +2030,13 @@ function attachWorkerIo(opts: {
   let turnEmittedSandboxBlocked = false
   const seenApprovalRequestIds = new Set<string>()
 
+  const emitSlot = (ev: HarnessEvent): void => {
+    emitForSession(slot.sessionId, currentRunId, ev)
+  }
+
   const setRunId = (id: string): void => {
     currentRunId = id
-    workerRunId = id
+    slot.workerRunId = id
   }
 
   ;(proc as ChildProcess & { __aiartSetRunId?: (id: string) => void }).__aiartSetRunId = setRunId
@@ -1797,14 +2080,14 @@ function attachWorkerIo(opts: {
       text.startsWith(SANDBOX_BLOCKED_BEGIN))
 
   const emitAssistantDelta = (delta: string): void => {
-    if (!delta || !turnActive) return
+    if (!delta || !slot.turnActive) return
     sawOutput = true
     finalText += delta
-    emit({ type: 'assistant', text: delta })
+    emitSlot({ type: 'assistant', text: delta })
   }
 
   const emitToolFromLine = (line: string, state: 'start' | 'done'): void => {
-    if (!turnActive) return
+    if (!slot.turnActive) return
     const marker = state === 'start' ? TOOL_BEGIN : TOOL_END
     const payload = line.slice(marker.length).trim()
     let name = 'tool'
@@ -1841,7 +2124,14 @@ function attachWorkerIo(opts: {
         detail = argSummary.detail
       }
     } else if (state === 'done') {
-      const settled = latestMcpToolExecution.get(bareName)
+      const sessionScopedKey = `${slot.sessionId || ''}::${bareName}`
+      const fallbackKey = `::${bareName}`
+      const settledKey = latestMcpToolExecution.has(sessionScopedKey)
+        ? sessionScopedKey
+        : latestMcpToolExecution.has(fallbackKey)
+          ? fallbackKey
+          : bareName
+      const settled = latestMcpToolExecution.get(settledKey)
       if (settled && Date.now() - settled.at < 60_000) {
         if (!steps?.length && settled.steps.length > 0) {
           steps = settled.steps
@@ -1849,17 +2139,21 @@ function attachWorkerIo(opts: {
         if (!detail && settled.detail) {
           detail = settled.detail
         }
-        latestMcpToolExecution.delete(bareName)
+        latestMcpToolExecution.delete(settledKey)
       }
     }
-    if (activeSkillTurn) {
-      runSkillLifecycleHooks(activeSkillTurn, state === 'start' ? 'PreToolUse' : 'PostToolUse', {
-        toolName: name,
-        toolArgs: args || detail,
-        workspaceRoot: resolveWorkspace()
-      })
+    if (slot.activeSkillTurn) {
+      runSkillLifecycleHooks(
+        slot.activeSkillTurn,
+        state === 'start' ? 'PreToolUse' : 'PostToolUse',
+        {
+          toolName: name,
+          toolArgs: args || detail,
+          workspaceRoot: slot.workspace || resolveWorkspace()
+        }
+      )
     }
-    emit({
+    emitSlot({
       type: 'tool',
       ...(id ? { id } : {}),
       ...(parentId ? { parentId } : {}),
@@ -1873,7 +2167,7 @@ function attachWorkerIo(opts: {
   }
 
   const emitAskUserFromLine = (line: string): void => {
-    if (!turnActive) return
+    if (!slot.turnActive) return
     const payload = line.slice(ASK_USER_BEGIN.length).trim()
     try {
       const raw = JSON.parse(payload)
@@ -1884,6 +2178,8 @@ function attachWorkerIo(opts: {
       if (typeof parsed.requestId !== 'string' || typeof parsed.question !== 'string') return
       harnessAskUserRequests.set(parsed.requestId, {
         runId: currentRunId,
+        sessionId: slot.sessionId || undefined,
+        slotId: slot.slotId,
         answerFile: typeof parsed.answerFile === 'string' ? parsed.answerFile : '',
         questionId: typeof parsed.questionId === 'string' ? parsed.questionId : 'q1'
       })
@@ -1893,7 +2189,8 @@ function attachWorkerIo(opts: {
         ...(typeof parsed.hint === 'string' && parsed.hint ? { hint: parsed.hint } : {}),
         ...(Array.isArray(parsed.options) && parsed.options.length
           ? { options: parsed.options }
-          : {})
+          : {}),
+        ...(slot.sessionId ? { sessionId: slot.sessionId } : {})
       })
       sawOutput = true
     } catch {
@@ -1903,12 +2200,9 @@ function attachWorkerIo(opts: {
 
   /**
    * 审批请求标记 → 待决定表 + 广播给界面（若命中当前激活 Claude Code 技能的 `allowed-tools` 则自动放行一次）。
-   *
-   * 解析失败**什么都不做**（既不登记也不广播）：dsh 侧等不到回答文件，5 分钟后收敛到
-   * `unavailable` —— 工具调用失败。这条路径上不存在「解析不出来就当同意」的可能。
    */
   const emitApprovalFromLine = (line: string): void => {
-    if (!turnActive) return
+    if (!slot.turnActive) return
     const payload = parseApprovalMarker(line)
     if (!payload) return
     if (
@@ -1920,7 +2214,7 @@ function attachWorkerIo(opts: {
     seenApprovalRequestIds.add(payload.requestId)
     if (
       payload.answerFile &&
-      shouldAutoApproveSkillTool(activeSkillTurn, payload.toolName, payload.reason)
+      shouldAutoApproveSkillTool(slot.activeSkillTurn, payload.toolName, payload.reason)
     ) {
       try {
         mkdirSync(dirname(payload.answerFile), { recursive: true })
@@ -1933,15 +2227,20 @@ function attachWorkerIo(opts: {
     }
     harnessApprovalRequests.set(payload.requestId, {
       runId: currentRunId,
+      sessionId: slot.sessionId || undefined,
+      slotId: slot.slotId,
       answerFile: payload.answerFile,
       toolName: payload.toolName
     })
-    broadcastToAllWindows(IpcChannels.MCP_APPROVAL_REQUEST, approvalViewOf(payload))
+    broadcastToAllWindows(IpcChannels.MCP_APPROVAL_REQUEST, {
+      ...approvalViewOf(payload),
+      ...(slot.sessionId ? { sessionId: slot.sessionId } : {})
+    })
     sawOutput = true
   }
 
   const emitContextFromLine = (line: string): void => {
-    if (!turnActive) return
+    if (!slot.turnActive) return
     const payload = line.slice(CONTEXT_BEGIN.length).trim()
     try {
       const parsed = JSON.parse(payload)
@@ -1954,7 +2253,7 @@ function attachWorkerIo(opts: {
         typeof parsed.cacheWriteTokens === 'number' && parsed.cacheWriteTokens > 0
           ? parsed.cacheWriteTokens
           : 0
-      emit({ type: 'context', used: Math.round(parsed.inputTokens + cacheRead + cacheWrite) })
+      emitSlot({ type: 'context', used: Math.round(parsed.inputTokens + cacheRead + cacheWrite) })
       sawOutput = true
     } catch {
       /* ignore */
@@ -1966,7 +2265,7 @@ function attachWorkerIo(opts: {
     try {
       const parsed = JSON.parse(payload) as { todos?: HarnessTodoItem[] }
       const todos = Array.isArray(parsed.todos) ? parsed.todos : []
-      emit({ type: 'todo', todos })
+      emitSlot({ type: 'todo', todos })
       sawOutput = true
     } catch {
       /* ignore */
@@ -1978,13 +2277,13 @@ function attachWorkerIo(opts: {
     try {
       const parsed = JSON.parse(payload) as { goal?: HarnessGoalView | null }
       const rawGoal = parsed.goal ?? null
-      lastGoalSnapshot = rawGoal
+      slot.lastGoalSnapshot = rawGoal
         ? {
             ...rawGoal,
             roundsSinceUser: rawGoal.roundsSinceUser ?? rawGoal.round ?? rawGoal.roundsStarted ?? 0
           }
         : null
-      emit({ type: 'goal', goal: lastGoalSnapshot })
+      emitSlot({ type: 'goal', goal: slot.lastGoalSnapshot })
       sawOutput = true
     } catch {
       /* ignore */
@@ -2005,7 +2304,7 @@ function attachWorkerIo(opts: {
         ...f,
         caption: f.caption || f.description || f.title
       }))
-      emit({
+      emitSlot({
         type: 'present',
         callId: typeof parsed.callId === 'string' ? parsed.callId : '',
         turn: typeof parsed.turn === 'number' ? parsed.turn : 0,
@@ -2035,9 +2334,9 @@ function attachWorkerIo(opts: {
         nextRunAt: s.nextRunAt || s.scheduledAt,
         status: s.status || 'active'
       }))
-      lastSchedulesSnapshot = schedules
-      activeScheduleCount = schedules.length
-      emit({ type: 'schedule', schedules })
+      slot.lastSchedulesSnapshot = schedules
+      slot.activeScheduleCount = schedules.length
+      emitSlot({ type: 'schedule', schedules })
       sawOutput = true
     } catch {
       /* ignore */
@@ -2049,7 +2348,7 @@ function attachWorkerIo(opts: {
     try {
       const parsed = JSON.parse(payload) as { subagents?: HarnessSubagentView[] }
       const subagents = Array.isArray(parsed.subagents) ? parsed.subagents : []
-      emit({ type: 'subagent', subagents })
+      emitSlot({ type: 'subagent', subagents })
       sawOutput = true
     } catch {
       /* ignore */
@@ -2061,7 +2360,7 @@ function attachWorkerIo(opts: {
     try {
       const parsed = JSON.parse(payload) as { ok?: boolean }
       if (parsed.ok !== false) {
-        emit({ type: 'steered' })
+        emitSlot({ type: 'steered' })
         sawOutput = true
       }
     } catch {
@@ -2070,7 +2369,7 @@ function attachWorkerIo(opts: {
   }
 
   const emitSandboxBlockedFromLine = (line: string): void => {
-    if (!turnActive || turnEmittedSandboxBlocked) return
+    if (!slot.turnActive || turnEmittedSandboxBlocked) return
     const payload = line.slice(SANDBOX_BLOCKED_BEGIN.length).trim()
     try {
       const parsed = JSON.parse(payload) as { toolName?: string; detail?: string }
@@ -2081,7 +2380,7 @@ function attachWorkerIo(opts: {
       const detail =
         typeof parsed.detail === 'string' && parsed.detail.trim() ? parsed.detail.trim() : undefined
       turnEmittedSandboxBlocked = true
-      emit({ type: 'sandbox_blocked', toolName, ...(detail ? { detail } : {}) })
+      emitSlot({ type: 'sandbox_blocked', toolName, ...(detail ? { detail } : {}) })
       sawOutput = true
     } catch {
       /* ignore */
@@ -2115,14 +2414,14 @@ function attachWorkerIo(opts: {
             sawOutput = true
           } else if (inReasoning && line === REASONING_END) {
             inReasoning = false
-            emit({ type: 'reasoning', text: reasoningBuf })
+            emitSlot({ type: 'reasoning', text: reasoningBuf })
           } else if (!isControlMarker && inReasoning) {
             reasoningBuf = reasoningBuf ? reasoningBuf + '\n' + line : line
-            emit({ type: 'reasoning', text: reasoningBuf })
+            emitSlot({ type: 'reasoning', text: reasoningBuf })
           } else {
             if (inReasoning) {
               inReasoning = false
-              emit({ type: 'reasoning', text: reasoningBuf })
+              emitSlot({ type: 'reasoning', text: reasoningBuf })
             }
             if (line.startsWith(TOOL_BEGIN)) {
               emitToolFromLine(line, 'start')
@@ -2163,7 +2462,7 @@ function attachWorkerIo(opts: {
           /* wait */
         } else if (inReasoning) {
           reasoningBuf += tail
-          emit({ type: 'reasoning', text: reasoningBuf })
+          emitSlot({ type: 'reasoning', text: reasoningBuf })
         } else {
           emitAssistantDelta(tail)
         }
@@ -2175,12 +2474,16 @@ function attachWorkerIo(opts: {
   const finishTurn = (result: HarnessJobWaitResult, runIdForRelease: string): void => {
     if (turnFinalized) return
     turnFinalized = true
-    turnActive = false
-    if (activeSkillTurn) {
-      runSkillLifecycleHooks(activeSkillTurn, 'Stop', { workspaceRoot: resolveWorkspace() })
-      activeSkillTurn = null
+    const finishedSessionId = slot.sessionId
+    slot.turnActive = false
+    if (slot.activeSkillTurn) {
+      runSkillLifecycleHooks(slot.activeSkillTurn, 'Stop', {
+        workspaceRoot: slot.workspace || resolveWorkspace()
+      })
+      slot.activeSkillTurn = null
     }
-    clearActiveHarnessRun()
+    clearWorkerSlotActiveHarnessRun(slot.slotId)
+    syncLegacyActiveHarnessRunMirror()
     releaseHarnessRunAccess(runIdForRelease)
     for (const [id, entry] of harnessAskUserRequests) {
       if (entry.runId === runIdForRelease) harnessAskUserRequests.delete(id)
@@ -2190,20 +2493,25 @@ function attachWorkerIo(opts: {
     for (const [id, entry] of harnessApprovalRequests) {
       if (entry.runId === runIdForRelease) harnessApprovalRequests.delete(id)
     }
-    emit({
+    emitForSession(finishedSessionId, runIdForRelease, {
       type: 'tool',
       name: 'dsh-agent',
       state: 'done',
       ...(!result.ok && result.error ? { detail: result.error } : {})
     })
     if (result.ok) {
-      if (result.finalText) emit({ type: 'final', text: result.finalText })
-      emit({ type: 'done', runId: runIdForRelease })
+      if (result.finalText) {
+        emitForSession(finishedSessionId, runIdForRelease, {
+          type: 'final',
+          text: result.finalText
+        })
+      }
+      emitForSession(finishedSessionId, runIdForRelease, { type: 'done', runId: runIdForRelease })
     } else if (result.error) {
-      emit({ type: 'error', message: result.error })
+      emitForSession(finishedSessionId, runIdForRelease, { type: 'error', message: result.error })
     }
-    completeActiveJob(result)
-    scheduleIdleShutdown()
+    completeSlotActiveJob(slot, result)
+    scheduleSlotIdleShutdown(slot)
   }
 
   const onData = (chunk: Buffer | string, source: 'out' | 'err'): void => {
@@ -2217,13 +2525,12 @@ function attachWorkerIo(opts: {
         if (!line) continue
         if (line.startsWith('[aiart-runner]')) {
           if (line === '[aiart-runner] ready' || line.startsWith('[aiart-runner] ready ')) {
-            // 预热 / 常驻就绪不刷进对话流，避免「dsh 就绪」占满聊天
-            console.info('[aiart] dsh worker ready')
-            notifyReady()
+            console.info(`[aiart] dsh worker ready (${slot.slotId})`)
+            notifySlotReady(slot)
             continue
           }
           if (line.startsWith('[aiart-runner] session_released')) {
-            notifySessionReleased()
+            notifySlotSessionReleased(slot)
             continue
           }
           if (
@@ -2244,8 +2551,8 @@ function attachWorkerIo(opts: {
             } catch {
               /* ignore */
             }
-            if (!turnActive) {
-              clearIdleTimer()
+            if (!slot.turnActive) {
+              clearSlotIdleTimer(slot)
               sawOutput = false
               turnAccepted = true
               finalText = ''
@@ -2255,17 +2562,24 @@ function attachWorkerIo(opts: {
               reasoningBuf = ''
               turnFinalized = false
               setRunId(schedRunId)
+              if (!slot.sessionId && slot.lastSessionId) slot.sessionId = slot.lastSessionId
               registerHarnessRunAccess(schedRunId, schedMode)
-              setActiveHarnessRun(schedRunId, schedMode)
-              turnActive = true
-              emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
-              emitStatus('定时提醒已触发，正在执行…')
+              setWorkerSlotActiveHarnessRun(slot.slotId, {
+                runId: schedRunId,
+                mode: schedMode,
+                sessionId: slot.sessionId || undefined,
+                workspace: slot.workspace || undefined
+              })
+              syncLegacyActiveHarnessRunMirror()
+              slot.turnActive = true
+              emitSlot({ type: 'tool', name: 'dsh-agent', state: 'start' })
+              emitSlotStatus(slot, '定时提醒已触发，正在执行…')
             }
             continue
           }
           if (line.startsWith('[aiart-runner] prompt_start')) {
             turnAccepted = true
-            emitStatus('已提交给模型，等待响应…')
+            emitSlotStatus(slot, '已提交给模型，等待响应…')
             continue
           }
           if (line.startsWith('[aiart-runner] turn_done ')) {
@@ -2281,7 +2595,7 @@ function attachWorkerIo(opts: {
               error = payload
             }
             if (parsedLen < fullOut.length) parseStdout(fullOut.length)
-            if (inReasoning) emit({ type: 'reasoning', text: reasoningBuf })
+            if (inReasoning) emitSlot({ type: 'reasoning', text: reasoningBuf })
             if (ok) {
               finishTurn({ ok: true, finalText }, currentRunId)
             } else {
@@ -2297,17 +2611,16 @@ function attachWorkerIo(opts: {
           if (line.startsWith('[aiart-runner] model_set ')) {
             continue
           }
-          // stderr 里的报错行：语气按内容归类，渲染层按 tone 上色，不再自行解析文案
-          if (/error|fail|abort/i.test(line)) emitStatus(line, 'error')
+          if (/error|fail|abort/i.test(line)) emitSlotStatus(slot, line, 'error')
           continue
         }
-        emitStatus(line)
+        emitSlotStatus(slot, line)
       }
       return
     }
     const textChunk = String(chunk)
     if (
-      !turnActive &&
+      !slot.turnActive &&
       persistent &&
       !textChunk.includes(GOAL_BEGIN) &&
       !textChunk.includes(SCHEDULE_BEGIN) &&
@@ -2333,23 +2646,23 @@ function attachWorkerIo(opts: {
     if (msg.__aiartEvent !== true || typeof msg.type !== 'string') return
     switch (msg.type) {
       case 'ready':
-        console.info('[aiart] dsh worker ready (ipc)')
-        notifyReady()
+        console.info(`[aiart] dsh worker ready (ipc, ${slot.slotId})`)
+        notifySlotReady(slot)
         break
       case 'session_released':
-        notifySessionReleased()
+        notifySlotSessionReleased(slot)
         break
       case 'prompt_start':
         turnAccepted = true
-        emitStatus('已提交给模型，等待响应…')
+        emitSlotStatus(slot, '已提交给模型，等待响应…')
         break
       case 'schedule_turn_start': {
         const schedRunId =
           typeof msg.runId === 'string' && msg.runId ? msg.runId : `sched-${Date.now()}`
         const schedMode =
           typeof msg.mode === 'string' && msg.mode ? normalizeChatMode(msg.mode) : 'craft'
-        if (!turnActive) {
-          clearIdleTimer()
+        if (!slot.turnActive) {
+          clearSlotIdleTimer(slot)
           sawOutput = false
           turnAccepted = true
           finalText = ''
@@ -2360,38 +2673,45 @@ function attachWorkerIo(opts: {
           turnFinalized = false
           turnEmittedSandboxBlocked = false
           setRunId(schedRunId)
+          if (!slot.sessionId && slot.lastSessionId) slot.sessionId = slot.lastSessionId
           registerHarnessRunAccess(schedRunId, schedMode)
-          setActiveHarnessRun(schedRunId, schedMode)
-          turnActive = true
-          emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
-          emitStatus('定时提醒已触发，正在执行…')
+          setWorkerSlotActiveHarnessRun(slot.slotId, {
+            runId: schedRunId,
+            mode: schedMode,
+            sessionId: slot.sessionId || undefined,
+            workspace: slot.workspace || undefined
+          })
+          syncLegacyActiveHarnessRunMirror()
+          slot.turnActive = true
+          emitSlot({ type: 'tool', name: 'dsh-agent', state: 'start' })
+          emitSlotStatus(slot, '定时提醒已触发，正在执行…')
         }
         break
       }
       case 'reasoning_begin':
-        if (turnActive) {
+        if (slot.turnActive) {
           inReasoning = true
         }
         break
       case 'reasoning_delta':
-        if (turnActive && typeof msg.text === 'string' && msg.text) {
+        if (slot.turnActive && typeof msg.text === 'string' && msg.text) {
           sawOutput = true
           inReasoning = true
           reasoningBuf += msg.text
-          emit({ type: 'reasoning', text: reasoningBuf })
+          emitSlot({ type: 'reasoning', text: reasoningBuf })
         }
         break
       case 'reasoning_end':
         if (inReasoning) {
           inReasoning = false
-          emit({ type: 'reasoning', text: reasoningBuf })
+          emitSlot({ type: 'reasoning', text: reasoningBuf })
         }
         break
       case 'assistant_delta':
         if (typeof msg.text === 'string' && msg.text) {
           if (inReasoning) {
             inReasoning = false
-            emit({ type: 'reasoning', text: reasoningBuf })
+            emitSlot({ type: 'reasoning', text: reasoningBuf })
           }
           emitAssistantDelta(msg.text)
         }
@@ -2400,7 +2720,7 @@ function attachWorkerIo(opts: {
         if (parsedLen < fullOut.length) parseStdout(fullOut.length)
         if (inReasoning) {
           inReasoning = false
-          emit({ type: 'reasoning', text: reasoningBuf })
+          emitSlot({ type: 'reasoning', text: reasoningBuf })
         }
         const ok = msg.ok !== false
         const error = typeof msg.error === 'string' ? msg.error : undefined
@@ -2477,26 +2797,31 @@ function attachWorkerIo(opts: {
   proc.on('error', (err) => {
     if (procAborted || child !== proc) return
     const wasPersistent = persistent
-    const wasReady = workerReady
+    const wasReady = slot.workerReady
     if (wasPersistent && !wasReady) {
-      lastWorkerBootError = `dsh 启动失败：${err.message}`
-      if (child === proc) resetWorkerState()
+      slot.lastWorkerBootError = `dsh 启动失败：${err.message}`
+      if (child === proc) resetSlotWorkerState(slot)
       return
     }
-    if (child === proc) resetWorkerState()
-    if (turnActive) {
-      clearActiveHarnessRun()
+    const failedSessionId = slot.sessionId
+    if (child === proc) resetSlotWorkerState(slot)
+    if (slot.turnActive) {
+      clearWorkerSlotActiveHarnessRun(slot.slotId)
+      syncLegacyActiveHarnessRunMirror()
       releaseHarnessRunAccess(currentRunId)
-      emit({ type: 'error', message: `dsh 启动失败：${err.message}` })
-      turnActive = false
-      completeActiveJob({ ok: false, error: err.message, finalText: '' })
+      emitForSession(failedSessionId, currentRunId, {
+        type: 'error',
+        message: `dsh 启动失败：${err.message}`
+      })
+      slot.turnActive = false
+      completeSlotActiveJob(slot, { ok: false, error: err.message, finalText: '' })
     }
   })
   proc.on('close', (code) => {
     if (procAborted || child !== proc) return
     const wasPersistent = persistent
-    const wasReady = workerReady
-    const wasTurn = turnActive
+    const wasReady = slot.workerReady
+    const wasTurn = slot.turnActive
     const rid = currentRunId
     if (wasPersistent && !wasReady) {
       const quotaHint = isDshQuotaError(fullOut + '\n' + errBuf)
@@ -2505,13 +2830,13 @@ function attachWorkerIo(opts: {
       const hint =
         quotaHint ??
         (dshEntry ? '请重试或查看上方状态信息' : '若为首次运行，请等待包下载完成后重试')
-      lastWorkerBootError = `dsh 异常退出（code ${code}）。${hint}。`
-      if (child === proc) resetWorkerState()
+      slot.lastWorkerBootError = `dsh 异常退出（code ${code}）。${hint}。`
+      if (child === proc) resetSlotWorkerState(slot)
       return
     }
-    if (child === proc) resetWorkerState()
+    if (child === proc) resetSlotWorkerState(slot)
     if (parsedLen < fullOut.length) parseStdout(fullOut.length)
-    if (inReasoning) emit({ type: 'reasoning', text: reasoningBuf })
+    if (inReasoning) emitSlot({ type: 'reasoning', text: reasoningBuf })
     if (wasPersistent && !wasTurn) {
       // 空闲回收或主动 shutdown
       return
@@ -2529,7 +2854,7 @@ function attachWorkerIo(opts: {
       const message = `dsh 异常退出（code ${code}）${onlyTools}。${hint}。`
       finishTurn({ ok: false, error: message, finalText }, rid)
     } else {
-      if (code !== 0) emitStatus(`dsh 退出码 ${code}（本轮已有输出，未受影响）`, 'warn')
+      if (code !== 0) emitSlotStatus(slot, `dsh 退出码 ${code}（本轮已有输出，未受影响）`, 'warn')
       finishTurn({ ok: true, finalText }, rid)
     }
   })
@@ -2537,13 +2862,13 @@ function attachWorkerIo(opts: {
   if (!dshEntry) {
     const timeout = setTimeout(() => {
       if (child !== proc) return
-      emitStatus('dsh 响应超时，正在中止（可重试）', 'error')
+      emitSlotStatus(slot, 'dsh 响应超时，正在中止（可重试）', 'error')
       proc.kill()
     }, NPX_TIMEOUT_MS)
     const progress = setInterval(() => {
       if (child !== proc) return
       const waited = Math.round((Date.now() - startedAt) / 1000)
-      emitStatus(`仍在准备 dsh 运行体（首次运行需联网下载，已等待 ${waited}s）…`)
+      emitSlotStatus(slot, `仍在准备 dsh 运行体（首次运行需联网下载，已等待 ${waited}s）…`)
     }, NPX_PROGRESS_HINT_MS)
     const stopTimers = (): void => {
       clearTimeout(timeout)
@@ -2552,11 +2877,11 @@ function attachWorkerIo(opts: {
     proc.once('close', stopTimers)
     proc.once('error', stopTimers)
   } else if (!persistent) {
-    // 仅提示，不自动中止：慢模型 / 长工具链可能远超数分钟
     const idleProgress = setInterval(() => {
       if (child !== proc || sawOutput) return
       const waited = Math.round((Date.now() - startedAt) / 1000)
-      emitStatus(
+      emitSlotStatus(
+        slot,
         `仍在等待模型响应（已等待 ${waited}s）。若长时间无进展，可手动中止后检查网络 / OpenRouter 额度`
       )
     }, DSH_IDLE_PROGRESS_HINT_MS)
@@ -2576,6 +2901,7 @@ function attachWorkerIo(opts: {
 }
 
 function launchDsh(opts: {
+  slot: WorkerSlot
   command: string
   args: string[]
   workspace: string
@@ -2584,25 +2910,99 @@ function launchDsh(opts: {
   dshEntry: string | null
   persistent?: boolean
 }): void {
-  const { command, args, workspace, env, runId, dshEntry } = opts
+  const { slot, command, args, workspace, env, runId, dshEntry } = opts
   const persistent = !!opts.persistent
-  clearIdleTimer()
+  clearSlotIdleTimer(slot)
   const proc = spawn(command, args, {
     cwd: workspace,
     windowsHide: true,
     shell: false,
-    env,
+    env: {
+      ...env,
+      AIART_WORKER_SLOT: slot.slotId
+    },
     stdio: persistent ? ['pipe', 'pipe', 'pipe', 'ipc'] : undefined
   })
-  child = proc
-  workerPersistent = persistent
-  workerReady = false
+  slot.child = proc
+  slot.workspace = workspace
+  slot.workerPersistent = persistent
+  slot.workerReady = false
   if (persistent) {
-    emitStatus('正在启动 DeepSeek Harness（常驻）…')
+    emitSlotStatus(slot, '正在启动 DeepSeek Harness（常驻）…')
   } else {
-    emitStatus('dsh 已启动，等待模型响应…')
+    emitSlotStatus(slot, 'dsh 已启动，等待模型响应…')
   }
-  attachWorkerIo({ proc, runId, dshEntry, persistent })
+  attachWorkerIo({ slot, proc, runId, dshEntry, persistent })
+}
+
+function selectOrCreateSlotForInput(input: HarnessRunInput): WorkerSlot | null {
+  const targetSessionId = (input.sessionId ?? '').trim()
+  const workspace = resolveWorkspace(input.workspace)
+  const mcp = getMcpServerInfo()
+  const provider = resolveTextProvider(input.providerId)
+  const blender = getBlenderClientForHarness()
+  const desiredFp =
+    mcp?.running && provider
+      ? workerFingerprintOf({
+          workspace,
+          mcpEndpoint: mcp.endpoint,
+          blenderOn: !!blender,
+          externalMcpFp: externalMcpFingerprint(),
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey
+        })
+      : ''
+
+  // 1. 优先复用上次服务过该 sessionId 且同工作区/配置的空闲热槽位（保留内存中的 Agent 实例）
+  if (targetSessionId) {
+    for (const slot of workerSlots.values()) {
+      if (
+        isSlotIdle(slot) &&
+        slot.lastSessionId === targetSessionId &&
+        (!desiredFp || !slot.workerFingerprint || slot.workerFingerprint === desiredFp)
+      ) {
+        return slot
+      }
+    }
+  }
+
+  // 2. 复用同工作区/配置的空闲热槽位（优先不抢占有定时任务的槽位）
+  if (desiredFp) {
+    for (const slot of workerSlots.values()) {
+      if (
+        isSlotIdle(slot) &&
+        slot.workerReady &&
+        slot.workerFingerprint === desiredFp &&
+        slot.activeScheduleCount === 0
+      ) {
+        return slot
+      }
+    }
+  }
+
+  // 3. 若未创建的空槽位（如预热前的 slot-1，或新开第 2~6 个并行会话），分配新槽位
+  for (const slot of workerSlots.values()) {
+    if (isSlotIdle(slot) && !slot.child && slot.activeScheduleCount === 0) {
+      return slot
+    }
+  }
+  const freshSlot = allocateNewWorkerSlot()
+  if (freshSlot) return freshSlot
+
+  // 4. 池已达 MAX_PARALLEL_HARNESS_WORKERS，回收任意空闲槽位（按新工作区/配置重启）
+  for (const slot of workerSlots.values()) {
+    if (isSlotIdle(slot) && slot.activeScheduleCount === 0) {
+      return slot
+    }
+  }
+  for (const slot of workerSlots.values()) {
+    if (isSlotIdle(slot)) {
+      return slot
+    }
+  }
+
+  // 5. 全部 6 个槽位均在并行跑任务：交给 overflowQueue 排队
+  return null
 }
 
 export async function runHarnessJobWait(input: HarnessJobWaitInput): Promise<HarnessJobWaitResult> {
@@ -2612,7 +3012,9 @@ export async function runHarnessJobWait(input: HarnessJobWaitInput): Promise<Har
     sandboxMode: input.sandboxMode,
     sessionId: input.sessionId,
     model: input.model,
-    providerId: input.providerId
+    providerId: input.providerId,
+    workspace: input.workspace,
+    canvasContext: input.canvasContext
   }
   const rawTask = String(rest.task ?? '').trim()
   if (!rawTask) return { ok: false, error: '任务内容为空' }
@@ -2632,15 +3034,28 @@ export async function runHarnessJobWait(input: HarnessJobWaitInput): Promise<Har
       }, input.timeoutMs)
     }
     const waiter = (result: HarnessJobWaitResult): void => finish(result)
-    if (turnActive || harnessQueue.length || activeWaiters.length) {
-      harnessQueue.push({ input: rest, waiters: [waiter], onStart: armTimeout })
-      emitStatus('排队等待 dsh…')
+    const targetSessionId = (rest.sessionId ?? '').trim()
+    const busySameSession = targetSessionId ? findBusySlotForSession(targetSessionId) : undefined
+    if (busySameSession) {
+      busySameSession.queue.push({ input: rest, waiters: [waiter], onStart: armTimeout })
+      emitForSession(targetSessionId, undefined, { type: 'status', text: '排队等待当前会话完成…' })
       return
     }
-    activeWaiters = [waiter]
+    const slot = selectOrCreateSlotForInput(rest)
+    if (!slot) {
+      overflowQueue.push({ input: rest, waiters: [waiter], onStart: armTimeout })
+      emitForSession(targetSessionId || undefined, undefined, {
+        type: 'status',
+        text: '并行槽位已满，排队等待 dsh…'
+      })
+      return
+    }
+    slot.activeWaiters = [waiter]
     armTimeout()
-    void startHarnessNow(rest).then((started) => {
-      if (!started.started) finish({ ok: false, error: started.message || 'GRAPH_MODEL_DSH_START' })
+    void startHarnessOnSlot(slot, rest).then((started) => {
+      if (!started.started) {
+        finish({ ok: false, error: started.message || 'GRAPH_MODEL_DSH_START' })
+      }
     })
   })
 }
@@ -2648,19 +3063,36 @@ export async function runHarnessJobWait(input: HarnessJobWaitInput): Promise<Har
 export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRunResult> {
   const rawTask = String(input?.task ?? '').trim()
   if (!rawTask) return { started: false, message: '任务内容为空' }
-  if (turnActive || harnessQueue.length || activeWaiters.length) {
-    harnessQueue.push({ input, waiters: [] })
-    emitStatus('已加入队列，当前 dsh 任务结束后开始')
+  const targetSessionId = (input.sessionId ?? '').trim()
+  if (targetSessionId) {
+    const busySameSession = findBusySlotForSession(targetSessionId)
+    if (busySameSession) {
+      busySameSession.queue.push({ input, waiters: [] })
+      emitForSession(targetSessionId, undefined, {
+        type: 'status',
+        text: '已加入当前会话队列，本轮结束后开始'
+      })
+      return { started: true, message: 'queued' }
+    }
+  }
+  const slot = selectOrCreateSlotForInput(input)
+  if (!slot) {
+    overflowQueue.push({ input, waiters: [] })
+    emitForSession(targetSessionId || undefined, undefined, {
+      type: 'status',
+      text: `并行会话已达上限（${MAX_PARALLEL_HARNESS_WORKERS}），已加入等待队列`
+    })
     return { started: true, message: 'queued' }
   }
-  return startHarnessNow(input)
+  return startHarnessOnSlot(slot, input)
 }
 
-/** 闲时预热：拉起常驻 worker 到 ready，用户发消息时跳过 Cordis/MCP 冷启动 */
+/** 闲时预热：拉起首个常驻 worker 到 ready，用户发消息时跳过 Cordis/MCP 冷启动 */
 export async function prewarmHarness(): Promise<{ ok: boolean; message?: string }> {
-  if (turnActive) return { ok: true, message: 'busy' }
-  if (child && workerPersistent && workerReady) {
-    scheduleIdleShutdown()
+  const primary = getOrCreatePrimarySlot()
+  if (primary.turnActive) return { ok: true, message: 'busy' }
+  if (primary.child && primary.workerPersistent && primary.workerReady) {
+    scheduleSlotIdleShutdown(primary)
     return { ok: true, message: 'already-warm' }
   }
   const mcp = getMcpServerInfo()
@@ -2672,6 +3104,8 @@ export async function prewarmHarness(): Promise<{ ok: boolean; message?: string 
   if (!dshEntry) return { ok: false, message: '无内置 dsh，跳过预热' }
   try {
     await ensurePersistentWorker({
+      slot: primary,
+      workspace: resolveWorkspace(),
       provider,
       modelId:
         lastPreferredProviderId &&
@@ -2681,7 +3115,7 @@ export async function prewarmHarness(): Promise<{ ok: boolean; message?: string 
           : provider.modelId,
       warmOnly: true
     })
-    scheduleIdleShutdown()
+    scheduleSlotIdleShutdown(primary)
     return { ok: true }
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) }
@@ -2689,6 +3123,8 @@ export async function prewarmHarness(): Promise<{ ok: boolean; message?: string 
 }
 
 async function ensurePersistentWorker(opts: {
+  slot: WorkerSlot
+  workspace: string
   provider: NonNullable<ReturnType<typeof resolveTextProvider>>
   modelId: string
   modelName?: string
@@ -2696,9 +3132,10 @@ async function ensurePersistentWorker(opts: {
   mode?: ChatMode
   warmOnly?: boolean
 }): Promise<void> {
-  // 必须先挂上 chain 再 await，否则并发调用会同时进入 Unlocked 拉起两个进程
-  const run = ensureWorkerChain.then(() => ensurePersistentWorkerUnlocked(opts))
-  ensureWorkerChain = run.then(
+  // 同一槽位内串行化拉起，不同槽位之间可并发冷启动
+  const { slot } = opts
+  const run = slot.ensureChain.then(() => ensurePersistentWorkerUnlocked(opts))
+  slot.ensureChain = run.then(
     () => undefined,
     () => undefined
   )
@@ -2706,6 +3143,8 @@ async function ensurePersistentWorker(opts: {
 }
 
 async function ensurePersistentWorkerUnlocked(opts: {
+  slot: WorkerSlot
+  workspace: string
   provider: NonNullable<ReturnType<typeof resolveTextProvider>>
   modelId: string
   modelName?: string
@@ -2713,9 +3152,9 @@ async function ensurePersistentWorkerUnlocked(opts: {
   mode?: ChatMode
   warmOnly?: boolean
 }): Promise<void> {
+  const { slot, workspace } = opts
   const mcp = getMcpServerInfo()
   if (!mcp?.running) throw new Error('MCP 工具服务未运行，请先在设置中启动')
-  const workspace = resolveWorkspace()
   const blender = getBlenderClientForHarness()
   const fingerprint = workerFingerprintOf({
     workspace,
@@ -2730,19 +3169,24 @@ async function ensurePersistentWorkerUnlocked(opts: {
   const dshModules = locateNodeModules(dshEntry)
   if (!dshModules) throw new Error('no dsh modules')
 
-  if (child && workerPersistent && workerFingerprint === fingerprint && workerReady) {
+  if (
+    slot.child &&
+    slot.workerPersistent &&
+    slot.workerFingerprint === fingerprint &&
+    slot.workerReady
+  ) {
     return
   }
 
-  if (child) {
-    ;(child as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted?.()
+  if (slot.child) {
+    ;(slot.child as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted?.()
     try {
-      sendWorkerCommand({ op: 'shutdown' })
+      sendSlotWorkerCommand(slot, { op: 'shutdown' })
     } catch {
       /* ignore */
     }
-    child.kill()
-    resetWorkerState()
+    slot.child.kill()
+    resetSlotWorkerState(slot)
   }
 
   const mode = opts.mode ?? 'craft'
@@ -2765,25 +3209,16 @@ async function ensurePersistentWorkerUnlocked(opts: {
     resolveDshChatInputModalitiesForProvider(opts.provider.provider, modelId)
   const modelName = opts.modelName?.trim() || textCatalog?.name?.trim() || modelId
 
-  // 常驻连接用 craft 占位头拿全量 tools/list；每轮授权走 activeHarnessRun
-  writeDshConfig(mcp.endpoint, 'craft', '0', blender, mcp.port, {
-    baseUrl: opts.provider.baseUrl,
-    modelId,
-    modelName,
-    inputModalities,
-    provider: opts.provider.provider
-  })
-  writeDshSettings({
-    baseUrl: opts.provider.baseUrl,
-    modelId,
-    modelName,
-    inputModalities,
-    provider: opts.provider.provider
-  })
-  cleanupLegacyDshSkills()
-
   let projectMemory: string | null = null
-  if (projectService.isOpen()) {
+  const memFile = join(workspace, PROJECT_MEMORY_RELATIVE_PATH)
+  if (existsSync(memFile)) {
+    try {
+      const raw = readFileSync(memFile, 'utf8')
+      if (raw) projectMemory = raw.slice(0, PROJECT_MEMORY_INJECT_LIMIT)
+    } catch {
+      projectMemory = null
+    }
+  } else if (projectService.isOpen()) {
     try {
       const raw = await projectService.readProjectFile(PROJECT_MEMORY_RELATIVE_PATH)
       if (raw) projectMemory = raw.slice(0, PROJECT_MEMORY_INJECT_LIMIT)
@@ -2791,71 +3226,109 @@ async function ensurePersistentWorkerUnlocked(opts: {
       projectMemory = null
     }
   }
-  // persona 用 craft 基线；每轮 mode 由 runner modePreamble 注入
-  const patchPath = writeAiartHarness(dshModules, 'craft', projectMemory)
-  if (!patchPath) throw new Error('writeAiartHarness failed')
-  applyAclConsolePatch(dshModules)
-  applyBrowserGuardPatch(dshModules)
-  const hideWindowsHook = writeHideChildWindowsHook()
-  const nodeCmd = resolveNodeCommand()
-  const command = nodeCmd?.command ?? (process.platform === 'win32' ? 'npx.cmd' : 'npx')
-  const args = [
-    ...(nodeCmd ? ['--expose-internals'] : []),
-    ...(nodeCmd && hideWindowsHook ? ['--require', hideWindowsHook] : []),
-    dshEntry,
-    '--profile',
-    'headless',
-    '--patch',
-    patchPath,
-    PERSISTENT_PLACEHOLDER_TASK
-  ]
 
-  if (workspaceNotified !== workspace) {
-    workspaceNotified = workspace
-    emitStatus(
-      workspace === app.getPath('userData')
-        ? '未打开工程：AI 工作区为应用数据目录（建议先打开工程）'
-        : `工作区：${workspace}`
-    )
-  }
+  // 串行化共享配置文件写入 + 专属槽位补丁写入与进程拉起（毫秒级），而将耗时数秒的 waitUntilSlotReady 放在锁外并发执行
+  const spawnStep = configWriteChain.then(() => {
+    writeDshConfig(mcp.endpoint, 'craft', '0', blender, mcp.port, {
+      baseUrl: opts.provider.baseUrl,
+      modelId,
+      modelName,
+      inputModalities,
+      provider: opts.provider.provider
+    })
+    writeDshSettings({
+      baseUrl: opts.provider.baseUrl,
+      modelId,
+      modelName,
+      inputModalities,
+      provider: opts.provider.provider
+    })
+    cleanupLegacyDshSkills()
 
-  const bootRunId = 'boot'
-  lastWorkerBootError = ''
-  launchDsh({
-    command,
-    args,
-    workspace,
-    env: {
-      ...process.env,
-      ...(nodeCmd?.env ?? {}),
-      ...(hideWindowsHook
-        ? { NODE_OPTIONS: appendNodeRequireOption(process.env.NODE_OPTIONS, hideWindowsHook) }
-        : {}),
-      DSH_HOME: dshHome(),
-      DEEPSEEK_API_KEY: opts.provider.apiKey,
-      DSH_MODEL: modelId,
-      ...(isDeepSeekOfficialProvider(opts.provider.provider, opts.provider.baseUrl)
-        ? { DEEPSEEK_BASE_URL: normalizeDeepSeekMessagesBaseUrl(opts.provider.baseUrl) }
-        : opts.provider.baseUrl
-          ? { DEEPSEEK_BASE_URL: opts.provider.baseUrl }
+    const patchPath = writeAiartHarness(dshModules, 'craft', projectMemory, {
+      slotId: slot.slotId,
+      workspace,
+      llm: {
+        baseUrl: opts.provider.baseUrl,
+        modelId,
+        modelName,
+        inputModalities,
+        provider: opts.provider.provider
+      }
+    })
+    if (!patchPath) throw new Error('writeAiartHarness failed')
+    applyAclConsolePatch(dshModules)
+    applyBrowserGuardPatch(dshModules)
+    const hideWindowsHook = writeHideChildWindowsHook()
+    const nodeCmd = resolveNodeCommand()
+    const command = nodeCmd?.command ?? (process.platform === 'win32' ? 'npx.cmd' : 'npx')
+    const args = [
+      ...(nodeCmd ? ['--expose-internals'] : []),
+      ...(nodeCmd && hideWindowsHook ? ['--require', hideWindowsHook] : []),
+      dshEntry,
+      '--profile',
+      'headless',
+      '--patch',
+      patchPath,
+      PERSISTENT_PLACEHOLDER_TASK
+    ]
+
+    const sessionKey = slot.sessionId || '__default__'
+    if (workspaceNotifiedBySession.get(sessionKey) !== workspace) {
+      workspaceNotifiedBySession.set(sessionKey, workspace)
+      emitSlotStatus(
+        slot,
+        workspace === app.getPath('userData')
+          ? '未打开工程：AI 工作区为应用数据目录（建议先打开工程）'
+          : `工作区：${workspace}`
+      )
+    }
+
+    const bootRunId = 'boot'
+    slot.lastWorkerBootError = ''
+    launchDsh({
+      slot,
+      command,
+      args,
+      workspace,
+      env: {
+        ...process.env,
+        ...(nodeCmd?.env ?? {}),
+        ...(hideWindowsHook
+          ? { NODE_OPTIONS: appendNodeRequireOption(process.env.NODE_OPTIONS, hideWindowsHook) }
           : {}),
-      STUDIO_MCP_TOKEN: mcp.token,
-      AIART_ASK_DIR: join(app.getPath('temp'), 'aiart-harness-ask'),
-      AIART_RUN_ID: bootRunId,
-      AIART_MODE: mode,
-      AIART_PERSISTENT: '1'
-    } as NodeJS.ProcessEnv,
-    runId: bootRunId,
-    dshEntry,
-    persistent: true
+        DSH_HOME: dshHome(),
+        DEEPSEEK_API_KEY: opts.provider.apiKey,
+        DSH_MODEL: modelId,
+        ...(isDeepSeekOfficialProvider(opts.provider.provider, opts.provider.baseUrl)
+          ? { DEEPSEEK_BASE_URL: normalizeDeepSeekMessagesBaseUrl(opts.provider.baseUrl) }
+          : opts.provider.baseUrl
+            ? { DEEPSEEK_BASE_URL: opts.provider.baseUrl }
+            : {}),
+        STUDIO_MCP_TOKEN: mcp.token,
+        AIART_ASK_DIR: join(app.getPath('temp'), 'aiart-harness-ask'),
+        AIART_RUN_ID: bootRunId,
+        AIART_MODE: mode,
+        AIART_PERSISTENT: '1'
+      } as NodeJS.ProcessEnv,
+      runId: bootRunId,
+      dshEntry,
+      persistent: true
+    })
+    slot.workerFingerprint = fingerprint
+    slot.workerModelId = modelId
   })
-  workerFingerprint = fingerprint
-  workerModelId = modelId
-  const ready = await waitUntilReady(180_000)
+  configWriteChain = spawnStep.then(
+    () => undefined,
+    () => undefined
+  )
+  await spawnStep
+
+  const ready = await waitUntilSlotReady(slot, 180_000)
   if (!ready) {
-    const bootError = lastWorkerBootError
-    child?.kill()
-    resetWorkerState()
+    const bootError = slot.lastWorkerBootError
+    slot.child?.kill()
+    resetSlotWorkerState(slot)
     throw new Error(bootError || 'dsh 常驻进程就绪超时')
   }
 }
@@ -2914,8 +3387,9 @@ async function preprocessOnlineSkillInstallIntent(input: {
   taskText: string
   mode: ChatMode
   workspaceRoot: string
+  sessionId?: string
 }): Promise<string> {
-  const { taskText, mode, workspaceRoot } = input
+  const { taskText, mode, workspaceRoot, sessionId } = input
   if (mode === 'ask' || taskText.startsWith('[Claude Code Skill Active:')) return taskText
 
   // 1. 提取消息中的 GitHub URL
@@ -2939,7 +3413,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
     const installedBlocks: string[] = []
     for (const url of validGhUrls) {
       const toolCallId = `host-skill-install:${Date.now()}`
-      emit({
+      emitForSession(sessionId, undefined, {
         type: 'tool',
         id: toolCallId,
         name: 'skill_install',
@@ -2964,7 +3438,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
           skillScriptsConsent: false
         })
         if (res.ok && res.installed.length > 0) {
-          emit({
+          emitForSession(sessionId, undefined, {
             type: 'tool',
             id: toolCallId,
             name: 'skill_install',
@@ -2993,7 +3467,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
             }
           }
         } else {
-          emit({
+          emitForSession(sessionId, undefined, {
             type: 'tool',
             id: toolCallId,
             name: 'skill_install',
@@ -3002,7 +3476,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
           })
         }
       } catch (err) {
-        emit({
+        emitForSession(sessionId, undefined, {
           type: 'tool',
           id: toolCallId,
           name: 'skill_install',
@@ -3038,7 +3512,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
 
   if (asksOnlineSkillSearch) {
     const searchCallId = `host-skill-search:${Date.now()}`
-    emit({
+    emitForSession(sessionId, undefined, {
       type: 'tool',
       id: searchCallId,
       name: 'skill_search',
@@ -3047,7 +3521,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
     })
     try {
       const searchRes = await searchOnlineSkills({ query: taskText, limit: 8 })
-      emit({
+      emitForSession(sessionId, undefined, {
         type: 'tool',
         id: searchCallId,
         name: 'skill_search',
@@ -3060,7 +3534,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
         const top = searchRes.items[0]!
         if (top.url) {
           const installCallId = `host-skill-install:${Date.now()}`
-          emit({
+          emitForSession(sessionId, undefined, {
             type: 'tool',
             id: installCallId,
             name: 'skill_install',
@@ -3073,7 +3547,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
             skillScriptsConsent: false
           })
           if (inst.ok && inst.installed.length > 0) {
-            emit({
+            emitForSession(sessionId, undefined, {
               type: 'tool',
               id: installCallId,
               name: 'skill_install',
@@ -3115,7 +3589,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
         ].join('\n')
       }
     } catch {
-      emit({
+      emitForSession(sessionId, undefined, {
         type: 'tool',
         id: searchCallId,
         name: 'skill_search',
@@ -3152,7 +3626,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
   if (asksArticleVideoOrExtract && mode === 'craft') {
     const targetUrl = articleUrls[0]!
     const extractCallId = `host-web-extract:${Date.now()}`
-    emit({
+    emitForSession(sessionId, undefined, {
       type: 'tool',
       id: extractCallId,
       name: 'web_extract_article',
@@ -3165,7 +3639,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
         maxImages: 8,
         projectRootOverride: workspaceRoot
       })
-      emit({
+      emitForSession(sessionId, undefined, {
         type: 'tool',
         id: extractCallId,
         name: 'web_extract_article',
@@ -3204,7 +3678,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
         extracted.markdown
       ].join('\n')
     } catch (err) {
-      emit({
+      emitForSession(sessionId, undefined, {
         type: 'tool',
         id: extractCallId,
         name: 'web_extract_article',
@@ -3217,19 +3691,26 @@ async function preprocessOnlineSkillInstallIntent(input: {
   return taskText
 }
 
-async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult> {
+async function startHarnessOnSlot(
+  slot: WorkerSlot,
+  input: HarnessRunInput
+): Promise<HarnessRunResult> {
   const rawInputTask = String(input?.task ?? '').trim()
   if (!rawInputTask) return { started: false, message: '任务内容为空' }
-  if (turnActive) return { started: false, message: '已有任务正在运行' }
+  if (slot.turnActive) return { started: false, message: '已有任务正在运行' }
+
+  const targetSessionId = (input.sessionId ?? '').trim()
+  slot.sessionId = targetSessionId
+  if (targetSessionId) slot.lastSessionId = targetSessionId
 
   // 原生 /export 斜杠命令：直接由宿主打包当前会话日志并推送交付卡片
   if (/^\/export(?=$|\s)/i.test(rawInputTask)) {
     const runId = String(++runSeq)
-    const targetSessionId = (input.sessionId ?? '').trim()
-    turnActive = true
-    emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
+    slot.turnActive = true
+    slot.workerRunId = runId
+    emitForSession(targetSessionId, runId, { type: 'tool', name: 'dsh-agent', state: 'start' })
     const exportCallId = `session-export:${Date.now()}`
-    emit({
+    emitForSession(targetSessionId, runId, {
       type: 'tool',
       id: exportCallId,
       name: 'session_export',
@@ -3239,7 +3720,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     void (async () => {
       try {
         const res = await exportHarnessSession({ sessionId: targetSessionId })
-        emit({
+        emitForSession(targetSessionId, runId, {
           type: 'tool',
           id: exportCallId,
           name: 'session_export',
@@ -3248,7 +3729,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
         })
         let finalText = ''
         if (res.ok && res.archivePath) {
-          emit({
+          emitForSession(targetSessionId, runId, {
             type: 'present',
             callId: exportCallId,
             turn: 0,
@@ -3264,18 +3745,24 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
         } else {
           finalText = `导出会话失败：${res.error ?? '当前会话尚无持久化记录，请先发送一条消息后再导出。'}`
         }
-        emit({ type: 'assistant', text: finalText })
-        turnActive = false
-        emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
-        emit({ type: 'done', runId })
-        emit({ type: 'final', text: finalText })
-        completeActiveJob({ ok: res.ok, finalText, ...(res.ok ? {} : { error: finalText }) })
+        emitForSession(targetSessionId, runId, { type: 'assistant', text: finalText })
+        slot.turnActive = false
+        emitForSession(targetSessionId, runId, { type: 'tool', name: 'dsh-agent', state: 'done' })
+        emitForSession(targetSessionId, runId, { type: 'done', runId })
+        emitForSession(targetSessionId, runId, { type: 'final', text: finalText })
+        completeSlotActiveJob(slot, {
+          ok: res.ok,
+          finalText,
+          ...(res.ok ? {} : { error: finalText })
+        })
+        pumpAllIdleSlotsForOverflow()
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        turnActive = false
-        emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
-        emit({ type: 'error', message: msg })
-        completeActiveJob({ ok: false, error: msg })
+        slot.turnActive = false
+        emitForSession(targetSessionId, runId, { type: 'tool', name: 'dsh-agent', state: 'done' })
+        emitForSession(targetSessionId, runId, { type: 'error', message: msg })
+        completeSlotActiveJob(slot, { ok: false, error: msg })
+        pumpAllIdleSlotsForOverflow()
       }
     })()
     return { started: true }
@@ -3295,6 +3782,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     activeWorkspaceOverride = candidate && existsSync(candidate) ? candidate : ''
   }
   const workspace = resolveWorkspace(input.workspace)
+  slot.workspace = workspace
   const mode = normalizeChatMode(input.mode)
   const sandboxMode = normalizeSandboxMode(input.sandboxMode)
   const isNativeSlashCommand = /^\/(compact|goal|feedback)(?=$|\s)/i.test(rawInputTask)
@@ -3306,22 +3794,25 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
         workspaceRoot: workspace
       })
 
-  // 立即置 turnActive = true，封闭 preprocessOnlineSkillInstallIntent 与 ensurePersistentWorker
-  // 异步等待期间的并发窗口，保证期间到达的新消息稳定进入队列
-  turnActive = true
-  const myAbortSeq = abortSeq
+  // 立即置 slot.turnActive = true，封闭 preprocessOnlineSkillInstallIntent 与 ensurePersistentWorker
+  // 异步等待期间的并发窗口，保证同会话期间到达的新消息稳定进入该会话队列而不影响其他会话并行执行
+  slot.turnActive = true
+  const myAbortSeq = slot.abortSeq
   let taskAfterOnlineSkills = skillPreprocessed.taskText
   if (!isNativeSlashCommand) {
     try {
       taskAfterOnlineSkills = await preprocessOnlineSkillInstallIntent({
         taskText: skillPreprocessed.taskText,
         mode,
-        workspaceRoot: workspace
+        workspaceRoot: workspace,
+        sessionId: targetSessionId || undefined
       })
     } catch {
       taskAfterOnlineSkills = skillPreprocessed.taskText
     }
   }
+  const abortSeq = slot.abortSeq
+  const turnActive = slot.turnActive
   if (abortSeq !== myAbortSeq || !turnActive) {
     return { started: false, message: '已中止' }
   }
@@ -3332,9 +3823,8 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   const rawTask = canvasContext
     ? `${taskAfterOnlineSkills}\n\n[Workspace Canvas & Node Context]\n${canvasContext}`
     : taskAfterOnlineSkills
-  activeSkillTurn = skillPreprocessed.activeSkill ?? null
-  const effectiveSessionId =
-    skillPreprocessed.activeSkill?.isolatedSessionId ?? (input.sessionId?.trim() || '')
+  slot.activeSkillTurn = skillPreprocessed.activeSkill ?? null
+  const effectiveSessionId = skillPreprocessed.activeSkill?.isolatedSessionId ?? targetSessionId
 
   const runId = String(++runSeq)
   const rawModelId =
@@ -3361,8 +3851,8 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   const dshModules = dshEntry ? locateNodeModules(dshEntry) : null
   const canPersist = !!(dshEntry && dshModules)
 
-  lastStatusText = ''
-  clearIdleTimer()
+  slot.lastStatusText = ''
+  clearSlotIdleTimer(slot)
 
   if (!canPersist) {
     // npx / 无 runner：保持 one-shot
@@ -3374,7 +3864,13 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       provider: provider.provider
     })
     registerHarnessRunAccess(runId, mode)
-    setActiveHarnessRun(runId, mode)
+    setWorkerSlotActiveHarnessRun(slot.slotId, {
+      runId,
+      mode,
+      sessionId: targetSessionId || undefined,
+      workspace
+    })
+    syncLegacyActiveHarnessRunMirror()
     writeDshSettings({
       baseUrl: provider.baseUrl,
       modelId,
@@ -3383,20 +3879,23 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       provider: provider.provider
     })
     cleanupLegacyDshSkills()
-    emitStatus(
+    emitSlotStatus(
+      slot,
       dshEntry
         ? '正在启动 DeepSeek Harness…'
         : '首次运行：正在准备 dsh 运行体（需联网，约 1–2 分钟）'
     )
-    if (workspaceNotified !== workspace) {
-      workspaceNotified = workspace
-      emitStatus(
+    const sessionKey = targetSessionId || '__default__'
+    if (workspaceNotifiedBySession.get(sessionKey) !== workspace) {
+      workspaceNotifiedBySession.set(sessionKey, workspace)
+      emitSlotStatus(
+        slot,
         workspace === app.getPath('userData')
           ? '未打开工程：AI 工作区为应用数据目录（建议先打开工程）'
           : `工作区：${workspace}`
       )
     }
-    emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
+    emitForSession(targetSessionId, runId, { type: 'tool', name: 'dsh-agent', state: 'start' })
     const nodeCmd = dshEntry ? resolveNodeCommand() : null
     const command = nodeCmd?.command ?? (process.platform === 'win32' ? 'npx.cmd' : 'npx')
     const hideWindowsHook = writeHideChildWindowsHook()
@@ -3411,6 +3910,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
         ]
       : ['--yes', DSH_PACKAGE, '--profile', 'headless', rawTask]
     launchDsh({
+      slot,
       command,
       args,
       workspace,
@@ -3444,6 +3944,8 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
 
   try {
     await ensurePersistentWorker({
+      slot,
+      workspace,
       provider,
       modelId,
       modelName,
@@ -3452,10 +3954,11 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    if (abortSeq === myAbortSeq) {
-      turnActive = false
-      activeSkillTurn = null
-      completeActiveJob({ ok: false, error: message, finalText: '' })
+    if (slot.abortSeq === myAbortSeq) {
+      slot.turnActive = false
+      slot.activeSkillTurn = null
+      completeSlotActiveJob(slot, { ok: false, error: message, finalText: '' })
+      pumpAllIdleSlotsForOverflow()
     }
     return {
       started: false,
@@ -3463,11 +3966,11 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     }
   }
 
-  if (abortSeq !== myAbortSeq || !turnActive) {
+  if (slot.abortSeq !== myAbortSeq || !slot.turnActive) {
     return { started: false, message: '已中止' }
   }
 
-  if (workerModelId !== modelId) {
+  if (slot.workerModelId !== modelId) {
     writeDshSettings({
       baseUrl: provider.baseUrl,
       modelId,
@@ -3475,31 +3978,37 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       inputModalities,
       provider: provider.provider
     })
-    sendWorkerCommand({
+    sendSlotWorkerCommand(slot, {
       op: 'set_model',
       modelId,
       modelName,
       inputModalities: [...inputModalities]
     })
-    workerModelId = modelId
+    slot.workerModelId = modelId
   }
 
   registerHarnessRunAccess(runId, mode)
-  setActiveHarnessRun(runId, mode)
+  setWorkerSlotActiveHarnessRun(slot.slotId, {
+    runId,
+    mode,
+    sessionId: targetSessionId || undefined,
+    workspace
+  })
+  syncLegacyActiveHarnessRunMirror()
   ;(
-    child as
+    slot.child as
       | (ChildProcess & { __aiartSetRunId?: (id: string) => void; __aiartResetTurn?: () => void })
       | null
   )?.__aiartResetTurn?.()
-  ;(child as (ChildProcess & { __aiartSetRunId?: (id: string) => void }) | null)?.__aiartSetRunId?.(
-    runId
-  )
+  ;(
+    slot.child as (ChildProcess & { __aiartSetRunId?: (id: string) => void }) | null
+  )?.__aiartSetRunId?.(runId)
 
-  emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
+  emitForSession(targetSessionId, runId, { type: 'tool', name: 'dsh-agent', state: 'start' })
   // 不在每轮刷「等待模型首包」：常驻热路径下会误导成「又在冷启动」；
   // 真卡住由下方 15s 心跳提示「仍在等待模型响应」。
 
-  const ok = sendWorkerCommand({
+  const ok = sendSlotWorkerCommand(slot, {
     op: 'prompt',
     task: rawTask,
     sessionId: effectiveSessionId,
@@ -3509,12 +4018,14 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   })
   if (!ok) {
     const message = '无法向常驻 dsh 写入任务'
-    turnActive = false
-    activeSkillTurn = null
-    clearActiveHarnessRun()
+    slot.turnActive = false
+    slot.activeSkillTurn = null
+    clearWorkerSlotActiveHarnessRun(slot.slotId)
+    syncLegacyActiveHarnessRunMirror()
     releaseHarnessRunAccess(runId)
-    resetWorkerState()
-    completeActiveJob({ ok: false, error: message, finalText: '' })
+    resetSlotWorkerState(slot)
+    completeSlotActiveJob(slot, { ok: false, error: message, finalText: '' })
+    pumpAllIdleSlotsForOverflow()
     return { started: false, message }
   }
 
@@ -3522,11 +4033,11 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   const turnStartedAt = Date.now()
   let lastWaitEmitSec = 0
   const idleProgress = setInterval(() => {
-    if (!turnActive || !child) {
+    if (!slot.turnActive || !slot.child || slot.abortSeq !== myAbortSeq) {
       clearInterval(idleProgress)
       return
     }
-    const procEx = child as ChildProcess & {
+    const procEx = slot.child as ChildProcess & {
       __aiartTurnSawOutput?: () => boolean
       __aiartTurnAccepted?: () => boolean
     }
@@ -3544,14 +4055,15 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     if (hit === undefined) return
     lastWaitEmitSec = hit
     const accepted = procEx.__aiartTurnAccepted?.() ?? false
-    emitStatus(
+    emitSlotStatus(
+      slot,
       accepted
         ? `模型尚未返回内容（已等待 ${hit}s）。可手动中止后检查网络 / OpenRouter 额度或换模型重试`
         : `仍在等待 runner 接手任务（已等待 ${hit}s）。可手动中止后重试`
     )
   }, 5_000)
   const poll = setInterval(() => {
-    if (!turnActive) {
+    if (!slot.turnActive || slot.abortSeq !== myAbortSeq) {
       clearInterval(idleProgress)
       clearInterval(poll)
     }
@@ -3587,42 +4099,115 @@ function forceKillProcess(proc: ChildProcess): void {
   }
 }
 
-export function abortHarnessTask(): void {
-  abortSeq++
-  clearIdleTimer()
-  const hadTurn = turnActive
-  activeSkillTurn = null
-  abortActiveMcpCanvasRuns('已中止')
-  if (!child) {
-    turnActive = false
-    clearActiveHarnessRun()
-    if (workerRunId) releaseHarnessRunAccess(workerRunId)
+function abortSingleSlot(slot: WorkerSlot, emitSessionOverride?: string): void {
+  slot.abortSeq++
+  clearSlotIdleTimer(slot)
+  const hadTurn = slot.turnActive
+  const targetSid = emitSessionOverride ?? (slot.sessionId || undefined)
+  const prevRunId = slot.workerRunId
+  const queued = slot.queue.splice(0, slot.queue.length)
+  for (const item of queued) {
+    for (const w of item.waiters) w({ ok: false, error: '已中止', finalText: '' })
+  }
+  slot.activeSkillTurn = null
+  slot.turnActive = false
+  clearWorkerSlotActiveHarnessRun(slot.slotId)
+  syncLegacyActiveHarnessRunMirror()
+  if (prevRunId) releaseHarnessRunAccess(prevRunId)
+  if (!slot.child) {
     // 无子进程也要让面板退出 running（例如正在异步预检/拉起常驻进程或已崩但 UI 未收）
     if (hadTurn) {
-      emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
-      emit({ type: 'error', message: '已中止' })
-      completeActiveJob({ ok: false, error: '已中止', finalText: '' })
+      emitForSession(targetSid, prevRunId || '0', {
+        type: 'tool',
+        name: 'dsh-agent',
+        state: 'done'
+      })
+      emitForSession(targetSid, prevRunId || '0', { type: 'error', message: '已中止' })
+      completeSlotActiveJob(slot, { ok: false, error: '已中止', finalText: '' })
     } else {
-      emit({ type: 'done', runId: workerRunId || '0' })
+      emitForSession(targetSid, prevRunId || '0', { type: 'done', runId: prevRunId || '0' })
+    }
+    pumpAllIdleSlotsForOverflow()
+    return
+  }
+  emitForSession(targetSid, prevRunId || '0', { type: 'status', text: '已请求中止' })
+  const proc = slot.child
+  ;(proc as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted?.()
+  forceKillProcess(proc)
+  resetSlotWorkerState(slot)
+  // 必须发 error/done：面板只在这两种事件里把 running 置 false
+  emitForSession(targetSid, prevRunId || '0', { type: 'tool', name: 'dsh-agent', state: 'done' })
+  if (hadTurn) {
+    emitForSession(targetSid, prevRunId || '0', { type: 'error', message: '已中止' })
+    completeSlotActiveJob(slot, { ok: false, error: '已中止', finalText: '' })
+  } else {
+    emitForSession(targetSid, '0', { type: 'done', runId: '0' })
+  }
+  pumpAllIdleSlotsForOverflow()
+}
+
+export function abortHarnessTask(sessionId?: string): void {
+  const cleanSessionId = typeof sessionId === 'string' ? sessionId.trim() : ''
+  if (cleanSessionId) {
+    let removedFromQueue = false
+    for (let i = overflowQueue.length - 1; i >= 0; i--) {
+      if ((overflowQueue[i]!.input.sessionId ?? '').trim() === cleanSessionId) {
+        const [removed] = overflowQueue.splice(i, 1)
+        removedFromQueue = true
+        if (removed) {
+          for (const w of removed.waiters) w({ ok: false, error: '已中止', finalText: '' })
+        }
+      }
+    }
+    for (const slot of workerSlots.values()) {
+      for (let i = slot.queue.length - 1; i >= 0; i--) {
+        if ((slot.queue[i]!.input.sessionId ?? '').trim() === cleanSessionId) {
+          const [removed] = slot.queue.splice(i, 1)
+          removedFromQueue = true
+          if (removed) {
+            for (const w of removed.waiters) w({ ok: false, error: '已中止', finalText: '' })
+          }
+        }
+      }
+    }
+    abortActiveMcpCanvasRuns('已中止', cleanSessionId)
+    const matchingSlots = [...workerSlots.values()].filter(
+      (s) => s.turnActive && s.sessionId === cleanSessionId
+    )
+    if (matchingSlots.length === 0) {
+      const activeSlots = [...workerSlots.values()].filter((s) => s.turnActive)
+      if (activeSlots.length === 1 && !activeSlots[0]!.sessionId) {
+        matchingSlots.push(activeSlots[0]!)
+      }
+    }
+    if (matchingSlots.length > 0) {
+      for (const slot of matchingSlots) {
+        abortSingleSlot(slot, cleanSessionId)
+      }
+    } else if (removedFromQueue) {
+      emitForSession(cleanSessionId, '0', { type: 'error', message: '已中止' })
+    } else {
+      emitForSession(cleanSessionId, '0', { type: 'done', runId: '0' })
     }
     return
   }
-  emit({ type: 'status', text: '已请求中止' })
-  const proc = child
-  ;(proc as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted?.()
-  turnActive = false
-  clearActiveHarnessRun()
-  if (workerRunId) releaseHarnessRunAccess(workerRunId)
-  forceKillProcess(proc)
-  resetWorkerState()
-  // 必须发 error/done：面板只在这两种事件里把 running 置 false
-  emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
-  if (hadTurn) {
-    emit({ type: 'error', message: '已中止' })
-    completeActiveJob({ ok: false, error: '已中止', finalText: '' })
-  } else {
-    emit({ type: 'done', runId: '0' })
+
+  const pendingOverflow = overflowQueue.splice(0, overflowQueue.length)
+  for (const item of pendingOverflow) {
+    for (const w of item.waiters) w({ ok: false, error: '已中止', finalText: '' })
   }
+  abortActiveMcpCanvasRuns('已中止')
+  if (workerSlots.size === 0) {
+    clearAllWorkerSlotActiveHarnessRuns()
+    clearActiveHarnessRun()
+    emit({ type: 'done', runId: '0' })
+    return
+  }
+  const allSlots = [...workerSlots.values()]
+  for (const slot of allSlots) {
+    abortSingleSlot(slot)
+  }
+  resetAllWorkerSlots()
 }
 
 /**
@@ -3685,24 +4270,35 @@ export function handleApprovalResponse(payload: ApprovalAnswer): boolean {
 
 /** 请求常驻 worker 刷盘并释放指定会话的写锁，便于宿主直接读取/导出/截断会话文件 */
 async function requestWorkerReleaseSession(sessionId?: string): Promise<void> {
-  if (!child || !workerPersistent || !workerReady || turnActive) return
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(() => {
-      sessionReleaseWaiters = sessionReleaseWaiters.filter((w) => w !== onDone)
-      resolve()
-    }, 1500)
-    const onDone = (): void => {
-      clearTimeout(timer)
-      resolve()
-    }
-    sessionReleaseWaiters.push(onDone)
-    const ok = sendWorkerCommand({ op: 'release_session', ...(sessionId ? { sessionId } : {}) })
-    if (!ok) {
-      clearTimeout(timer)
-      sessionReleaseWaiters = sessionReleaseWaiters.filter((w) => w !== onDone)
-      resolve()
-    }
-  })
+  const idleReadySlots = [...workerSlots.values()].filter(
+    (s) => s.child && s.workerPersistent && s.workerReady && !s.turnActive
+  )
+  if (!idleReadySlots.length) return
+  await Promise.all(
+    idleReadySlots.map(
+      (slot) =>
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            slot.sessionReleaseWaiters = slot.sessionReleaseWaiters.filter((w) => w !== onDone)
+            resolve()
+          }, 1500)
+          const onDone = (): void => {
+            clearTimeout(timer)
+            resolve()
+          }
+          slot.sessionReleaseWaiters.push(onDone)
+          const ok = sendSlotWorkerCommand(slot, {
+            op: 'release_session',
+            ...(sessionId ? { sessionId } : {})
+          })
+          if (!ok) {
+            clearTimeout(timer)
+            slot.sessionReleaseWaiters = slot.sessionReleaseWaiters.filter((w) => w !== onDone)
+            resolve()
+          }
+        })
+    )
+  )
 }
 
 const ZSTD_MAGIC = 0xfd2fb528
@@ -4152,30 +4748,42 @@ export async function controlHarnessGoal(
   if (action !== 'pause' && action !== 'resume' && action !== 'end') {
     return { ok: false, error: '不支持的目标操作' }
   }
-  if (action === 'resume' && !turnActive) {
+  const slot = findSlotForSession(input.sessionId)
+  if (action === 'resume' && !slot?.turnActive) {
     const started = await runHarnessTask({
       task: '/goal resume',
       sessionId: input.sessionId,
       mode: 'craft'
     })
-    return { ok: started.started, goal: lastGoalSnapshot, error: started.message }
+    return { ok: started.started, goal: slot?.lastGoalSnapshot ?? null, error: started.message }
   }
-  if (child && workerPersistent && workerReady) {
-    sendWorkerCommand({
+  if (slot && slot.child && slot.workerPersistent && slot.workerReady) {
+    sendSlotWorkerCommand(slot, {
       op: 'goal_control',
       action,
       ...(input.summary ? { summary: input.summary } : {}),
       ...(input.sessionId ? { sessionId: input.sessionId } : {})
     })
-    if (lastGoalSnapshot) {
+    if (slot.lastGoalSnapshot) {
       if (action === 'pause') {
-        lastGoalSnapshot = { ...lastGoalSnapshot, phase: 'paused', activation: 'paused' }
+        slot.lastGoalSnapshot = {
+          ...slot.lastGoalSnapshot,
+          phase: 'paused',
+          activation: 'paused'
+        }
       } else if (action === 'end') {
-        lastGoalSnapshot = { ...lastGoalSnapshot, phase: 'completed', activation: 'paused' }
+        slot.lastGoalSnapshot = {
+          ...slot.lastGoalSnapshot,
+          phase: 'completed',
+          activation: 'paused'
+        }
       }
-      emit({ type: 'goal', goal: lastGoalSnapshot })
+      emitForSession(input.sessionId || slot.sessionId, slot.workerRunId, {
+        type: 'goal',
+        goal: slot.lastGoalSnapshot
+      })
     }
-    return { ok: true, goal: lastGoalSnapshot }
+    return { ok: true, goal: slot.lastGoalSnapshot }
   }
   return { ok: false, error: '当前无运行中的目标会话' }
 }
@@ -4184,7 +4792,13 @@ export async function controlHarnessGoal(
  * 获取当前会话内待触发的定时提醒快照。
  */
 export function listHarnessSchedules(): HarnessScheduleView[] {
-  return [...lastSchedulesSnapshot]
+  const byId = new Map<string, HarnessScheduleView>()
+  for (const slot of workerSlots.values()) {
+    for (const s of slot.lastSchedulesSnapshot) {
+      byId.set(s.id, s)
+    }
+  }
+  return [...byId.values()]
 }
 
 /**
@@ -4195,17 +4809,31 @@ export async function deleteHarnessSchedule(
 ): Promise<{ ok: boolean; schedules?: HarnessScheduleView[]; error?: string }> {
   const scheduleId = String(input?.scheduleId ?? '').trim()
   if (!scheduleId) return { ok: false, error: '缺少 scheduleId' }
-  if (child && workerPersistent && workerReady) {
-    sendWorkerCommand({
-      op: 'schedule_delete',
-      scheduleId,
-      ...(input.sessionId ? { sessionId: input.sessionId } : {})
+  const targetSlot =
+    findSlotForSession(input.sessionId) ??
+    [...workerSlots.values()].find((s) =>
+      s.lastSchedulesSnapshot.some((it) => it.id === scheduleId)
+    )
+  const slotsToNotify = targetSlot
+    ? [targetSlot]
+    : [...workerSlots.values()].filter((s) => s.child && s.workerPersistent && s.workerReady)
+  for (const slot of slotsToNotify) {
+    if (slot.child && slot.workerPersistent && slot.workerReady) {
+      sendSlotWorkerCommand(slot, {
+        op: 'schedule_delete',
+        scheduleId,
+        ...(input.sessionId ? { sessionId: input.sessionId } : {})
+      })
+    }
+    slot.lastSchedulesSnapshot = slot.lastSchedulesSnapshot.filter((s) => s.id !== scheduleId)
+    slot.activeScheduleCount = slot.lastSchedulesSnapshot.length
+    emitForSession(input.sessionId || slot.sessionId, slot.workerRunId, {
+      type: 'schedule',
+      schedules: slot.lastSchedulesSnapshot
     })
   }
-  lastSchedulesSnapshot = lastSchedulesSnapshot.filter((s) => s.id !== scheduleId)
-  activeScheduleCount = lastSchedulesSnapshot.length
-  emit({ type: 'schedule', schedules: lastSchedulesSnapshot })
-  return { ok: true, schedules: lastSchedulesSnapshot }
+  const remaining = targetSlot ? targetSlot.lastSchedulesSnapshot : listHarnessSchedules()
+  return { ok: true, schedules: remaining }
 }
 
 interface ResolveHarnessFilePathOptions {
@@ -4328,6 +4956,7 @@ function resolveAllowedHarnessFilePath(
       [
         options?.workspace,
         ...(options?.extraWorkspaces ?? []),
+        ...[...workerSlots.values()].map((s) => s.workspace),
         activeWorkspaceOverride,
         projectService.getOpenProjectState()?.rootPath,
         resolveWorkspace(),
@@ -4492,10 +5121,11 @@ export async function steerHarnessTurn(
 ): Promise<SteerHarnessTurnResult> {
   const text = String(input?.text ?? '').trim()
   if (!text) return { ok: false, steered: false, error: '转向指令为空' }
-  if (!child || (!turnActive && !input?.subagentSessionId)) {
+  const slot = findSlotForSession(input?.sessionId)
+  if (!slot?.child || (!slot.turnActive && !input?.subagentSessionId)) {
     return { ok: false, steered: false, error: '当前无运行中的 Agent 轮次' }
   }
-  const sent = sendWorkerCommand({
+  const sent = sendSlotWorkerCommand(slot, {
     op: 'steer',
     text,
     ...(input.subagentSessionId ? { subagentSessionId: input.subagentSessionId } : {}),
@@ -4504,8 +5134,9 @@ export async function steerHarnessTurn(
   if (!sent) {
     return { ok: false, steered: false, error: '向 dsh worker 发送实时转向指令失败' }
   }
-  emit({ type: 'steered' })
-  emitStatus(
+  emitForSession(input.sessionId || slot.sessionId, slot.workerRunId, { type: 'steered' })
+  emitSlotStatus(
+    slot,
     input.subagentSessionId
       ? `⚡ 已向子代理（${input.subagentSessionId.slice(0, 8)}）注入实时指令`
       : '⚡ 已注入盘中实时转向指令（无需中断当前轮次）'
@@ -4519,12 +5150,26 @@ export async function steerHarnessTurn(
  */
 export function setHarnessSandboxMode(input: SetHarnessSandboxModeInput): { ok: boolean } {
   const sandboxMode = normalizeSandboxMode(input?.sandboxMode)
-  if (child && !child.killed) {
-    sendWorkerCommand({
-      op: 'set_sandbox_mode',
-      sandboxMode,
-      steerLiveTurn: Boolean(input?.steerLiveTurn)
-    })
+  const targetSessionId = input?.sessionId?.trim()
+  if (targetSessionId) {
+    const slot = findSlotForSession(targetSessionId)
+    if (slot?.child && !slot.child.killed) {
+      sendSlotWorkerCommand(slot, {
+        op: 'set_sandbox_mode',
+        sandboxMode,
+        steerLiveTurn: Boolean(input?.steerLiveTurn)
+      })
+    }
+    return { ok: true }
+  }
+  for (const slot of workerSlots.values()) {
+    if (slot.child && !slot.child.killed) {
+      sendSlotWorkerCommand(slot, {
+        op: 'set_sandbox_mode',
+        sandboxMode,
+        steerLiveTurn: Boolean(input?.steerLiveTurn)
+      })
+    }
   }
   return { ok: true }
 }
@@ -4565,7 +5210,7 @@ export async function notifyHarnessCanvasEvent(
     createdAt: new Date().toISOString(),
     autoTriggered: Boolean(input.autoTrigger)
   }
-  emit({ type: 'canvas-event', event: view })
+  emitForSession(input.sessionId, undefined, { type: 'canvas-event', event: view })
   broadcastToAllWindows(IpcChannels.HARNESS_CANVAS_EVENT, view)
 
   if (input.autoTrigger) {
@@ -4573,10 +5218,13 @@ export async function notifyHarnessCanvasEvent(
       input.kind === 'node_error'
         ? `[Reactive Canvas Event: 节点执行报错]\n节点：${input.nodeTitle || input.nodeId || '未知节点'}${input.nodeType ? ` (${input.nodeType})` : ''}\n错误信息：${input.errorMessage || input.detail || input.title}\n请立即定位报错原因，检查节点参数或上游连线并给出修复方案（必要时直接调用画布工具修复）。`
         : `[Reactive Canvas Event: 画布工作流执行完成]\n${input.title}${input.detail ? `\n详情：${input.detail}` : ''}${input.outputPaths?.length ? `\n产物路径：${input.outputPaths.join(', ')}` : ''}\n请审阅本次工作流产出，检查是否需要进一步合成、剪辑或调用 present_files 交付。`
-    if (turnActive) {
+    const activeSlot = input.sessionId
+      ? findBusySlotForSession(input.sessionId)
+      : findSlotForSession()
+    if (activeSlot?.turnActive) {
       await steerHarnessTurn({
         text: prompt,
-        sessionId: input.sessionId
+        sessionId: input.sessionId || activeSlot.sessionId || undefined
       })
     } else {
       await runHarnessTask({
@@ -4609,11 +5257,13 @@ const latestMcpToolExecution = new Map<string, { detail: string; steps: string[]
 setMcpToolSettledHook((ev) => {
   const summary = summarizeMcpToolOperation(ev.tool, ev.args, ev.result)
   if (summary.steps.length > 0 || summary.detail) {
-    latestMcpToolExecution.set(ev.tool, {
+    const record = {
       detail: summary.detail,
       steps: summary.steps,
       at: Date.now()
-    })
+    }
+    latestMcpToolExecution.set(`${ev.sessionId || ''}::${ev.tool}`, record)
+    latestMcpToolExecution.set(ev.tool, record)
   }
 })
 
@@ -4631,29 +5281,33 @@ setCanvasTaskSettledHook((report) => {
       detail: report.relativePaths?.length
         ? `共生成 ${report.relativePaths.length} 个产物文件`
         : undefined,
-      outputPaths: report.relativePaths
+      outputPaths: report.relativePaths,
+      ...(report.sessionId ? { sessionId: report.sessionId } : {})
     })
   } else if (report.phase === 'failed' || report.status === 'error') {
     void notifyHarnessCanvasEvent({
       kind: 'node_error',
       title: '画布工作流执行报错',
-      errorMessage: report.error || '节点执行异常'
+      errorMessage: report.error || '节点执行异常',
+      ...(report.sessionId ? { sessionId: report.sessionId } : {})
     })
   }
 })
 
-/** 应用退出时清理子进程，避免残留 npx 拉起的 dsh */
+/** 应用退出时清理全部常驻与临时 dsh 子进程，避免残留 */
 app.on('will-quit', () => {
-  clearIdleTimer()
-  clearActiveHarnessRun()
-  if (child) {
-    try {
-      sendWorkerCommand({ op: 'shutdown' })
-    } catch {
-      /* ignore */
+  for (const slot of workerSlots.values()) {
+    clearSlotIdleTimer(slot)
+    if (slot.child) {
+      try {
+        sendSlotWorkerCommand(slot, { op: 'shutdown' })
+      } catch {
+        /* ignore */
+      }
+      const proc = slot.child
+      resetSlotWorkerState(slot)
+      forceKillProcess(proc)
     }
-    const proc = child
-    resetWorkerState()
-    forceKillProcess(proc)
   }
+  resetAllWorkerSlots()
 })

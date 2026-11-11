@@ -29,6 +29,7 @@ export interface McpAccessView {
  */
 export const MCP_MODE_HEADER = 'x-aiart-mode'
 export const MCP_RUN_ID_HEADER = 'x-aiart-run-id'
+export const MCP_WORKER_SLOT_HEADER = 'x-aiart-worker-slot'
 
 /**
  * 模式与运行 id 的请求头载荷：值一律转成字符串。

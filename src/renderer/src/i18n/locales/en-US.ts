@@ -1476,6 +1476,12 @@ export default {
       renamedProjectStatus: 'Renamed project to: {name}',
       projectBusySwitchHint:
         'A conversation is currently running. Please wait or stop it before switching projects.',
+      parallelRunningBadge: '{count} sessions running',
+      sessionRunningHint: 'Running in background',
+      sessionWaitingActionHint: 'Waiting for your input',
+      sessionUnreadDoneHint: 'Reply completed',
+      sessionBusyDeleteHint:
+        'This conversation is currently running. Switch to it and stop it before deleting.',
       doubleClickRenameHint: 'Double-click to rename, right-click for more actions',
       projectAddedStatus: 'Added project to workspace: {name}',
       projectSwitchedStatus: 'Switched project conversation to: {name}',

@@ -470,7 +470,8 @@ const api: StudioApi = {
   steerHarnessTurn: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_STEER, input),
   setHarnessSandboxMode: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_SET_SANDBOX_MODE, input),
   notifyHarnessCanvasEvent: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_CANVAS_EVENT, input),
-  abortHarnessTask: () => ipcRenderer.invoke(IpcChannels.HARNESS_ABORT),
+  abortHarnessTask: (sessionId?: string) =>
+    ipcRenderer.invoke(IpcChannels.HARNESS_ABORT, sessionId),
   prewarmHarness: () => ipcRenderer.invoke(IpcChannels.HARNESS_PREWARM),
   getDshSkillsInfo: () => ipcRenderer.invoke(IpcChannels.SKILLS_GET_INFO),
   openDshSkillsDir: () => ipcRenderer.invoke(IpcChannels.SKILLS_OPEN_DIR),

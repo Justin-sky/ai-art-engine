@@ -706,6 +706,8 @@ export interface McpTaskReportPayload {
    * 主进程据此把活动收尾成可预览产物，对话流与任务列表随即出资产卡。
    */
   relativePaths?: string[]
+  /** 发起该画布运行任务的对话会话 ID（主进程结算时补齐） */
+  sessionId?: string
 }
 
 /**
@@ -798,6 +800,8 @@ export interface McpActivity {
   apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>
   /** 仅 game_one_sentence_create：对话一句话游戏卡的规格摘要 */
   oneSentenceGame?: OneSentenceGameCardInfo
+  /** 发起该活动的对话会话 ID（多会话并行时用于精确路由进度与产物卡片） */
+  sessionId?: string
 }
 
 /** MCP：单条图编辑操作（见 shared/graph/mcpGraphEdit） */
@@ -930,6 +934,8 @@ export interface AskUserQuestion {
   options?: string[]
   /** 附加说明（可选） */
   hint?: string
+  /** 发起提问的对话会话 ID（多会话并行时用于精确插入对应会话） */
+  sessionId?: string
 }
 
 /** MCP：渲染层 → 主进程，用户对 ask_user 提问的选择 */
@@ -1054,6 +1060,10 @@ export interface HarnessStatus {
   workspace?: string
   /** 当前是否有 dsh 对话轮次正在执行 */
   running?: boolean
+  /** 当前正在并行执行的对话会话 ID 列表 */
+  runningSessionIds?: string[]
+  /** 当前并行活跃的 worker 槽位数 */
+  runningCount?: number
 }
 
 /** Chat 面板的 agent 交互模式（类似 Cursor 的 Craft / Ask / Plan） */
@@ -1070,6 +1080,8 @@ export interface SetHarnessSandboxModeInput {
   sandboxMode: HarnessSandboxMode
   /** 若为 true 且当前轮次正在运行，向正在执行的 Agent 注入实时切换提示，无需打断重跑 */
   steerLiveTurn?: boolean
+  /** 可选：仅切换指定对话会话的常驻沙箱模式 */
+  sessionId?: string
 }
 
 /** Harness：一次对话任务输入（渲染层 → 主进程） */
@@ -1670,8 +1682,8 @@ export interface HarnessCanvasEventResult {
   error?: string
 }
 
-/** Harness：任务事件流（main → 渲染层） */
-export type HarnessEvent =
+/** Harness：任务事件流核心载荷 */
+export type HarnessEventCore =
   | { type: 'assistant'; text: string }
   | {
       type: 'status'
@@ -1754,6 +1766,14 @@ export type HarnessEvent =
       type: 'canvas-event'
       event: HarnessCanvasEventView
     }
+
+/** Harness：任务事件流（main → 渲染层，附带可选的会话归属与运行标识以支持多会话并行路由） */
+export type HarnessEvent = HarnessEventCore & {
+  /** 事件归属的对话会话 ID（对应前端 ChatSession.id） */
+  sessionId?: string
+  /** 事件归属的运行标识 */
+  runId?: string
+}
 
 /** MCP：设置界面提交的配置修改（重启时应用） */
 export interface McpRestartInput {
@@ -2493,8 +2513,8 @@ export interface StudioApi {
    */
   buildGamePlayProject: (input: BuildGamePlayProjectInput) => Promise<BuildGamePlayProjectResult>
 
-  /** Harness：中止当前任务 */
-  abortHarnessTask: () => Promise<void>
+  /** Harness：中止当前任务（传入 sessionId 时仅中止该会话，缺省中止全部活跃会话） */
+  abortHarnessTask: (sessionId?: string) => Promise<void>
 
   /** Harness：闲时预热常驻 dsh worker */
   prewarmHarness: () => Promise<{ ok: boolean; message?: string }>

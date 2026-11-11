@@ -6,6 +6,10 @@ import fairyCritPng from '@renderer/assets/wish-fairy/crit.png'
 import fairySuccessPng from '@renderer/assets/wish-fairy/success.png'
 import fairyErrorPng from '@renderer/assets/wish-fairy/error.png'
 import fairyPeekPng from '@renderer/assets/wish-fairy/peek.png'
+import type {
+  WishShrineCompanionView,
+  WishShrineMilestoneEvent
+} from '@renderer/features/graph/model/wishShrineBridge'
 import {
   buildFairySpellLinks,
   computeFairyCastPosition,
@@ -39,6 +43,10 @@ const props = defineProps<{
   promptText?: string
   activityText?: string
   outcome?: 'idle' | 'success' | 'error'
+  activeSessionCount?: number
+  waveCompletedCount?: number
+  companionSessions?: readonly WishShrineCompanionView[]
+  milestone?: WishShrineMilestoneEvent | null
   isEn?: boolean
   /** 节点画布中正在 cook（运行中）的节点目标列表（屏幕坐标） */
   cookingTargets?: readonly WishCookingNodeTarget[]
@@ -190,15 +198,57 @@ const promptCategory = computed<WishChantCategory>(() =>
   detectWishPromptCategory(props.promptText ?? '')
 )
 
-// 切换不同会话时：若该会话曾手动指定过仙子则恢复，否则清空手动覆盖以按新会话自动分配不同仙子
+// 切换不同会话或主领衔仙子接力时：若该会话曾手动指定过仙子则恢复，否则按新会话自动分配对应仙子，且在并行运行中无缝接力不重置欧气
 watch(
   () => props.sessionId,
   (newSid, oldSid) => {
     if (newSid === oldSid) return
     const sid = (newSid ?? '').trim()
     manualFairyId.value = sid ? (sessionFairyOverrides.value[sid] ?? null) : null
+    if (visible.value && isAnyActive.value && oldSid && sid) {
+      triggerGirlBounce()
+      spawnBurstParticles(currentFairy.value.burstSymbols)
+    }
   }
 )
+
+function truncateWishTitle(raw: string | undefined, maxLen = 14): string {
+  const cleaned = (raw ?? '').trim().replace(/\s+/g, ' ')
+  if (!cleaned) return props.isEn ? 'Session' : '子会话' // cjk-ok
+  return cleaned.length > maxLen ? `${cleaned.slice(0, maxLen)}…` : cleaned
+}
+
+/** 后台并行护法的协力仙子勋章列表（展示除当前领衔仙子外的其它并行会话，未手动指定时自动错开人设避免撞衫） */
+const companionBadges = computed(() => {
+  const list = props.companionSessions ?? []
+  const usedIds = new Set<WishFairyId>([currentFairy.value.id])
+  return list.map((item) => {
+    const manualOverride = sessionFairyOverrides.value[item.sessionId] ?? null
+    let persona = selectWishFairyForSession({
+      sessionId: item.sessionId,
+      sessionTitle: item.sessionTitle,
+      promptText: item.promptText,
+      preferredId: manualOverride
+    })
+    if (!manualOverride && usedIds.has(persona.id)) {
+      let candidateId = nextWishFairyId(persona.id)
+      for (let step = 0; step < 3 && usedIds.has(candidateId); step++) {
+        candidateId = nextWishFairyId(candidateId)
+      }
+      persona = selectWishFairyForSession({
+        sessionId: item.sessionId,
+        preferredId: candidateId
+      })
+    }
+    usedIds.add(persona.id)
+    const shortTitle = truncateWishTitle(item.sessionTitle, 12)
+    return {
+      sessionId: item.sessionId,
+      shortTitle,
+      persona
+    }
+  })
+})
 
 /** 当前会话激活的祈福仙子（支持按会话自动匹配 + 手动切换） */
 const currentFairy = computed<WishFairyPersona>(() => {
@@ -1086,7 +1136,16 @@ function stopPrayingWithOutcome(outcome: 'idle' | 'success' | 'error'): void {
     activePose.value = 'dance'
     activeExpression.value = 'happy'
     spawnBurstParticles(currentFairy.value.burstSymbols)
-    latestChantText.value = props.isEn ? '✌️ Wish Granted! All Green!' : '✌️ 许愿灵验！功德圆满！' // cjk-ok
+    const waveCount = props.waveCompletedCount ?? 0
+    if (waveCount >= 2) {
+      const multiDoneMsg = props.isEn
+        ? `✌️ All ${waveCount} Parallel Wishes Granted!`
+        : `✌️ 全部 ${waveCount} 路并行许愿圆满达成！` // cjk-ok
+      latestChantText.value = multiDoneMsg
+      pushCustomChantBubble(multiDoneMsg, 'gold', true)
+    } else {
+      latestChantText.value = props.isEn ? '✌️ Wish Granted! All Green!' : '✌️ 许愿灵验！功德圆满！' // cjk-ok
+    }
   }
   if (hideTimer !== null) {
     window.clearTimeout(hideTimer)
@@ -1231,6 +1290,69 @@ function onCycleFairy(): void {
   spawnLuck(true)
 }
 
+/** 多会话并行先后完成阶段庆典：某一路会话率先跑完但仍有其它会话在跑时，仙子不退场，绽放阶段烟花并播报接力气泡 */
+watch(
+  () => props.milestone?.seq,
+  (seq, prevSeq) => {
+    if (!seq || seq === prevSeq) return
+    const m = props.milestone
+    if (!m || !visible.value || !isAnyActive.value) return
+    const shortTitle = truncateWishTitle(m.sessionTitle, 14)
+    triggerGirlBounce()
+    if (m.outcome === 'success') {
+      spawnBurstParticles(currentFairy.value.burstSymbols)
+      spawnLuck(true)
+      if (activeCookingTargets.value.length === 0) {
+        applyTemporaryReaction('happy', 'cheer', 1200)
+      }
+      const msg = props.isEn
+        ? `✨ "${shortTitle}" done! Guarding ${m.remainingCount} active~`
+        : `✨「${shortTitle}」已完成！继续护航剩余 ${m.remainingCount} 个会话~` // cjk-ok
+      pushCustomChantBubble(msg, 'gold', true)
+    } else {
+      if (activeCookingTargets.value.length === 0) {
+        applyTemporaryReaction('surprised', 'wave', 1100)
+      }
+      const msg = props.isEn
+        ? `⚡ "${shortTitle}" stopped · guarding ${m.remainingCount} active~`
+        : `⚡「${shortTitle}」已中断，继续护航剩余 ${m.remainingCount} 个会话~` // cjk-ok
+      pushCustomChantBubble(msg, 'charm', false)
+    }
+  }
+)
+
+/** 多节点并行 cook 先后完成平滑收束：单个节点跑完时在靶心绽放收官星花，全部节点跑完但对话仍在继续时切回巡游祈福态 */
+const prevCookingNodeMap = new Map<string, WishCookingNodeTarget>()
+watch(
+  activeCookingTargets,
+  (nextTargets) => {
+    const nextIds = new Set(nextTargets.map((t) => t.id))
+    let removedCount = 0
+    for (const [id, prevNode] of prevCookingNodeMap.entries()) {
+      if (!nextIds.has(id)) {
+        removedCount += 1
+        if (visible.value && !minimized.value) {
+          spawnImpactSparks(
+            prevNode.screenX + prevNode.screenWidth * 0.5,
+            prevNode.screenY + prevNode.screenHeight * 0.5,
+            14
+          )
+        }
+      }
+    }
+    prevCookingNodeMap.clear()
+    for (const t of nextTargets) {
+      prevCookingNodeMap.set(t.id, t)
+    }
+    if (removedCount > 0 && nextTargets.length === 0 && visible.value && isAnyActive.value) {
+      stageAct.value = 'roam'
+      applyTemporaryReaction('happy', 'cheer', 1050)
+      spawnBurstParticles(currentFairy.value.burstSymbols)
+    }
+  },
+  { deep: true }
+)
+
 watch(
   isAnyActive,
   (active, wasActive) => {
@@ -1256,7 +1378,14 @@ onBeforeUnmount(() => {
 const ribbonBadgeText = computed(() => {
   const f = currentFairy.value
   const name = props.isEn ? f.nameEn : f.nameZh
+  const activeCount = props.activeSessionCount ?? 0
+  const waveCount = props.waveCompletedCount ?? 0
   if (displayPhase.value === 'success') {
+    if (waveCount >= 2) {
+      return props.isEn
+        ? `✌️ ${name} · All ${waveCount} Done!`
+        : `✌️ ${name} · ${waveCount}路圆满！` // cjk-ok
+    }
     return props.isEn ? `✌️ ${name} · Granted!` : `✌️ ${name} · 灵验！` // cjk-ok
   }
   if (displayPhase.value === 'error') {
@@ -1264,6 +1393,11 @@ const ribbonBadgeText = computed(() => {
   }
   if (displayPhase.value === 'crit') {
     return props.isEn ? `🌟 ${name} · SSR Crit!` : `🌟 ${name} · 暴击！` // cjk-ok
+  }
+  if (activeCount >= 2) {
+    return props.isEn
+      ? `${f.emoji} ${name} · ×${activeCount}`
+      : `${f.emoji} ${name} · ${activeCount}路同祈` // cjk-ok
   }
   return `${f.emoji} ${name}`
 })
@@ -1519,6 +1653,17 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
           @click="onBlessClick"
         >
           <span class="mini-pray-icon" aria-hidden="true">{{ currentFairy.emoji }}</span>
+          <span
+            v-if="(activeSessionCount ?? 0) >= 2"
+            class="mini-parallel-badge"
+            :title="
+              isEn
+                ? `${activeSessionCount} sessions praying in parallel`
+                : `${activeSessionCount} 个会话并行护法中` /* cjk-ok */
+            "
+          >
+            ×{{ activeSessionCount }}
+          </span>
           <span class="mini-meteor-spark" aria-hidden="true">🌠</span>
           <span class="mini-chant-text">{{ latestChantText }}</span>
           <span class="mini-karma-badge" :class="{ bump: karmaBump }">
@@ -1991,6 +2136,31 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
                 <span class="chant-label">{{ chant.text }}</span>
               </div>
             </div>
+          </div>
+
+          <!-- 多会话并行护法星轨：当有 2 个及以上会话同时执行时，展示后台协力仙子微缩勋章 -->
+          <div
+            v-if="
+              companionBadges.length > 0 && displayPhase !== 'success' && displayPhase !== 'error'
+            "
+            class="wish-companion-orbit"
+            @mouseenter="onActorMouseEnter"
+            @mouseleave="onActorMouseLeave"
+          >
+            <span
+              v-for="comp in companionBadges"
+              :key="comp.sessionId"
+              class="wish-companion-chip"
+              :style="{ '--comp-accent': comp.persona.theme.accentColor }"
+              :title="
+                isEn
+                  ? `Co-praying · ${comp.persona.nameEn}: ${comp.shortTitle}`
+                  : `协力护法 · ${comp.persona.nameZh}：${comp.shortTitle}` /* cjk-ok */
+              "
+            >
+              <span class="comp-emoji" aria-hidden="true">{{ comp.persona.emoji }}</span>
+              <span class="comp-title">{{ comp.shortTitle }}</span>
+            </span>
           </div>
 
           <!-- 仙子身下悬浮的轻巧祈愿铭牌（点按攒欧气 + 一键折叠） -->
@@ -3112,6 +3282,67 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
 
 .mini-pray-icon {
   animation: wish-hands-pray 0.85s ease-in-out infinite alternate;
+}
+
+.mini-parallel-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5px 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #e0f2fe;
+  background: rgba(56, 189, 248, 0.26);
+  border: 1px solid rgba(56, 189, 248, 0.55);
+}
+
+/* ── 多会话并行协力仙子微缩星轨条 ── */
+.wish-companion-orbit {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 3px 4px;
+  max-width: 248px;
+  pointer-events: auto;
+}
+
+.wish-companion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1.5px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #f1f5f9;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid var(--comp-accent, rgba(56, 189, 248, 0.65));
+  box-shadow: 0 2px 8px rgba(15, 10, 40, 0.45);
+  backdrop-filter: blur(6px);
+  animation: wish-companion-bob 1.8s ease-in-out infinite alternate;
+}
+
+.wish-companion-chip .comp-emoji {
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.wish-companion-chip .comp-title {
+  max-width: 78px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes wish-companion-bob {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-2px);
+  }
 }
 
 .mini-chant-text {

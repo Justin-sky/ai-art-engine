@@ -105,7 +105,12 @@ import ChatChangesCard from './ChatChangesCard.vue'
 import ChatOneSentenceGameCard from './ChatOneSentenceGameCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
 import ChatCopyIcon from './ChatCopyIcon.vue'
-import { syncWishShrineChatBridge } from '../features/graph/model/wishShrineBridge'
+import {
+  completeWishShrineSession,
+  reconcileWishShrineRunningSessions,
+  setWishShrineFocusedSession,
+  startWishShrineSession
+} from '../features/graph/model/wishShrineBridge'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 import {
   notifyWeatherTaskComplete,
@@ -217,6 +222,8 @@ const {
   commitContextUsed,
   commitTodos,
   commitGoal,
+  getSessionScope,
+  updateSessionById,
   forkSession
 } = useChatHistory()
 
@@ -367,7 +374,45 @@ const workspaceStore = useWorkspaceStore()
 const assetDragOver = ref(false)
 let historyTimer: number | null = null
 
-/** 从当前激活会话恢复消息与上下文用量 */
+function hasUnansweredPromptOrApproval(list: ReadonlyArray<ChatMsg>): boolean {
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i]
+    if (!m) continue
+    if (m.kind === 'user') break
+    if (m.kind === 'prompt' && (m.answered === null || m.answered === undefined)) return true
+    if (m.kind === 'approval' && !m.expired && (m.decision === null || m.decision === undefined)) {
+      return true
+    }
+    if (m.kind === 'sandbox-blocked' && (m.decision === null || m.decision === undefined)) {
+      return true
+    }
+  }
+  return false
+}
+
+/** 切走会话前把当前会话消息与瞬态运行上下文快照归档 */
+function saveCurrentActiveSessionState(): void {
+  const prevId = activeId.value
+  if (prevId) {
+    const rt = getSessionRuntime(prevId)
+    rt.preparingTask = preparingTask
+    rt.sessionStart = sessionStart
+    rt.roundStartAt = roundStartAt
+    rt.pendingReasoning = pendingReasoning
+    rt.subagents = [...sessionSubagents.value]
+    rt.schedules = [...sessionSchedules.value]
+    rt.latestCanvasEvent = latestCanvasEvent.value
+    rt.lastRoundOutcome = lastRoundOutcome.value
+    rt.justFinished = false
+    rt.waitingInput = hasUnansweredPromptOrApproval(messages.value)
+  }
+  commitMessages([...messages.value])
+  commitContextUsed(harnessContextUsed.value)
+  commitTodos([...sessionTodos.value])
+  commitGoal(sessionGoal.value)
+}
+
+/** 从当前激活会话恢复消息、上下文用量与该会话专属的并行运行态 */
 function loadActiveMessages(): void {
   messages.value = activeSession.value?.messages ? [...activeSession.value.messages] : []
   // 上下文用量随会话落盘：切回 / 重启后恢复上次 harness 上报的真实值，
@@ -376,25 +421,31 @@ function loadActiveMessages(): void {
   sessionTodos.value = activeSession.value?.todos ? [...activeSession.value.todos] : []
   sessionGoal.value = activeSession.value?.goal ?? null
   goalDismissed.value = false
-  sessionSchedules.value = []
-  sessionSubagents.value = []
+  const rt = getSessionRuntime(activeId.value)
+  if (rt.unreadDone) {
+    rt.unreadDone = false
+    rt.justFinished = true
+  }
+  rt.waitingInput = hasUnansweredPromptOrApproval(messages.value)
+  preparingTask = rt.preparingTask
+  sessionStart = rt.sessionStart
+  roundStartAt = rt.roundStartAt
+  pendingReasoning = rt.pendingReasoning
+  sessionSchedules.value = [...rt.schedules]
+  sessionSubagents.value = [...rt.subagents]
   subagentFollowupTarget.value = null
   subagentFollowupDraft.value = ''
-  latestCanvasEvent.value = null
+  latestCanvasEvent.value = rt.latestCanvasEvent
+  lastRoundOutcome.value = rt.lastRoundOutcome
 }
 
-/** 切换会话：先保存当前，再加载目标 */
+/** 切换会话：先保存当前会话状态（后台运行中的会话继续在独立 worker 中并行执行），再加载目标会话 */
 function onSessionChange(id: string): void {
   if (!id || id === activeId.value) return
-  commitMessages([...messages.value])
-  // 真实上下文用量也归到切走前的会话：否则防抖窗口里那一次上报会跟着新会话一起丢掉
-  commitContextUsed(harnessContextUsed.value)
-  commitTodos([...sessionTodos.value])
-  commitGoal(sessionGoal.value)
+  saveCurrentActiveSessionState()
+  persistHistory()
   activateSession(id)
   loadActiveMessages()
-  // 队列属于「当前这段对话」：切走时清掉，避免排队中的消息发进另一个会话
-  clearSendQueue()
   // 切换可能打断输入法组合（compositionend 丢失时 composing 残留，导致 Enter 无法发送），复位之
   composing.value = false
   scrollToBottom()
@@ -402,14 +453,10 @@ function onSessionChange(id: string): void {
 
 function onNewSession(): void {
   automationsViewOpen.value = false
-  commitMessages([...messages.value])
-  commitContextUsed(harnessContextUsed.value)
-  commitTodos([...sessionTodos.value])
-  commitGoal(sessionGoal.value)
+  saveCurrentActiveSessionState()
+  persistHistory()
   createSession()
   loadActiveMessages()
-  // 新会话不应继承上一段对话的排队消息
-  clearSendQueue()
   resetEditor()
   composing.value = false
   scrollToBottom()
@@ -419,14 +466,10 @@ function onNewSession(): void {
 /** 在当前工作空间自身（Conversations 区）新建会话，不归入任何外部子工程下 */
 function onNewWorkspaceSession(): void {
   automationsViewOpen.value = false
-  commitMessages([...messages.value])
-  commitContextUsed(harnessContextUsed.value)
-  commitTodos([...sessionTodos.value])
-  commitGoal(sessionGoal.value)
+  saveCurrentActiveSessionState()
   persistHistory()
   createWorkspaceSession()
   loadActiveMessages()
-  clearSendQueue()
   resetEditor()
   composing.value = false
   conversationsSectionOpen.value = true
@@ -436,19 +479,14 @@ function onNewWorkspaceSession(): void {
 
 /** Codex 风格：添加本地项目文件夹（如 clientdev_2021 / ai-art-engine）到 Projects 树并绑定为 AI 分析工作区 */
 async function onAddChatProjectFolder(): Promise<void> {
-  if (running.value) return
   try {
     const dir = await window.studio?.selectDirectory?.()
     if (!dir?.trim()) return
-    commitMessages([...messages.value])
-    commitContextUsed(harnessContextUsed.value)
-    commitTodos([...sessionTodos.value])
-    commitGoal(sessionGoal.value)
+    saveCurrentActiveSessionState()
     persistHistory()
     const entry = addExternalChatProject(dir.trim())
     if (!entry) return
     loadActiveMessages()
-    clearSendQueue()
     resetEditor()
     composing.value = false
     projectsPanelOpen.value = true
@@ -460,20 +498,15 @@ async function onAddChatProjectFolder(): Promise<void> {
   }
 }
 
-/** Codex 风格：切换任意项目文件夹下的指定会话，同时切换 AI 工作区到该项目根目录 */
+/** Codex 风格：切换任意项目文件夹下的指定会话（后台运行的其它会话不受影响，保持并行执行） */
 function onSelectProjectSession(targetScope: string, sessionId: string): void {
-  if (running.value) return
   automationsViewOpen.value = false
   const scopeChanged = targetScope.trim() !== activeChatScope.value
   if (!scopeChanged && sessionId === activeId.value) return
-  commitMessages([...messages.value])
-  commitContextUsed(harnessContextUsed.value)
-  commitTodos([...sessionTodos.value])
-  commitGoal(sessionGoal.value)
+  saveCurrentActiveSessionState()
   persistHistory()
   activateProjectSession(targetScope, sessionId)
   loadActiveMessages()
-  clearSendQueue()
   composing.value = false
   scrollToBottom()
   if (scopeChanged && activeChatProject.value) {
@@ -621,40 +654,24 @@ function onToggleProjectCollapsedFromMenu(targetScope: string): void {
   toggleProjectCollapsed(targetScope)
 }
 
-/** Codex 风格：在指定项目文件夹下新建对话并切换过去 */
+/** Codex 风格：在指定项目文件夹下新建对话并切换过去（支持与其它运行中会话并行） */
 async function onNewSessionInProject(targetScope: string): Promise<void> {
   projectCtxMenu.value = null
   automationsViewOpen.value = false
   skillsOpen.value = false
   searchModalOpen.value = false
   setProjectCollapsed(targetScope, false)
-  if (running.value && !preparingTask) {
-    await refreshStatus()
-    if (!status.value?.running) {
-      running.value = false
-    }
-  }
-  if (running.value || preparingTask) {
-    const busyMsg = t('studio.chat.projectBusySwitchHint')
-    pushStatus(busyMsg, 'warn')
-    appendStatusNotice(busyMsg)
-    return
-  }
-  commitMessages([...messages.value])
-  commitContextUsed(harnessContextUsed.value)
-  commitTodos([...sessionTodos.value])
-  commitGoal(sessionGoal.value)
+  saveCurrentActiveSessionState()
   persistHistory()
   createSessionInProject(targetScope)
   loadActiveMessages()
-  clearSendQueue()
   resetEditor()
   composing.value = false
   scrollToBottom()
   void nextTick(() => inputRef.value?.focus())
 }
 
-/** Codex 风格：一键发起对指定项目架构与代码的 AI 深度分析 */
+/** Codex 风格：一键发起对指定项目架构与代码的 AI 深度分析（支持多工程并行运行） */
 async function onAnalyzeChatProject(
   targetScope: string,
   projectName: string,
@@ -672,51 +689,32 @@ async function onAnalyzeChatProject(
   const promptBase = t('studio.chat.analyzeProjectPrompt', { name: resolvedName })
   const promptText = resolvedRoot ? `${promptBase}\n(${resolvedRoot})` : promptBase
 
-  if (running.value && !preparingTask) {
-    await refreshStatus()
-    if (!status.value?.running) {
-      running.value = false
-    }
-  }
-  if (running.value || preparingTask) {
-    if (targetScope.trim() === activeChatScope.value) {
-      enqueueSend(promptText)
-      pushStatus(t('studio.chat.resendQueued'), 'waiting')
-      return
-    }
-    const busyMsg = t('studio.chat.projectBusySwitchHint')
-    pushStatus(busyMsg, 'warn')
-    appendStatusNotice(busyMsg)
-    return
-  }
-
-  commitMessages([...messages.value])
-  commitContextUsed(harnessContextUsed.value)
-  commitTodos([...sessionTodos.value])
-  commitGoal(sessionGoal.value)
+  saveCurrentActiveSessionState()
   persistHistory()
 
   const group = chatProjectTree.value.find((g) => g.scope === targetScope.trim())
   const activeInGroup = group?.sessions.find((s) => s.id === group.activeSessionId)
   const emptySession =
-    activeInGroup && activeInGroup.messages.length === 0
+    activeInGroup && activeInGroup.messages.length === 0 && !isSessionBusy(activeInGroup.id)
       ? activeInGroup
-      : group?.sessions.find((s) => s.messages.length === 0)
+      : group?.sessions.find((s) => s.messages.length === 0 && !isSessionBusy(s.id))
   if (emptySession) {
     activateProjectSession(targetScope, emptySession.id)
   } else {
     createSessionInProject(targetScope)
   }
   loadActiveMessages()
-  clearSendQueue()
   composing.value = false
   scrollToBottom()
   await runTask(promptText)
 }
 
-/** Codex 风格：删除指定项目下的某条会话 */
+/** Codex 风格：删除指定项目下的某条会话（仅禁止删除当前正在运行的那条会话，不影响删除其它空闲会话） */
 async function onDeleteProjectSession(targetScope: string, sessionId: string): Promise<void> {
-  if (running.value) return
+  if (isSessionBusy(sessionId)) {
+    pushStatus(t('studio.chat.sessionBusyDeleteHint'), 'warn')
+    return
+  }
   const wasOpen = sessionOpen.value
   const ok = await promptConfirm({
     title: t('studio.chat.deleteSession'),
@@ -727,10 +725,10 @@ async function onDeleteProjectSession(targetScope: string, sessionId: string): P
   if (!ok) return
   const wasActive = targetScope.trim() === activeChatScope.value && sessionId === activeId.value
   removeProjectSession(targetScope, sessionId)
+  delete sessionRuntimes[sessionId]
   window.studio?.deleteHarnessSession?.(sessionId).catch(() => undefined)
   if (wasActive) {
     loadActiveMessages()
-    clearSendQueue()
     resetEditor()
     composing.value = false
     scrollToBottom()
@@ -741,19 +739,19 @@ async function onDeleteProjectSession(targetScope: string, sessionId: string): P
 /** Codex 风格：从 Projects 树中移除某个外部项目文件夹（不删除磁盘文件） */
 function onRemoveChatProjectFolder(targetScope: string): void {
   projectCtxMenu.value = null
-  if (running.value) return
+  const group = chatProjectTree.value.find((g) => g.scope === targetScope.trim())
+  if (group?.sessions.some((s) => isSessionBusy(s.id))) {
+    pushStatus(t('studio.chat.sessionBusyDeleteHint'), 'warn')
+    return
+  }
   const wasActiveScope = targetScope.trim() === activeChatScope.value
   if (wasActiveScope) {
-    commitMessages([...messages.value])
-    commitContextUsed(harnessContextUsed.value)
-    commitTodos([...sessionTodos.value])
-    commitGoal(sessionGoal.value)
+    saveCurrentActiveSessionState()
     persistHistory()
   }
   removeChatProject(targetScope, currentProjectChatScope.value)
   if (wasActiveScope) {
     loadActiveMessages()
-    clearSendQueue()
     resetEditor()
     composing.value = false
     scrollToBottom()
@@ -762,16 +760,21 @@ function onRemoveChatProjectFolder(targetScope: string): void {
 
 /**
  * `/clear`：清空当前对话上下文并换新 session id（不保留旧消息进历史列表位）。
- * 同步删除 dsh 磁盘会话，避免下一句被幽灵 resume。
+ * 仅中止并清理当前激活会话，不影响后台并行运行的其它会话。
  */
 async function onClearCommand(): Promise<void> {
-  // 挡住中止过程中迟到的 harness 事件，避免污染新会话
-  ignoreHarnessEvents = true
+  const clearingSessionId = activeId.value
+  const rt = getSessionRuntime(clearingSessionId)
+  rt.abortIgnoreUntil = Date.now() + 600
   try {
     if (running.value) {
-      abortPendingMcpTasks()
-      await window.studio.abortHarnessTask()
+      if (backgroundRunningCount.value === 0) {
+        abortPendingMcpTasks()
+      }
+      await window.studio.abortHarnessTask(clearingSessionId || undefined)
       running.value = false
+      markSessionStoppedInStatus(clearingSessionId)
+      endSessionCanvasEffects(clearingSessionId, 'aborted')
     }
     resetEditor()
     referenced.value = []
@@ -779,8 +782,11 @@ async function onClearCommand(): Promise<void> {
     // 换 session 后队列里的消息已无归属，一并清掉
     clearSendQueue()
     const oldId = rotateActiveSession()
-    if (oldId && typeof window.studio?.deleteHarnessSession === 'function') {
-      window.studio.deleteHarnessSession(oldId).catch(() => undefined)
+    if (oldId) {
+      delete sessionRuntimes[oldId]
+      if (typeof window.studio?.deleteHarnessSession === 'function') {
+        window.studio.deleteHarnessSession(oldId).catch(() => undefined)
+      }
     }
     loadActiveMessages()
     pushStatus(t('studio.chat.cleared'), 'warn')
@@ -790,9 +796,7 @@ async function onClearCommand(): Promise<void> {
     scrollToBottom()
     void nextTick(() => inputRef.value?.focus())
   } finally {
-    window.setTimeout(() => {
-      ignoreHarnessEvents = false
-    }, 400)
+    // no-op: per-session abortIgnoreUntil handles stray events for oldId
   }
 }
 
@@ -1023,6 +1027,10 @@ function onComposerEscape(): void {
  * （否则删一条旁支会话会把正在编辑的内容清掉）。
  */
 async function onDeleteSessionById(id: string): Promise<void> {
+  if (isSessionBusy(id)) {
+    pushStatus(t('studio.chat.sessionBusyDeleteHint'), 'warn')
+    return
+  }
   const target = sessions.value.find((s) => s.id === id)
   if (!target) return
   /**
@@ -1043,13 +1051,12 @@ async function onDeleteSessionById(id: string): Promise<void> {
 
   const wasActive = id === activeId.value
   removeSession(id)
+  delete sessionRuntimes[id]
   // 同步清理磁盘上的 dsh 持久化记录，避免同 id 会话被「幽灵恢复」
   window.studio.deleteHarnessSession(id).catch(() => undefined)
 
   if (wasActive) {
     loadActiveMessages()
-    // 删除会话后落到了别的会话：队列同样不该跟着过来
-    clearSendQueue()
     resetEditor()
     composing.value = false
     scrollToBottom()
@@ -1851,7 +1858,8 @@ watch(effectiveSandboxProjectScope, (nextScope, prevScope) => {
     void window.studio
       .setHarnessSandboxMode({
         sandboxMode: nextRestricted ? 'workspace-write' : 'danger-full-access',
-        steerLiveTurn: false
+        steerLiveTurn: false,
+        ...(activeId.value ? { sessionId: activeId.value } : {})
       })
       .catch(() => undefined)
   }
@@ -1889,12 +1897,14 @@ function setSandboxRestrictedMode(
           .catch(() => undefined)
       }
     }
+    getSessionRuntime(activeId.value).waitingInput = hasUnansweredPromptOrApproval(messages.value)
   }
   if (typeof window.studio?.setHarnessSandboxMode === 'function') {
     void window.studio
       .setHarnessSandboxMode({
         sandboxMode: restricted ? 'workspace-write' : 'danger-full-access',
-        steerLiveTurn: Boolean(opts?.steerLiveTurn)
+        steerLiveTurn: Boolean(opts?.steerLiveTurn),
+        ...(activeId.value ? { sessionId: activeId.value } : {})
       })
       .catch(() => undefined)
   }
@@ -2067,11 +2077,141 @@ const draft = ref('')
 const inputRef = ref<HTMLElement | null>(null)
 /** 输入法组合期间：跳过 @ 触发 / 粘贴接管，避免组合文本被误处理 */
 const composing = ref(false)
-const running = ref(false)
-/** `/clear` 后短暂忽略 harness 事件，避免中止尾包写进新会话 */
-let ignoreHarnessEvents = false
 const status = ref<HarnessStatus | null>(null)
 const listRef = ref<HTMLElement | null>(null)
+
+/** 队列项：执行中点「发送」或「重发」入队，等本轮结束后按序发出 */
+interface QueueItem {
+  id: number
+  text: string
+  /** 来源消息下标（重发时用于按钮反馈）；手输的消息为 null */
+  sourceIndex: number | null
+  /** 用户点了「立即发送」：等当前轮真正停下来后必须发出去，不再回队 */
+  forcing: boolean
+}
+
+/** 每个会话独立的并行执行运行时状态，跨工程切换会话时互不覆盖、互不阻塞 */
+interface SessionRuntime {
+  running: boolean
+  preparingTask: boolean
+  sendQueue: QueueItem[]
+  draining: boolean
+  clientAbortSeq: number
+  abortIgnoreUntil: number
+  sessionStart: number
+  roundStartAt: number
+  pendingReasoning: string
+  subagents: HarnessSubagentView[]
+  schedules: HarnessScheduleView[]
+  latestCanvasEvent: HarnessCanvasEventView | null
+  lastRoundOutcome: 'idle' | 'success' | 'error'
+  unreadDone: boolean
+  justFinished: boolean
+  waitingInput: boolean
+  mode: ChatMode
+  workspace: string
+}
+
+const sessionRuntimes = reactive<Record<string, SessionRuntime>>({})
+
+function getSessionRuntime(sessionId?: string): SessionRuntime {
+  const key = (sessionId ?? '').trim() || '__default__'
+  if (!sessionRuntimes[key]) {
+    sessionRuntimes[key] = {
+      running: false,
+      preparingTask: false,
+      sendQueue: [],
+      draining: false,
+      clientAbortSeq: 0,
+      abortIgnoreUntil: 0,
+      sessionStart: 0,
+      roundStartAt: 0,
+      pendingReasoning: '',
+      subagents: [],
+      schedules: [],
+      latestCanvasEvent: null,
+      lastRoundOutcome: 'idle',
+      unreadDone: false,
+      justFinished: false,
+      waitingInput: false,
+      mode: mode.value,
+      workspace: ''
+    }
+  }
+  return sessionRuntimes[key]!
+}
+
+function isSessionRunningInMain(sessionId?: string): boolean {
+  const sid = (sessionId ?? '').trim()
+  if (!sid) return Boolean(status.value?.running)
+  const mainIds = status.value?.runningSessionIds
+  if (Array.isArray(mainIds)) {
+    return mainIds.includes(sid)
+  }
+  return sid === activeId.value && Boolean(status.value?.running)
+}
+
+function isSessionBusy(sessionId?: string): boolean {
+  const sid = (sessionId ?? '').trim()
+  if (!sid) return false
+  const rt = sessionRuntimes[sid]
+  if (rt && (rt.running || rt.preparingTask)) return true
+  return isSessionRunningInMain(sid)
+}
+
+function isSessionWaitingInput(s: { id: string; messages?: ReadonlyArray<ChatMsg> }): boolean {
+  const rt = sessionRuntimes[s.id]
+  if (rt?.waitingInput) return true
+  return Array.isArray(s.messages) ? hasUnansweredPromptOrApproval(s.messages) : false
+}
+
+function isSessionUnreadDone(sessionId: string): boolean {
+  if (!sessionId) return false
+  const rt = sessionRuntimes[sessionId]
+  if (!rt) return false
+  return Boolean(rt.unreadDone || (sessionId === activeId.value && rt.justFinished))
+}
+
+const runningSessionCount = computed<number>(() => {
+  const ids = new Set<string>()
+  for (const sid of status.value?.runningSessionIds ?? []) {
+    if (sid) ids.add(sid)
+  }
+  for (const [sid, rt] of Object.entries(sessionRuntimes)) {
+    if (sid !== '__default__' && (rt.running || rt.preparingTask)) {
+      ids.add(sid)
+    }
+  }
+  return ids.size
+})
+
+const backgroundRunningCount = computed<number>(() => {
+  const cur = activeId.value
+  const ids = new Set<string>()
+  for (const sid of status.value?.runningSessionIds ?? []) {
+    if (sid && sid !== cur) ids.add(sid)
+  }
+  for (const [sid, rt] of Object.entries(sessionRuntimes)) {
+    if (sid !== '__default__' && sid !== cur && (rt.running || rt.preparingTask)) {
+      ids.add(sid)
+    }
+  }
+  return ids.size
+})
+
+const running = computed<boolean>({
+  get: () => getSessionRuntime(activeId.value).running,
+  set: (val: boolean) => {
+    getSessionRuntime(activeId.value).running = val
+  }
+})
+
+const sendQueue = computed<QueueItem[]>({
+  get: () => getSessionRuntime(activeId.value).sendQueue,
+  set: (val: QueueItem[]) => {
+    getSessionRuntime(activeId.value).sendQueue = val
+  }
+})
 
 /** 瞬时状态的配色相位；idle 表示当前没有状态要显示 */
 type ActivityPhase = 'idle' | 'waiting' | 'warn' | 'error'
@@ -2087,23 +2227,82 @@ let activityTimer: number | null = null
 /** 状态在顶部保留多久后自动消失；够读完一句较长的等待/错误提示 */
 const ACTIVITY_TTL_MS = 6000
 
+const activeSessionWeatherKeys = new Set<string>()
+
+function weatherSourceForSession(sessionId?: string): string {
+  const sid = (sessionId ?? '').trim()
+  return sid ? `ai-chat:${sid}` : 'ai-chat'
+}
+
+function latestUserPromptForSession(sess?: { messages?: ReadonlyArray<ChatMsg> } | null): string {
+  const list = sess?.messages
+  if (!Array.isArray(list)) return ''
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i]
+    if (m?.kind === 'user' && m.text.trim()) return m.text
+  }
+  return ''
+}
+
+function findSessionMetaById(
+  sessionId?: string
+): { id: string; title: string; messages?: ReadonlyArray<ChatMsg> } | undefined {
+  const sid = (sessionId ?? '').trim()
+  if (!sid) return undefined
+  if (activeSession.value?.id === sid) return activeSession.value
+  const inCurrent = sessions.value.find((s) => s.id === sid)
+  if (inCurrent) return inCurrent
+  const inWorkspace = allWorkspaceSessions.value.find((s) => s.id === sid)
+  if (inWorkspace) return inWorkspace
+  for (const group of chatProjectTree.value) {
+    const hit = group.sessions.find((s) => s.id === sid)
+    if (hit) return hit
+  }
+  return undefined
+}
+
+function beginSessionCanvasEffects(sessionId?: string, promptText?: string): void {
+  const sid = (sessionId ?? activeId.value).trim()
+  const weatherKey = weatherSourceForSession(sid)
+  activeSessionWeatherKeys.add(weatherKey)
+  notifyWeatherTaskStart(weatherKey)
+  if (sid) {
+    const sess = findSessionMetaById(sid)
+    startWishShrineSession({
+      sessionId: sid,
+      sessionTitle: sess?.title ?? '',
+      promptText: promptText ?? latestUserPromptForSession(sess),
+      activityText: sid === activeId.value ? activity.value : ''
+    })
+  }
+}
+
+function endSessionCanvasEffects(
+  sessionId: string | undefined,
+  outcome: 'success' | 'error' | 'aborted'
+): void {
+  const sid = (sessionId ?? activeId.value).trim()
+  const weatherKey = weatherSourceForSession(sid)
+  activeSessionWeatherKeys.delete(weatherKey)
+  notifyWeatherTaskComplete(weatherKey)
+  if (sid) {
+    const sess = findSessionMetaById(sid)
+    completeWishShrineSession(sid, outcome, sess?.title)
+  }
+}
+
 watch(
   [
-    running,
     () => activeSession.value?.id ?? '',
     () => activeSession.value?.title ?? '',
     latestUserPromptText,
-    activity,
-    lastRoundOutcome
+    activity
   ],
-  ([isRun, sid, stitle, prompt, act, out]) => {
-    syncWishShrineChatBridge({
-      running: isRun,
-      sessionId: sid,
+  ([sid, stitle, prompt, act]) => {
+    setWishShrineFocusedSession(sid, {
       sessionTitle: stitle,
       promptText: prompt,
-      activityText: act,
-      outcome: out
+      activityText: act
     })
   },
   { immediate: true }
@@ -2250,26 +2449,9 @@ async function copyMessage(index: number, text: string): Promise<void> {
   }, 1500)
 }
 
-/** 队列项：执行中点「发送」或「重发」入队，等本轮结束后按序发出 */
-interface QueueItem {
-  id: number
-  text: string
-  /** 来源消息下标（重发时用于按钮反馈）；手输的消息为 null */
-  sourceIndex: number | null
-  /** 用户点了「立即发送」：等当前轮真正停下来后必须发出去，不再回队 */
-  forcing: boolean
-}
-
-const sendQueue = ref<QueueItem[]>([])
 let queueSeq = 0
-/** 出队中标记：中断是异步的，避免重入时把同一条重复发出 */
-let draining = false
 /** 新一轮发送前置预检/技能展开进行中：防止期间到达的迟到 done/error 事件提前把 running 置回 false */
 let preparingTask = false
-/** 客户端中断序号：用于在异步预检/启动期间识别用户已触发的新一轮中断 */
-let clientAbortSeq = 0
-/** 中断后短暂屏蔽旧进程残余流式事件自动拉起 running 的截止时间戳 */
-let abortIgnoreUntil = 0
 /** 重发反馈：最近一条加入队列的消息索引 */
 const resendIndex = ref<number | null>(null)
 let resendTimer: number | null = null
@@ -2279,14 +2461,21 @@ function queuePreview(text: string): string {
   return oneLine.length > 72 ? `${oneLine.slice(0, 72)}…` : oneLine
 }
 
-function enqueueSend(text: string, sourceIndex: number | null = null): void {
-  sendQueue.value.push({
+function enqueueSend(
+  text: string,
+  sourceIndex: number | null = null,
+  targetSessionId: string = activeId.value
+): void {
+  const queue = targetSessionId ? getSessionRuntime(targetSessionId).sendQueue : sendQueue.value
+  queue.push({
     id: ++queueSeq,
     text,
     sourceIndex,
     forcing: false
   })
-  scrollToBottom()
+  if (!targetSessionId || targetSessionId === activeId.value) {
+    scrollToBottom()
+  }
 }
 
 function removeQueued(id: number): void {
@@ -2673,11 +2862,94 @@ function appendStatusNotice(text: string): void {
   scrollToBottom()
 }
 
+let statusRefreshSeq = 0
+
+function markSessionStartedInStatus(sessionId?: string): void {
+  const sid = (sessionId ?? '').trim()
+  if (!sid || !status.value) return
+  statusRefreshSeq += 1
+  const prev = Array.isArray(status.value.runningSessionIds) ? status.value.runningSessionIds : []
+  const nextIds = prev.includes(sid) ? prev : [...prev, sid]
+  status.value = {
+    ...status.value,
+    runningSessionIds: nextIds,
+    runningCount: nextIds.length,
+    running: true
+  }
+}
+
+function markSessionStoppedInStatus(sessionId?: string): void {
+  const sid = (sessionId ?? '').trim()
+  if (!status.value) return
+  statusRefreshSeq += 1
+  if (sid && Array.isArray(status.value.runningSessionIds)) {
+    const nextIds = status.value.runningSessionIds.filter((id) => id !== sid)
+    status.value = {
+      ...status.value,
+      runningSessionIds: nextIds,
+      runningCount: nextIds.length,
+      running: nextIds.length > 0
+    }
+  } else if (!sid) {
+    status.value = {
+      ...status.value,
+      runningSessionIds: [],
+      runningCount: 0,
+      running: false
+    }
+  }
+}
+
 /** 重新拉取 harness 状态；失败时保留上一次状态，不影响会话本身 */
 async function refreshStatus(): Promise<void> {
+  const reqSeq = ++statusRefreshSeq
   try {
-    status.value = await window.studio.getHarnessStatus()
-    if (status.value?.running && !running.value && Date.now() >= abortIgnoreUntil) {
+    const fresh = await window.studio.getHarnessStatus()
+    if (reqSeq !== statusRefreshSeq) return
+    status.value = fresh
+    const now = Date.now()
+    const runningSet = new Set(fresh?.runningSessionIds ?? [])
+    for (const sid of runningSet) {
+      if (!sid) continue
+      const rt = getSessionRuntime(sid)
+      if (now >= rt.abortIgnoreUntil) {
+        if (!rt.running) {
+          rt.running = true
+          rt.unreadDone = false
+          rt.justFinished = false
+        }
+        if (!activeSessionWeatherKeys.has(weatherSourceForSession(sid))) {
+          beginSessionCanvasEffects(sid)
+        }
+      }
+    }
+    if (Array.isArray(fresh?.runningSessionIds)) {
+      const preparingIds: string[] = []
+      for (const [sid, rt] of Object.entries(sessionRuntimes)) {
+        if (sid === '__default__') continue
+        if (rt.preparingTask) {
+          preparingIds.push(sid)
+        } else if (rt.running && !runningSet.has(sid)) {
+          rt.running = false
+        }
+      }
+      reconcileWishShrineRunningSessions([...runningSet], preparingIds)
+      const keepWeatherKeys = new Set(
+        [...runningSet, ...preparingIds].map((sid) => weatherSourceForSession(sid))
+      )
+      for (const key of [...activeSessionWeatherKeys]) {
+        if (!keepWeatherKeys.has(key)) {
+          activeSessionWeatherKeys.delete(key)
+          notifyWeatherTaskComplete(key)
+        }
+      }
+    }
+    const activeRt = getSessionRuntime(activeId.value)
+    if (
+      isSessionRunningInMain(activeId.value) &&
+      !running.value &&
+      now >= activeRt.abortIgnoreUntil
+    ) {
       running.value = true
     }
   } catch {
@@ -2685,14 +2957,275 @@ async function refreshStatus(): Promise<void> {
   }
 }
 
+function pushAssistantToList(
+  list: ChatMsg[],
+  rt: SessionRuntime,
+  text: string,
+  replace = false
+): void {
+  const last = list[list.length - 1]
+  if (!replace && last?.kind === 'assistant' && !last.final) {
+    last.text += text
+  } else if (replace && last?.kind === 'assistant') {
+    last.text = text
+    last.final = true
+  } else {
+    list.push({
+      kind: 'assistant',
+      text,
+      final: replace,
+      ...(rt.pendingReasoning ? { reasoning: rt.pendingReasoning } : {})
+    })
+    rt.pendingReasoning = ''
+  }
+}
+
+function handleBackgroundHarnessEvent(targetSid: string, event: HarnessEvent): void {
+  const rt = getSessionRuntime(targetSid)
+  const inAbortCooldown = !rt.running && !rt.preparingTask && Date.now() < rt.abortIgnoreUntil
+  switch (event.type) {
+    case 'assistant': {
+      if (inAbortCooldown) return
+      if (!rt.running) rt.running = true
+      if (!activeSessionWeatherKeys.has(weatherSourceForSession(targetSid))) {
+        beginSessionCanvasEffects(targetSid)
+      }
+      updateSessionById(targetSid, (session) => {
+        pushAssistantToList(session.messages, rt, event.text, false)
+      })
+      break
+    }
+    case 'status':
+      if (!running.value && event.tone === 'error') {
+        pushStatus(event.text, 'error')
+      }
+      break
+    case 'tool': {
+      if (event.state === 'start' && inAbortCooldown) return
+      if (event.state === 'start' && !rt.running) rt.running = true
+      if (event.state === 'start') {
+        if (!activeSessionWeatherKeys.has(weatherSourceForSession(targetSid))) {
+          beginSessionCanvasEffects(targetSid)
+        }
+        notifyWeatherTaskPulse({
+          preferLightning: /graph_|canvas_|node_|cook|gen|split|render/i.test(event.name)
+        })
+      }
+      const key = event.parentId
+        ? `tool:${event.parentId}/${event.id ?? event.name}`
+        : `tool:${event.id ?? event.name}`
+      updateSessionById(targetSid, (session) => {
+        const list = session.messages
+        let prev: (ChatMsg & { kind: 'tool' }) | undefined
+        for (let i = list.length - 1; i >= rt.sessionStart; i--) {
+          const m = list[i]
+          if (m?.kind === 'tool' && m.key === key) {
+            prev = m
+            break
+          }
+        }
+        if (prev) {
+          prev.state = event.state
+          if (event.detail !== undefined) prev.detail = event.detail
+          if (event.steps?.length) prev.steps = event.steps
+          if (event.args !== undefined) prev.args = event.args
+        } else {
+          const fallbackSteps = event.steps?.length
+            ? event.steps
+            : extractMcpToolStepsFromArgs(event.name, event.args)
+          list.push({
+            kind: 'tool',
+            key,
+            name: event.name,
+            ...(event.id ? { id: event.id } : {}),
+            ...(event.parentId ? { parentId: event.parentId } : {}),
+            state: event.state,
+            ...(event.detail !== undefined ? { detail: event.detail } : {}),
+            ...(fallbackSteps.length ? { steps: fallbackSteps } : {}),
+            ...(event.args !== undefined ? { args: event.args } : {})
+          })
+        }
+      })
+      if (event.name === 'skill') markSkillLoaded(event.detail)
+      if (event.state === 'done' && /skill_(install|uninstall)$/i.test(event.name)) {
+        void refreshSessionSkills()
+        void refreshInstalledWorkflows()
+      }
+      break
+    }
+    case 'reasoning':
+      if (inAbortCooldown) return
+      if (!rt.running) rt.running = true
+      rt.pendingReasoning = event.text
+      break
+    case 'context':
+      commitContextUsed(event.used, targetSid)
+      break
+    case 'todo':
+      commitTodos(event.todos ?? [], targetSid)
+      break
+    case 'goal':
+      commitGoal(event.goal, targetSid)
+      break
+    case 'present': {
+      const key = `present:${event.callId}`
+      updateSessionById(targetSid, (session) => {
+        const existing = session.messages.find(
+          (m): m is ChatMsg & { kind: 'present' } => m.kind === 'present' && m.key === key
+        )
+        if (existing) {
+          existing.files = event.files
+          existing.turn = event.turn
+        } else {
+          session.messages.push({
+            kind: 'present',
+            key,
+            callId: event.callId,
+            turn: event.turn,
+            files: event.files
+          })
+        }
+      })
+      break
+    }
+    case 'schedule':
+      rt.schedules = event.schedules ?? []
+      break
+    case 'steered':
+      break
+    case 'sandbox_blocked': {
+      if (inAbortCooldown) return
+      const scope = getSessionScope(targetSid) || effectiveSandboxProjectScope.value
+      if (!readSandboxRestricted(scope) || rt.mode === 'ask') return
+      updateSessionById(targetSid, (session) => {
+        const list = session.messages
+        for (let i = list.length - 1; i >= rt.sessionStart; i--) {
+          const m = list[i]
+          if (m?.kind === 'user') break
+          if (m?.kind === 'sandbox-blocked') return
+          if (
+            m?.kind === 'approval' &&
+            !m.expired &&
+            (m.decision === null || m.decision === undefined)
+          ) {
+            return
+          }
+        }
+        const cleanTool = event.toolName?.trim()
+        const cleanReason = event.detail?.trim()
+        list.push({
+          kind: 'sandbox-blocked',
+          id: `sbx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          ...(cleanTool && cleanTool !== 'tool' ? { toolName: cleanTool } : {}),
+          ...(cleanReason ? { reason: cleanReason } : {}),
+          decision: null
+        })
+        rt.waitingInput = true
+      })
+      break
+    }
+    case 'subagent':
+      rt.subagents = event.subagents ?? []
+      break
+    case 'canvas-event':
+      rt.latestCanvasEvent = event.event
+      break
+    case 'final': {
+      updateSessionById(targetSid, (session) => {
+        const list = session.messages
+        let targetAssistant: (ChatMsg & { kind: 'assistant' }) | undefined
+        for (let i = list.length - 1; i >= rt.sessionStart; i--) {
+          const m = list[i]
+          if (m?.kind === 'user') break
+          if (m?.kind === 'assistant') {
+            targetAssistant = m
+            break
+          }
+        }
+        if (targetAssistant) {
+          if (!targetAssistant.text && event.text) {
+            targetAssistant.text = event.text
+          }
+          targetAssistant.final = true
+        } else if (event.text) {
+          pushAssistantToList(list, rt, event.text, true)
+        }
+      })
+      break
+    }
+    case 'done':
+      rt.lastRoundOutcome = 'success'
+      if (!rt.preparingTask) {
+        rt.running = false
+        markSessionStoppedInStatus(targetSid)
+        endSessionCanvasEffects(targetSid, 'success')
+      }
+      rt.unreadDone = true
+      updateSessionById(targetSid, (session) => {
+        for (const msg of session.messages) {
+          if (msg.kind === 'approval' && (msg.decision === null || msg.decision === undefined)) {
+            msg.expired = true
+          }
+        }
+        rt.waitingInput = hasUnansweredPromptOrApproval(session.messages)
+      })
+      void refreshStatus()
+      void refreshSessionSkills()
+      void refreshInstalledWorkflows()
+      void drainSessionQueue(targetSid)
+      break
+    case 'error': {
+      rt.lastRoundOutcome = 'error'
+      if (!rt.preparingTask) {
+        rt.running = false
+        markSessionStoppedInStatus(targetSid)
+        endSessionCanvasEffects(targetSid, 'error')
+      }
+      rt.unreadDone = true
+      const errMsg = (event.message ?? '').trim()
+      updateSessionById(targetSid, (session) => {
+        for (const msg of session.messages) {
+          if (msg.kind === 'approval' && (msg.decision === null || msg.decision === undefined)) {
+            msg.expired = true
+          }
+        }
+        if (errMsg) {
+          for (let i = session.messages.length - 1; i >= rt.sessionStart; i--) {
+            const m = session.messages[i]
+            if (m?.kind === 'tool' && m.key === 'tool:dsh-agent' && !m.detail) {
+              m.detail = errMsg
+              break
+            }
+          }
+        }
+        rt.waitingInput = hasUnansweredPromptOrApproval(session.messages)
+      })
+      void refreshStatus()
+      void drainSessionQueue(targetSid)
+      break
+    }
+  }
+}
+
 function onHarnessEvent(event: HarnessEvent): void {
-  if (ignoreHarnessEvents) return
-  const inAbortCooldown = !running.value && !preparingTask && Date.now() < abortIgnoreUntil
+  const targetSid = (event.sessionId ?? '').trim()
+  if (targetSid && targetSid !== activeId.value) {
+    handleBackgroundHarnessEvent(targetSid, event)
+    return
+  }
+  const effectiveSid = targetSid || activeId.value
+  const rt = getSessionRuntime(activeId.value)
+  const inAbortCooldown =
+    !running.value && !preparingTask && !rt.preparingTask && Date.now() < rt.abortIgnoreUntil
   switch (event.type) {
     case 'assistant':
       if (inAbortCooldown) return
       if (!running.value) running.value = true
+      if (!activeSessionWeatherKeys.has(weatherSourceForSession(effectiveSid))) {
+        beginSessionCanvasEffects(effectiveSid)
+      }
       pushAssistant(event.text)
+      rt.pendingReasoning = pendingReasoning
       break
     case 'status':
       // 相位由主进程给出（见 HarnessEvent.tone），这里不解析文案
@@ -2702,6 +3235,9 @@ function onHarnessEvent(event: HarnessEvent): void {
       if (event.state === 'start' && inAbortCooldown) return
       if (event.state === 'start' && !running.value) running.value = true
       if (event.state === 'start') {
+        if (!activeSessionWeatherKeys.has(weatherSourceForSession(effectiveSid))) {
+          beginSessionCanvasEffects(effectiveSid)
+        }
         checkRecentAssistantSandboxBlock()
         notifyWeatherTaskPulse({
           preferLightning: /graph_|canvas_|node_|cook|gen|split|render/i.test(event.name)
@@ -2751,6 +3287,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       if (!running.value) running.value = true
       // 思考过程：先于回答到达，暂存到下一次 assistant 消息上
       pendingReasoning = event.text
+      rt.pendingReasoning = event.text
       break
     case 'context':
       // provider 报告的精确输入上下文 token：多轮会话为最新一次 LLM 请求的完整输入
@@ -2792,6 +3329,7 @@ function onHarnessEvent(event: HarnessEvent): void {
     }
     case 'schedule':
       sessionSchedules.value = event.schedules ?? []
+      rt.schedules = [...sessionSchedules.value]
       break
     case 'steered':
       pushStatus(t('studio.chat.steeredStatus'), 'waiting')
@@ -2803,6 +3341,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       break
     case 'subagent':
       sessionSubagents.value = event.subagents ?? []
+      rt.subagents = [...sessionSubagents.value]
       if (
         sessionSubagents.value.some((s) => s.status === 'running') &&
         sessionSubagents.value.length === 1
@@ -2812,6 +3351,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       break
     case 'canvas-event':
       latestCanvasEvent.value = event.event
+      rt.latestCanvasEvent = event.event
       break
     case 'final': {
       // 流式期间文本已通过 assistant 事件实时显示，这里仅标记本轮回答完成，避免被末尾工具/交付卡错位覆盖
@@ -2832,16 +3372,25 @@ function onHarnessEvent(event: HarnessEvent): void {
       } else if (event.text) {
         pushAssistant(event.text, true)
       }
+      rt.pendingReasoning = pendingReasoning
       checkRecentAssistantSandboxBlock()
       break
     }
     case 'done':
       lastRoundOutcome.value = 'success'
-      if (!preparingTask) running.value = false
-      notifyWeatherTaskComplete('ai-chat')
+      rt.lastRoundOutcome = 'success'
+      rt.justFinished = true
+      if (!preparingTask && !rt.preparingTask) {
+        running.value = false
+        rt.running = false
+        markSessionStoppedInStatus(targetSid || activeId.value)
+        endSessionCanvasEffects(targetSid || activeId.value, 'success')
+      }
+      void refreshStatus()
       checkRecentAssistantSandboxBlock()
       // 本轮结束：未决定的审批请求已随主进程丢弃，卡片标记失效（未放行）
       expirePendingApprovals()
+      rt.waitingInput = hasUnansweredPromptOrApproval(messages.value)
       // 运行结束：采集本轮 git 变更（有改动才追加预览卡）
       void captureGitChanges()
       // 同时扫本轮直接落盘的产物（Output / Cache 下的媒体），逐条追加产物卡
@@ -2852,10 +3401,17 @@ function onHarnessEvent(event: HarnessEvent): void {
       break
     case 'error': {
       lastRoundOutcome.value = 'error'
+      rt.lastRoundOutcome = 'error'
       pushStatus(event.message, 'error')
-      if (!preparingTask) running.value = false
-      notifyWeatherTaskComplete('ai-chat')
+      if (!preparingTask && !rt.preparingTask) {
+        running.value = false
+        rt.running = false
+        markSessionStoppedInStatus(targetSid || activeId.value)
+        endSessionCanvasEffects(targetSid || activeId.value, 'error')
+      }
+      void refreshStatus()
       expirePendingApprovals()
+      rt.waitingInput = hasUnansweredPromptOrApproval(messages.value)
       const errMsg = (event.message ?? '').trim()
       if (errMsg) {
         const agentCard = findToolByKey('tool:dsh-agent')
@@ -2875,7 +3431,12 @@ function onHarnessEvent(event: HarnessEvent): void {
 /** 控制当前会话的自主目标状态（暂停 / 恢复 / 结束） */
 async function onControlGoal(action: 'pause' | 'resume' | 'complete'): Promise<void> {
   if (typeof window.studio?.controlHarnessGoal === 'function') {
-    await window.studio.controlHarnessGoal({ action }).catch(() => undefined)
+    await window.studio
+      .controlHarnessGoal({
+        action,
+        ...(activeId.value ? { sessionId: activeId.value } : {})
+      })
+      .catch(() => undefined)
   }
   if (sessionGoal.value) {
     if (action === 'pause') {
@@ -2892,7 +3453,12 @@ async function onControlGoal(action: 'pause' | 'resume' | 'complete'): Promise<v
 /** 取消会话定时提醒 */
 async function onCancelSchedule(scheduleId: string): Promise<void> {
   if (typeof window.studio?.deleteHarnessSchedule === 'function') {
-    await window.studio.deleteHarnessSchedule({ scheduleId }).catch(() => undefined)
+    await window.studio
+      .deleteHarnessSchedule({
+        scheduleId,
+        ...(activeId.value ? { sessionId: activeId.value } : {})
+      })
+      .catch(() => undefined)
   }
   sessionSchedules.value = sessionSchedules.value.map((item) =>
     item.id === scheduleId ? { ...item, status: 'deleted' } : item
@@ -3112,10 +3678,7 @@ function onRunAutomationItemNow(item: ChatAutomationItem): void {
   automationsViewOpen.value = false
   const targetScope = item.projectScope?.trim() || currentProjectChatScope.value
   if (targetScope && targetScope !== activeChatScope.value) {
-    commitMessages([...messages.value])
-    commitContextUsed(harnessContextUsed.value)
-    commitTodos([...sessionTodos.value])
-    commitGoal(sessionGoal.value)
+    saveCurrentActiveSessionState()
     persistHistory()
     loadHistory(targetScope)
     loadActiveMessages()
@@ -3473,8 +4036,103 @@ function onMcpActivity(activity: McpActivity): void {
   const state =
     activity.status === 'done' ? 'done' : activity.status === 'error' ? 'error' : 'start'
   const key = `mcp:${activity.id}`
-  const prev = findToolByKey(key)
   const mediaPaths = state === 'done' || state === 'start' ? activityMediaPaths(activity) : []
+  const targetSid = (activity.sessionId ?? '').trim()
+  if (targetSid && targetSid !== activeId.value) {
+    const rt = getSessionRuntime(targetSid)
+    updateSessionById(targetSid, (session) => {
+      const list = session.messages
+      let prev: (ChatMsg & { kind: 'tool' }) | undefined
+      for (let i = list.length - 1; i >= rt.sessionStart; i--) {
+        const m = list[i]
+        if (m?.kind === 'tool' && m.key === key) {
+          prev = m
+          break
+        }
+      }
+      if (prev) {
+        prev.state = state
+        prev.detail = activity.error
+        if (mediaPaths.length) prev.relativePath = mediaPaths[0]
+      } else if (rt.running) {
+        list.push({
+          kind: 'tool',
+          key,
+          name: activity.title || activity.tool,
+          state,
+          detail: activity.error,
+          ...(mediaPaths.length ? { relativePath: mediaPaths[0] } : {})
+        })
+      }
+      if (activity.tool === 'gameplay_build' && state === 'done' && mediaPaths.length) {
+        const gKey = `game:${activity.assetId || activity.id}`
+        const gTitle = activity.title || t('studio.chat.gamePlay.play')
+        const existingGame = list.find(
+          (m): m is ChatMsg & { kind: 'game' } => m.kind === 'game' && m.key === gKey
+        )
+        if (existingGame) {
+          existingGame.title = gTitle
+          existingGame.htmlPath = mediaPaths[0]!
+        } else {
+          list.push({ kind: 'game', key: gKey, title: gTitle, htmlPath: mediaPaths[0]! })
+        }
+      } else if (
+        activity.tool === 'game_one_sentence_create' &&
+        state === 'done' &&
+        activity.oneSentenceGame
+      ) {
+        const info = activity.oneSentenceGame
+        const osKey = `osgame:${info.assetId}`
+        const existingOs = list.find(
+          (m): m is ChatMsg & { kind: 'oneSentenceGame' } =>
+            m.kind === 'oneSentenceGame' && m.key === osKey
+        )
+        if (existingOs) {
+          existingOs.info = { ...info, scopeNotes: [...info.scopeNotes] }
+        } else {
+          list.push({
+            kind: 'oneSentenceGame',
+            key: osKey,
+            info: { ...info, scopeNotes: [...info.scopeNotes] }
+          })
+        }
+      } else if (
+        mediaPaths.length &&
+        (prev || rt.running) &&
+        activity.tool !== 'skill_install' &&
+        activity.tool !== 'skill_uninstall'
+      ) {
+        const attachments = (activity.relatedPaths ?? []).filter((p) => !!p?.trim())
+        mediaPaths.forEach((relPath, index) => {
+          const pathKey = normalizeOutputPathKey(relPath) || String(index)
+          const aKey = index === 0 ? `asset:${activity.id}` : `asset:${activity.id}:${pathKey}`
+          const existingAsset = list.find(
+            (m): m is ChatMsg & { kind: 'asset' } => m.kind === 'asset' && m.key === aKey
+          )
+          if (existingAsset) {
+            existingAsset.relativePath = relPath
+            if (index === 0 && attachments.length) existingAsset.relatedPaths = attachments
+          } else {
+            list.push({
+              kind: 'asset',
+              key: aKey,
+              relativePath: relPath,
+              ...(index === 0 && attachments.length ? { relatedPaths: attachments } : {})
+            })
+          }
+        })
+      }
+    })
+    if (
+      (activity.tool === 'skill_install' || activity.tool === 'skill_uninstall') &&
+      state === 'done'
+    ) {
+      void refreshSessionSkills()
+      void refreshInstalledWorkflows()
+    }
+    return
+  }
+  const prev = findToolByKey(key)
   if (prev) {
     // 已有卡时无条件更新状态，即使任务已结束也可能收到延迟的 done/error 回调
     prev.state = state
@@ -3854,6 +4512,25 @@ function onAssetRemoved(payload: { id: string; path: string }): void {
 
 /** agent 通过 ask_user 工具发起提问：在消息流中插入一条「问题 + 选项按钮」卡 */
 function handleAskUser(question: AskUserQuestion): void {
+  const targetSid = (question.sessionId ?? '').trim()
+  if (targetSid && targetSid !== activeId.value) {
+    const bgRt = getSessionRuntime(targetSid)
+    updateSessionById(targetSid, (session) => {
+      if (session.messages.some((m) => m.kind === 'prompt' && m.requestId === question.requestId)) {
+        return
+      }
+      session.messages.push({
+        kind: 'prompt',
+        requestId: question.requestId,
+        question: question.question,
+        ...(question.options && question.options.length ? { options: question.options } : {}),
+        ...(question.hint ? { hint: question.hint } : {}),
+        answered: null
+      })
+      bgRt.waitingInput = true
+    })
+    return
+  }
   if (messages.value.some((m) => m.kind === 'prompt' && m.requestId === question.requestId)) return
   messages.value.push({
     kind: 'prompt',
@@ -3863,6 +4540,7 @@ function handleAskUser(question: AskUserQuestion): void {
     ...(question.hint ? { hint: question.hint } : {}),
     answered: null
   })
+  getSessionRuntime(activeId.value).waitingInput = true
   scrollToBottom()
 }
 
@@ -3890,6 +4568,7 @@ async function answerPrompt(
 ): Promise<void> {
   if (msg.answered !== null && msg.answered !== undefined) return
   msg.answered = option
+  getSessionRuntime(activeId.value).waitingInput = hasUnansweredPromptOrApproval(messages.value)
   const sandboxIntent = resolvePromptSandboxModeIntent(msg.question, option)
   if (sandboxIntent) {
     setSandboxRestrictedMode(sandboxIntent !== 'danger-full-access', {
@@ -3927,6 +4606,36 @@ async function submitPromptDraft(msg: ChatMsg & { kind: 'prompt' }): Promise<voi
  * - 否则在消息流中插入审批卡，提供「允许一次 / 总是允许 / 拒绝」。
  */
 function handleApprovalRequest(request: ApprovalRequestView): void {
+  const targetSid = (request.sessionId ?? '').trim()
+  if (targetSid && targetSid !== activeId.value) {
+    const bgRt = getSessionRuntime(targetSid)
+    const bgScope = getSessionScope(targetSid) || effectiveSandboxProjectScope.value
+    const bgRestricted = readSandboxRestricted(bgScope)
+    if (!bgRestricted && bgRt.mode !== 'ask') {
+      void window.studio
+        ?.answerApproval?.({ requestId: request.requestId, decision: 'allow-once' })
+        .catch(() => undefined)
+      return
+    }
+    updateSessionById(targetSid, (session) => {
+      if (
+        session.messages.some((m) => m.kind === 'approval' && m.requestId === request.requestId)
+      ) {
+        return
+      }
+      session.messages.push({
+        kind: 'approval',
+        requestId: request.requestId,
+        toolName: request.toolName,
+        ...(request.displayReason || request.reason
+          ? { reason: request.displayReason || request.reason }
+          : {}),
+        decision: null
+      })
+      bgRt.waitingInput = true
+    })
+    return
+  }
   if (!sandboxRestricted.value && mode.value !== 'ask') {
     void window.studio
       ?.answerApproval?.({ requestId: request.requestId, decision: 'allow-once' })
@@ -3944,6 +4653,7 @@ function handleApprovalRequest(request: ApprovalRequestView): void {
       : {}),
     decision: null
   })
+  getSessionRuntime(activeId.value).waitingInput = true
   scrollToBottom()
 }
 
@@ -3959,6 +4669,7 @@ async function answerApprovalRequest(
 ): Promise<void> {
   if (msg.decision !== null && msg.decision !== undefined) return
   msg.decision = decision
+  getSessionRuntime(activeId.value).waitingInput = hasUnansweredPromptOrApproval(messages.value)
   try {
     await window.studio.answerApproval({ requestId: msg.requestId, decision })
   } catch {
@@ -3975,6 +4686,7 @@ async function answerApprovalRequest(
 async function enableFullAccessForApproval(msg: ChatMsg & { kind: 'approval' }): Promise<void> {
   if (msg.decision !== null && msg.decision !== undefined) return
   msg.decision = 'allow-always'
+  getSessionRuntime(activeId.value).waitingInput = hasUnansweredPromptOrApproval(messages.value)
   setSandboxRestrictedMode(false, { steerLiveTurn: false, flashSelector: true })
   try {
     await window.studio.answerApproval({ requestId: msg.requestId, decision: 'allow-once' })
@@ -4005,6 +4717,7 @@ function pushSandboxBlockedPrompt(toolName?: string, reason?: string): void {
     ...(cleanReason ? { reason: cleanReason } : {}),
     decision: null
   })
+  getSessionRuntime(activeId.value).waitingInput = true
   scrollToBottom()
   scheduleHistoryPersist()
 }
@@ -4031,10 +4744,12 @@ function decideSandboxBlockedPrompt(
   if (msg.decision !== null && msg.decision !== undefined) return
   if (!enableFullAccess) {
     msg.decision = 'keep-restricted'
+    getSessionRuntime(activeId.value).waitingInput = hasUnansweredPromptOrApproval(messages.value)
     scheduleHistoryPersist()
     return
   }
   msg.decision = 'enabled-full-access'
+  getSessionRuntime(activeId.value).waitingInput = hasUnansweredPromptOrApproval(messages.value)
   setSandboxRestrictedMode(false, {
     steerLiveTurn: running.value && !retryNow,
     flashSelector: true
@@ -4059,9 +4774,15 @@ function expirePendingApprovals(): void {
  * 并附带当前 AI 会话所属工程作用域与「工程数据优先检索规范」。
  * 仅随 HarnessRunInput.canvasContext 下发给主进程 Agent，不污染用户的聊天输入气泡。
  */
+let resolvingCanvasContextSessionId = ''
+
 function buildActiveCanvasContext(): string | undefined {
   const wsCtx = buildActiveWorkspaceContext()
-  const activeProj = activeChatProject.value
+  const scopedTargetId = resolvingCanvasContextSessionId.trim()
+  const targetScope = scopedTargetId ? getSessionScope(scopedTargetId) : ''
+  const activeProj = targetScope
+    ? (chatProjectTree.value.find((g) => g.scope === targetScope) ?? null)
+    : activeChatProject.value
   const wsRoot = (project.rootPath ?? status.value?.workspace ?? '').replace(/[\\/]+$/, '').trim()
   const cacheDir = wsRoot ? `${wsRoot}${wsRoot.includes('\\') ? '\\' : '/'}Cache` : 'Cache'
   const mountedList = chatProjectTree.value
@@ -4091,13 +4812,19 @@ function buildActiveCanvasContext(): string | undefined {
  *    同时把发送给 harness 的任务改写为 `/<skill-name> ...`，由主进程 `preprocessSkillInvocation` 直接展开 `SKILL.md`。
  * 2. 当用户要求联网搜索并安装某类技能时，自动检索匹配的官方/市场技能并完成预安装与激活。
  */
-async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string> {
-  if (mode.value === 'ask') return rawTask
+async function preprocessChatOnlineSkillIntent(
+  rawTask: string,
+  targetSessionId?: string
+): Promise<string> {
+  const sid = (targetSessionId ?? activeId.value).trim()
+  const targetMode = sid && sid !== activeId.value ? getSessionRuntime(sid).mode : mode.value
+  if (targetMode === 'ask') return rawTask
   if (rawTask.trim().startsWith('/')) return rawTask
 
   const intent = detectChatSkillInstallOrSearchIntent(rawTask)
+  const sessionTag = sid ? { sessionId: sid } : {}
 
-  if (intent.githubUrls.length > 0 && intent.mentionsSkillOrInstall && mode.value === 'craft') {
+  if (intent.githubUrls.length > 0 && intent.mentionsSkillOrInstall && targetMode === 'craft') {
     let primarySkillName = ''
     let primarySourceTag = ''
     for (const url of intent.githubUrls) {
@@ -4107,7 +4834,8 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
         id: callId,
         name: 'skill_install',
         state: 'start',
-        detail: `Installing GitHub skill from ${url}`
+        detail: `Installing GitHub skill from ${url}`,
+        ...sessionTag
       })
       try {
         const inspected = await window.studio.inspectGitHubSkills({ url })
@@ -4118,7 +4846,8 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
             id: callId,
             name: 'skill_install',
             state: 'error',
-            detail: inspected.error ?? `No SKILL.md found at ${url}`
+            detail: inspected.error ?? `No SKILL.md found at ${url}`,
+            ...sessionTag
           })
           continue
         }
@@ -4134,7 +4863,8 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
             id: callId,
             name: 'skill_install',
             state: 'error',
-            detail: installedRes.error ?? `Failed to install skill from ${url}`
+            detail: installedRes.error ?? `Failed to install skill from ${url}`,
+            ...sessionTag
           })
           continue
         }
@@ -4154,7 +4884,8 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
           id: callId,
           name: 'skill_install',
           state: 'done',
-          detail: `${installedRes.installed.map((s) => `/${s}`).join(', ')} (${srcTag})`
+          detail: `${installedRes.installed.map((s) => `/${s}`).join(', ')} (${srcTag})`,
+          ...sessionTag
         })
       } catch (err) {
         onHarnessEvent({
@@ -4162,12 +4893,15 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
           id: callId,
           name: 'skill_install',
           state: 'error',
-          detail: err instanceof Error ? err.message : String(err)
+          detail: err instanceof Error ? err.message : String(err),
+          ...sessionTag
         })
       }
     }
-    commitMessages([...messages.value])
-    persistHistory()
+    if (!sid || sid === activeId.value) {
+      commitMessages([...messages.value])
+      persistHistory()
+    }
     if (primarySkillName) {
       return `/${primarySkillName} [System Note: The requested GitHub skill /${primarySkillName} (${primarySourceTag}) has ALREADY been downloaded and installed to $DSH_HOME/skills/${primarySkillName}/SKILL.md by the host application, and its full SKILL.md instructions are active above. NEVER use web_fetch, pwsh, write, or edit to re-download or write SKILL.md into $DSH_HOME/skills. Confirm to the user that /${primarySkillName} is installed and ready, then fulfill the user's request below:] ${rawTask}`
     }
@@ -4180,9 +4914,10 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
       id: searchCallId,
       name: 'skill_search',
       state: 'done',
-      detail: intent.matchedCurated.map((c) => `${c.name} (${c.url})`).join(', ')
+      detail: intent.matchedCurated.map((c) => `${c.name} (${c.url})`).join(', '),
+      ...sessionTag
     })
-    if (intent.wantsInstall && mode.value === 'craft') {
+    if (intent.wantsInstall && targetMode === 'craft') {
       const top = intent.matchedCurated[0]
       const installCallId = `chat-skill-install:${Date.now()}`
       onHarnessEvent({
@@ -4190,7 +4925,8 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
         id: installCallId,
         name: 'skill_install',
         state: 'start',
-        detail: `Installing /${top.name} from ${top.url}`
+        detail: `Installing /${top.name} from ${top.url}`,
+        ...sessionTag
       })
       try {
         const inspected = await window.studio.inspectGitHubSkills({ url: top.url })
@@ -4211,10 +4947,13 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
             id: installCallId,
             name: 'skill_install',
             state: 'done',
-            detail: `/${top.name} (${srcTag})`
+            detail: `/${top.name} (${srcTag})`,
+            ...sessionTag
           })
-          commitMessages([...messages.value])
-          persistHistory()
+          if (!sid || sid === activeId.value) {
+            commitMessages([...messages.value])
+            persistHistory()
+          }
           return `/${top.name} [System Note: Online skill search matched and installed /${top.name} (${top.url}) into $DSH_HOME/skills/${top.name}/SKILL.md, and its full SKILL.md instructions are active above. NEVER use web_fetch, pwsh, write, or edit to write into $DSH_HOME/skills. Confirm to the user that /${top.name} is installed and fulfill their request below:] ${rawTask}`
         }
       } catch (err) {
@@ -4223,7 +4962,8 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
           id: installCallId,
           name: 'skill_install',
           state: 'error',
-          detail: err instanceof Error ? err.message : String(err)
+          detail: err instanceof Error ? err.message : String(err),
+          ...sessionTag
         })
       }
     }
@@ -4234,111 +4974,181 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
 
 /**
  * 真正起一轮：把 task 作为用户消息落盘并交给 harness。
- * 手输 / 重发 / 队列出队都走这里，保证三种入口的行为完全一致。
+ * 手输 / 重发 / 队列出队（含后台会话独立队列）都走这里，支持最多 6 个会话并行执行。
  */
-async function runTask(text: string, options: { sourceIndex?: number } = {}): Promise<void> {
-  if (running.value || preparingTask) {
-    enqueueSend(text, options.sourceIndex ?? null)
+async function runTask(
+  text: string,
+  options: { sourceIndex?: number; sessionId?: string } = {}
+): Promise<void> {
+  const targetSessionId = (options.sessionId ?? activeSession.value?.id ?? activeId.value).trim()
+  const rt = getSessionRuntime(targetSessionId)
+  const isForeground = () => !targetSessionId || targetSessionId === activeId.value
+
+  if (rt.running || rt.preparingTask || (isForeground() && preparingTask)) {
+    enqueueSend(text, options.sourceIndex ?? null, targetSessionId)
     return
   }
-  // 立即置为 running 与 preparingTask，封闭 refreshStatus / 技能预处理等异步间隙内二次发送绕过队列的竞态窗口
-  const myAbortSeq = clientAbortSeq
-  abortIgnoreUntil = 0
-  lastRoundOutcome.value = 'idle'
-  running.value = true
-  notifyWeatherTaskStart('ai-chat')
-  preparingTask = true
+  // 立即置为当前会话的 running 与 preparingTask，封闭异步间隙内同会话二次发送绕过队列的竞态窗口，
+  // 同时完全不阻塞其它会话在独立 worker 槽位上并行启动
+  const myAbortSeq = rt.clientAbortSeq
+  rt.abortIgnoreUntil = 0
+  rt.lastRoundOutcome = 'idle'
+  rt.unreadDone = false
+  rt.justFinished = false
+  rt.running = true
+  rt.preparingTask = true
+  if (isForeground()) {
+    lastRoundOutcome.value = 'idle'
+    preparingTask = true
+  }
   let taskForHarness = text
   try {
-    // 发送前重新预检一次（Node 版本 / dsh 运行体 / MCP 服务 / 模型），
-    // 不用挂载时的旧快照判断，避免按过期的“就绪”放行后才发现环境缺失
+    // 发送前重新预检一次（Node 版本 / dsh 运行体 / MCP 服务 / 模型）
     await refreshStatus()
-    if (clientAbortSeq !== myAbortSeq) {
-      running.value = false
+    if (rt.clientAbortSeq !== myAbortSeq) {
+      rt.running = false
       return
     }
-    // 若主进程此刻仍有上一轮任务在跑（如面板重挂载或后台定时轮次刚唤醒），直接转入发送队列等待
-    if (status.value?.running) {
-      running.value = true
-      enqueueSend(text, options.sourceIndex ?? null)
+    // 仅当「该会话自身」在主进程中仍有在途轮次时转入该会话专属队列；其它会话在跑时直接并行放行
+    if (isSessionRunningInMain(targetSessionId)) {
+      rt.running = true
+      enqueueSend(text, options.sourceIndex ?? null, targetSessionId)
       return
     }
     // 环境未就绪时不静默丢弃：把原因作为状态消息告知用户
     if (!ready.value) {
-      running.value = false
+      rt.running = false
       const unavailMsg = status.value?.message ?? t('studio.chat.unavailable')
       pushStatus(unavailMsg, 'error')
-      appendStatusNotice(unavailMsg)
+      if (isForeground()) {
+        appendStatusNotice(unavailMsg)
+      }
       return
     }
     const task = text
     const slashSkillMatch = /^\/([a-zA-Z0-9._-]+)(?:\s|$)/.exec(task.trim())
     if (slashSkillMatch?.[1]) markSkillLoaded(slashSkillMatch[1])
-    pendingReasoning = ''
-    // 发送前记录 git 变更基线：运行结束后据此对比出「这一轮改了什么」
-    void resetGitBaseline()
-    // 同一时刻记产物扫盘基线：运行结束后只收这之后落盘到 Output / Cache 的媒体
-    roundStartAt = Date.now()
-    sessionStart = messages.value.length
-    messages.value.push({ kind: 'user', text: task })
-    scrollToBottom()
-    // 发送即落盘，避免依赖防抖窗口导致会话丢失
-    commitMessages([...messages.value])
-    persistHistory()
-    if (options.sourceIndex !== undefined) {
-      resendIndex.value = options.sourceIndex
-      if (resendTimer !== null) window.clearTimeout(resendTimer)
-      resendTimer = window.setTimeout(() => {
-        resendIndex.value = null
-      }, 1500)
+    rt.pendingReasoning = ''
+    rt.roundStartAt = Date.now()
+    if (isForeground()) {
+      rt.mode = mode.value
+      rt.workspace = workspace.value
+      pendingReasoning = ''
+      // 发送前记录 git 变更基线：运行结束后据此对比出「这一轮改了什么」
+      void resetGitBaseline()
+      roundStartAt = rt.roundStartAt
+      sessionStart = messages.value.length
+      rt.sessionStart = sessionStart
+      messages.value.push({ kind: 'user', text: task })
+      scrollToBottom()
+      // 发送即落盘，避免依赖防抖窗口导致会话丢失
+      commitMessages([...messages.value], targetSessionId)
+      persistHistory()
+      if (options.sourceIndex !== undefined) {
+        resendIndex.value = options.sourceIndex
+        if (resendTimer !== null) window.clearTimeout(resendTimer)
+        resendTimer = window.setTimeout(() => {
+          resendIndex.value = null
+        }, 1500)
+      }
+    } else {
+      const bgScope = getSessionScope(targetSessionId)
+      if (!rt.workspace && bgScope) {
+        const matchedGroup = chatProjectTree.value.find((g) => g.scope === bgScope)
+        if (matchedGroup?.rootPath?.trim()) {
+          rt.workspace = matchedGroup.rootPath.trim()
+        }
+      }
+      updateSessionById(targetSessionId, (session) => {
+        rt.sessionStart = session.messages.length
+        session.messages.push({ kind: 'user', text: task })
+      })
     }
-    taskForHarness = await preprocessChatOnlineSkillIntent(task)
+    beginSessionCanvasEffects(targetSessionId, task)
+    taskForHarness = await preprocessChatOnlineSkillIntent(task, targetSessionId)
   } finally {
-    if (clientAbortSeq === myAbortSeq) {
-      preparingTask = false
+    if (rt.clientAbortSeq === myAbortSeq) {
+      rt.preparingTask = false
+      if (isForeground()) {
+        preparingTask = false
+      }
     }
   }
-  if (clientAbortSeq !== myAbortSeq) {
+  if (rt.clientAbortSeq !== myAbortSeq) {
+    endSessionCanvasEffects(targetSessionId, 'aborted')
     return
   }
   const { providerId, modelId } = splitModelKey(selectedKey.value)
+  const fgNow = isForeground()
+  const effectiveWorkspace = fgNow
+    ? workspace.value || rt.workspace
+    : rt.workspace || workspace.value
+  const effectiveMode = fgNow ? mode.value : rt.mode
+  const fgSandboxPatch = {
+    sandboxMode: sandboxRestricted.value ? 'workspace-write' : 'danger-full-access'
+  } as const
+  const effectiveSandboxMode: 'workspace-write' | 'danger-full-access' = fgNow
+    ? fgSandboxPatch.sandboxMode
+    : readSandboxRestricted(getSessionScope(targetSessionId) || effectiveSandboxProjectScope.value)
+      ? 'workspace-write'
+      : 'danger-full-access'
+  resolvingCanvasContextSessionId = targetSessionId
   const canvasContext = buildActiveCanvasContext()
+  resolvingCanvasContextSessionId = ''
   let result: { started: boolean; message?: string }
   try {
     result = await window.studio.runHarnessTask({
       task: taskForHarness,
-      // 会话 id：dsh 据此恢复/创建持久化 session，模型通过原生会话历史记住之前的聊天内容
-      sessionId: activeSession.value?.id,
+      // 会话 id：dsh 据此恢复/创建持久化 session，并由主进程路由到专属常驻 worker 槽位并行执行
+      sessionId: targetSessionId || activeSession.value?.id,
       model: modelId.trim() || undefined,
       ...(providerId ? { providerId } : {}),
-      ...(workspace.value ? { workspace: workspace.value } : {}),
-      // 当前 agent 模式：main 进程按 craft/ask/plan 切换 dsh 的 system-prompt
-      mode: mode.value,
-      sandboxMode: sandboxRestricted.value ? 'workspace-write' : 'danger-full-access',
+      ...(effectiveWorkspace ? { workspace: effectiveWorkspace } : {}),
+      // 当前会话的 agent 模式：main 进程按槽位隔离 craft/ask/plan 的权限与 system-prompt
+      mode: effectiveMode,
+      sandboxMode: effectiveSandboxMode,
       ...(canvasContext ? { canvasContext } : {})
     })
   } catch (err) {
-    if (clientAbortSeq !== myAbortSeq) return
+    if (rt.clientAbortSeq !== myAbortSeq) {
+      endSessionCanvasEffects(targetSessionId, 'aborted')
+      return
+    }
     const errText = err instanceof Error ? err.message : String(err)
     pushStatus(errText, 'error')
-    appendStatusNotice(errText)
-    running.value = false
+    if (isForeground()) {
+      appendStatusNotice(errText)
+    }
+    rt.running = false
+    endSessionCanvasEffects(targetSessionId, 'error')
     return
   }
-  if (clientAbortSeq !== myAbortSeq) {
+  if (rt.clientAbortSeq !== myAbortSeq) {
+    endSessionCanvasEffects(targetSessionId, 'aborted')
     return
   }
   if (!result.started) {
     await refreshStatus()
-    if (clientAbortSeq !== myAbortSeq) return
-    if (status.value?.running) {
-      running.value = true
+    if (rt.clientAbortSeq !== myAbortSeq) {
+      endSessionCanvasEffects(targetSessionId, 'aborted')
+      return
+    }
+    if (isSessionRunningInMain(targetSessionId)) {
+      rt.running = true
       return
     }
     const failMsg = result.message ?? 'failed to start'
     pushStatus(failMsg, 'error')
-    appendStatusNotice(failMsg)
-    running.value = false
+    if (isForeground()) {
+      appendStatusNotice(failMsg)
+    }
+    rt.running = false
+    markSessionStoppedInStatus(targetSessionId)
+    endSessionCanvasEffects(targetSessionId, 'error')
+    return
+  }
+  if (rt.running) {
+    markSessionStartedInStatus(targetSessionId)
   }
 }
 
@@ -4359,7 +5169,7 @@ async function onSend(): Promise<void> {
   const task = buildTask(raw)
   referenced.value = []
   resetEditor()
-  // 正在执行：不丢弃输入，转入发送队列，等本轮结束后按序发出
+  // 当前会话正在执行：转入当前会话自己的发送队列；其它会话正在跑时互不影响，直接并行启动
   if (running.value || preparingTask) {
     enqueueSend(task)
     return
@@ -4443,10 +5253,18 @@ async function onClickNextActionPill(
 }
 
 async function abortCurrentRun(): Promise<void> {
-  clientAbortSeq++
-  abortIgnoreUntil = Date.now() + 600
+  const targetSid = activeId.value
+  const rt = getSessionRuntime(targetSid)
+  rt.clientAbortSeq++
+  rt.abortIgnoreUntil = Date.now() + 600
+  rt.preparingTask = false
   preparingTask = false
-  abortPendingMcpTasks()
+  const hasOwnRunningMcpCard = messages.value
+    .slice(sessionStart)
+    .some((m) => m?.kind === 'tool' && m.key.startsWith('mcp:') && m.state === 'start')
+  if (backgroundRunningCount.value === 0 || hasOwnRunningMcpCard) {
+    abortPendingMcpTasks()
+  }
   for (let i = messages.value.length - 1; i >= sessionStart; i--) {
     const m = messages.value[i]
     if (m?.kind === 'tool' && m.state === 'start') {
@@ -4454,30 +5272,42 @@ async function abortCurrentRun(): Promise<void> {
     }
   }
   try {
-    await window.studio.abortHarnessTask()
+    await window.studio.abortHarnessTask(targetSid || undefined)
   } finally {
-    abortPendingMcpTasks()
-    preparingTask = false
-    running.value = false
-    void captureRoundOutputs()
+    if (backgroundRunningCount.value === 0 || hasOwnRunningMcpCard) {
+      abortPendingMcpTasks()
+    }
+    rt.preparingTask = false
+    rt.running = false
+    markSessionStoppedInStatus(targetSid)
+    endSessionCanvasEffects(targetSid, 'aborted')
+    if (!targetSid || targetSid === activeId.value) {
+      preparingTask = false
+      running.value = false
+      void captureRoundOutputs()
+    }
+    void refreshStatus()
   }
 }
 
 async function onAbort(): Promise<void> {
-  const prevDraining = draining
+  const targetSid = activeId.value
+  const rt = getSessionRuntime(targetSid)
+  const prevDraining = rt.draining
   // 阻塞 watch(running) 在主进程真正完成 abortHarnessTask 前抢跑 drainQueue
-  draining = true
-  for (const q of sendQueue.value) q.forcing = false
-  // 先本地退出 running，避免主进程杀进程慢时按钮一直停在「停止」
+  rt.draining = true
+  for (const q of rt.sendQueue) q.forcing = false
+  // 先本地退出当前会话的 running，不影响后台并行运行的其它会话
+  rt.preparingTask = false
   preparingTask = false
-  running.value = false
+  rt.running = false
   try {
     await abortCurrentRun()
   } finally {
-    draining = prevDraining
+    rt.draining = prevDraining
   }
-  if (!draining && sendQueue.value.length > 0) {
-    void drainQueue()
+  if (!rt.draining && rt.sendQueue.length > 0) {
+    void drainSessionQueue(targetSid)
   }
 }
 
@@ -4496,102 +5326,120 @@ async function onResend(index: number): Promise<void> {
 }
 
 /**
- * 出队：本轮结束后按序发出队首。
- * 只能在本轮真正停止时调用（watch running / 中断流程），否则会打乱正在跑的一轮。
+ * 按会话独立出队：某会话本轮结束后按序发出该会话自己的队首（无论当前处于前台还是后台）。
  */
-async function drainQueue(): Promise<void> {
-  if (draining || running.value || preparingTask) return
-  const item = sendQueue.value[0]
+async function drainSessionQueue(targetSessionId?: string): Promise<void> {
+  const sid = (targetSessionId ?? activeId.value).trim()
+  const rt = getSessionRuntime(sid)
+  const fg = !sid || sid === activeId.value
+  if (rt.draining || rt.running || rt.preparingTask || (fg && preparingTask)) return
+  const item = rt.sendQueue[0]
   if (!item) return
-  draining = true
+  rt.draining = true
   let dequeued: QueueItem | undefined
   try {
-    // 环境未就绪时把队首留在队列里并说明原因，避免静默丢弃整条队列
     await refreshStatus()
-    if (running.value || preparingTask) return
+    if (rt.running || rt.preparingTask || (fg && preparingTask)) return
     if (!ready.value) {
       pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
       return
     }
-    if (status.value?.running) {
-      running.value = true
+    if (isSessionRunningInMain(sid)) {
+      rt.running = true
       return
     }
-    dequeued = sendQueue.value.shift()
+    dequeued = rt.sendQueue.shift()
     if (!dequeued) return
     dequeued.forcing = false
-    // 出队即重置全部强制标记：forcing 只决定「出队时要不要中断」，用过即失效
-    for (const q of sendQueue.value) q.forcing = false
+    for (const q of rt.sendQueue) q.forcing = false
   } finally {
-    // 在 await runTask 之前释放 draining：runTask 入口同步置 running = true / preparingTask = true，
-    // 提前释放 draining 可确保常驻进程冷启动等待期间用户仍能对队列后续项点「立即发送」中断
-    draining = false
+    rt.draining = false
   }
   if (!dequeued) return
-  await runTask(
-    dequeued.text,
-    dequeued.sourceIndex === null ? {} : { sourceIndex: dequeued.sourceIndex }
-  )
-  // runTask 可能提前返回（预检未就绪 / 主进程拒绝启动）：这一轮没跑起来就放回队首，
-  // 否则用户排队的那句话会凭空消失
-  if (!running.value && !preparingTask && !sendQueue.value.some((q) => q.id === dequeued!.id)) {
+  await runTask(dequeued.text, {
+    ...(dequeued.sourceIndex === null ? {} : { sourceIndex: dequeued.sourceIndex }),
+    ...(sid ? { sessionId: sid } : {})
+  })
+  if (
+    !rt.running &&
+    !rt.preparingTask &&
+    !(fg && preparingTask) &&
+    !rt.sendQueue.some((q) => q.id === dequeued!.id)
+  ) {
     dequeued.forcing = false
-    sendQueue.value.unshift(dequeued)
+    rt.sendQueue.unshift(dequeued)
   }
 }
 
+async function drainQueue(): Promise<void> {
+  await drainSessionQueue(activeId.value)
+}
+
 async function startQueuedSend(item: QueueItem, force: boolean): Promise<void> {
-  if (draining) return
-  // 这条已经被前面的流程排掉了
-  if (!sendQueue.value.some((q) => q.id === item.id)) return
-  // 此刻已空闲且不在预检：直接取出该条发出，无需中断
-  if (!running.value && !preparingTask) {
-    draining = true
+  const targetSid = activeId.value
+  const rt = getSessionRuntime(targetSid)
+  if (rt.draining) return
+  if (!rt.sendQueue.some((q) => q.id === item.id)) return
+  if (!rt.running && !rt.preparingTask && !preparingTask) {
+    rt.draining = true
     try {
-      sendQueue.value = sendQueue.value.filter((q) => q.id !== item.id)
+      rt.sendQueue = rt.sendQueue.filter((q) => q.id !== item.id)
       item.forcing = false
-      for (const q of sendQueue.value) q.forcing = false
+      for (const q of rt.sendQueue) q.forcing = false
     } finally {
-      draining = false
+      rt.draining = false
     }
-    await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
-    if (!running.value && !preparingTask && !sendQueue.value.some((q) => q.id === item.id)) {
+    await runTask(item.text, {
+      ...(item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex }),
+      ...(targetSid ? { sessionId: targetSid } : {})
+    })
+    if (
+      !rt.running &&
+      !rt.preparingTask &&
+      !preparingTask &&
+      !rt.sendQueue.some((q) => q.id === item.id)
+    ) {
       item.forcing = false
-      sendQueue.value.unshift(item)
+      rt.sendQueue.unshift(item)
     }
     return
   }
   if (!force) return
-  // 支持队列中任意位置（含第 2、第 N 条）点「立即发送」：
-  // 立即中断当前执行轮次并插队发出该条，其余排队项保持在队列中等待本轮结束
-  draining = true
+  rt.draining = true
   item.forcing = true
   let shouldSend = false
   try {
     await abortCurrentRun()
-    if (sendQueue.value.some((q) => q.id === item.id)) {
-      sendQueue.value = sendQueue.value.filter((q) => q.id !== item.id)
+    if (rt.sendQueue.some((q) => q.id === item.id)) {
+      rt.sendQueue = rt.sendQueue.filter((q) => q.id !== item.id)
       shouldSend = true
     }
     item.forcing = false
-    for (const q of sendQueue.value) q.forcing = false
+    for (const q of rt.sendQueue) q.forcing = false
   } finally {
     item.forcing = false
-    draining = false
+    rt.draining = false
   }
   if (!shouldSend) {
-    if (sendQueue.value.length > 0) void drainQueue()
+    if (rt.sendQueue.length > 0) void drainSessionQueue(targetSid)
     return
   }
-  await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
-  // 同上：中断后若这一轮没跑起来，重置 forcing 后把消息放回队首而不是丢掉或卡在「正在中断…」
-  if (!running.value && !preparingTask && !sendQueue.value.some((q) => q.id === item.id)) {
+  await runTask(item.text, {
+    ...(item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex }),
+    ...(targetSid ? { sessionId: targetSid } : {})
+  })
+  if (
+    !rt.running &&
+    !rt.preparingTask &&
+    !preparingTask &&
+    !rt.sendQueue.some((q) => q.id === item.id)
+  ) {
     item.forcing = false
-    sendQueue.value.unshift(item)
+    rt.sendQueue.unshift(item)
   }
 }
 
-/** 立即发送：中断当前执行，马上发这条 */
+/** 立即发送：中断当前会话执行，马上发这条（不影响其它并行会话） */
 function forceQueuedSend(id: number): void {
   const item = sendQueue.value.find((q) => q.id === id)
   if (!item) return
@@ -4600,7 +5448,7 @@ function forceQueuedSend(id: number): void {
 
 /**
  * Stage 1：盘中实时转向（Mid-Turn Live Steering）
- * 在 Agent 运行期间，不中断当前轮次与已启动工具，将用户新指令直接通过 IPC 注入给正在运行的 Agent。
+ * 在 Agent 运行期间，不中断当前轮次与已启动工具，将用户新指令直接通过 IPC 注入给当前会话正在运行的 Agent。
  */
 async function onSteerNow(): Promise<void> {
   if (composing.value || !running.value) return
@@ -4610,7 +5458,12 @@ async function onSteerNow(): Promise<void> {
   referenced.value = []
   resetEditor()
   if (typeof window.studio?.steerHarnessTurn === 'function') {
-    const res = await window.studio.steerHarnessTurn({ text: task }).catch(() => ({ ok: false }))
+    const res = await window.studio
+      .steerHarnessTurn({
+        text: task,
+        ...(activeId.value ? { sessionId: activeId.value } : {})
+      })
+      .catch(() => ({ ok: false }))
     if (res?.ok) {
       messages.value.push({ kind: 'user', text: task, steered: true })
       scrollToBottom()
@@ -4631,7 +5484,10 @@ async function onSteerQueued(id: number): Promise<void> {
   if (!item) return
   if (running.value && typeof window.studio?.steerHarnessTurn === 'function') {
     const res = await window.studio
-      .steerHarnessTurn({ text: item.text })
+      .steerHarnessTurn({
+        text: item.text,
+        ...(activeId.value ? { sessionId: activeId.value } : {})
+      })
       .catch(() => ({ ok: false }))
     if (res?.ok) {
       sendQueue.value = sendQueue.value.filter((q) => q.id !== id)
@@ -4656,7 +5512,11 @@ async function onSteerSubagent(sub: HarnessSubagentView): Promise<void> {
   subagentFollowupTarget.value = null
   if (running.value && typeof window.studio?.steerHarnessTurn === 'function') {
     const res = await window.studio
-      .steerHarnessTurn({ text, subagentSessionId: sub.sessionId })
+      .steerHarnessTurn({
+        text,
+        subagentSessionId: sub.sessionId,
+        ...(activeId.value ? { sessionId: activeId.value } : {})
+      })
       .catch(() => ({ ok: false }))
     if (res?.ok) {
       messages.value.push({
@@ -4686,6 +5546,7 @@ async function onHandleCanvasEvent(action: 'diagnose' | 'review'): Promise<void>
   const ev = latestCanvasEvent.value
   if (!ev) return
   latestCanvasEvent.value = null
+  getSessionRuntime(activeId.value).latestCanvasEvent = null
   const refs = (ev.outputPaths ?? []).map((p) => `@${p}`).join(' ')
   const prompt =
     action === 'diagnose'
@@ -4696,7 +5557,12 @@ async function onHandleCanvasEvent(action: 'diagnose' | 'review'): Promise<void>
           refs ? `\nGenerated outputs: ${refs}` : ''
         }\nPlease visually inspect the outputs for composition, character consistency, and quality, then advise or execute the next production step.`
   if (running.value && typeof window.studio?.steerHarnessTurn === 'function') {
-    const res = await window.studio.steerHarnessTurn({ text: prompt }).catch(() => ({ ok: false }))
+    const res = await window.studio
+      .steerHarnessTurn({
+        text: prompt,
+        ...(activeId.value ? { sessionId: activeId.value } : {})
+      })
+      .catch(() => ({ ok: false }))
     if (res?.ok) {
       messages.value.push({ kind: 'user', text: prompt, steered: true })
       scrollToBottom()
@@ -4712,15 +5578,11 @@ async function onHandleCanvasEvent(action: 'diagnose' | 'review'): Promise<void>
 }
 
 /**
- * 本轮结束（正常 done / 报错 / 用户中断）后自动发出队首。
- * running 的每个 false 落点都会触发一次，队列空时是空操作；
- * 只有用户点了「立即发送」才会在运行中中断当前轮去插队。
+ * 当前激活会话本轮结束（正常 done / 报错 / 用户中断）后自动发出该会话队首。
+ * 后台会话的队列已由 handleBackgroundHarnessEvent 的 done/error 直接触发 drainSessionQueue。
  */
 watch(running, (isRunning) => {
-  if (isRunning) {
-    notifyWeatherTaskStart('ai-chat')
-  } else {
-    notifyWeatherTaskComplete('ai-chat')
+  if (!isRunning) {
     void drainQueue()
   }
 })
@@ -4772,6 +5634,10 @@ onBeforeUnmount(() => {
   if (historyTimer !== null) window.clearTimeout(historyTimer)
   if (activityTimer !== null) window.clearTimeout(activityTimer)
   if (automationTimer !== null) window.clearInterval(automationTimer)
+  for (const key of [...activeSessionWeatherKeys]) {
+    activeSessionWeatherKeys.delete(key)
+    notifyWeatherTaskComplete(key)
+  }
   // 卸载前把当前消息与上下文用量落盘，避免切换面板丢失最后一段对话与真实用量
   commitMessages([...messages.value])
   commitContextUsed(harnessContextUsed.value)
@@ -4796,7 +5662,6 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="codex-new-conv-btn"
-        :disabled="running"
         :title="t('studio.chat.newConversationBtn')"
         :aria-label="t('studio.chat.newConversationBtn')"
         @click="onNewWorkspaceSession"
@@ -4903,7 +5768,6 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="codex-header-icon-btn"
-            :disabled="running"
             :title="t('studio.chat.addProjectFolder')"
             :aria-label="t('studio.chat.addProjectFolder')"
             @click.stop="onAddChatProjectFolder"
@@ -5076,7 +5940,7 @@ onBeforeUnmount(() => {
                   v-if="group.scope !== currentProjectChatScope"
                   type="button"
                   class="codex-folder-action-btn danger"
-                  :disabled="running"
+                  :disabled="group.sessions.some((s) => isSessionBusy(s.id))"
                   :title="t('studio.chat.removeProjectFolder')"
                   :aria-label="t('studio.chat.removeProjectFolder')"
                   @click.stop="onRemoveChatProjectFolder(group.scope)"
@@ -5093,13 +5957,14 @@ onBeforeUnmount(() => {
                 class="codex-conv-entry"
                 :class="{
                   active: group.scope === activeChatScope && s.id === activeId,
-                  pinned: Boolean(s.pinned)
+                  pinned: Boolean(s.pinned),
+                  'is-running': isSessionBusy(s.id),
+                  'is-waiting': isSessionWaitingInput(s)
                 }"
               >
                 <button
                   type="button"
                   class="codex-session-btn"
-                  :disabled="running"
                   @click.stop="onSelectProjectSession(group.scope, s.id)"
                 >
                   <span class="codex-session-title">
@@ -5111,7 +5976,7 @@ onBeforeUnmount(() => {
                   <button
                     type="button"
                     class="codex-conv-tool-btn"
-                    :disabled="running || exportBusy"
+                    :disabled="isSessionBusy(s.id) || exportBusy"
                     :title="t('studio.chat.exportSession')"
                     @click.stop="onExportSessionById(s.id)"
                   >
@@ -5156,7 +6021,7 @@ onBeforeUnmount(() => {
                   <button
                     type="button"
                     class="codex-conv-tool-btn danger"
-                    :disabled="running"
+                    :disabled="isSessionBusy(s.id)"
                     :title="t('studio.chat.deleteSession')"
                     @click.stop="onDeleteProjectSession(group.scope, s.id)"
                   >
@@ -5173,37 +6038,36 @@ onBeforeUnmount(() => {
                     </svg>
                   </button>
                 </div>
-                <!-- 选中态默认显示 Codex 风格四点图标 (::) -->
-                <button
-                  v-if="group.scope === activeChatScope && s.id === activeId"
-                  type="button"
-                  class="codex-session-dots-btn"
-                  :disabled="running"
-                  :title="t('studio.chat.deleteSession')"
-                  :aria-label="t('studio.chat.deleteSession')"
-                  @click.stop="onDeleteProjectSession(group.scope, s.id)"
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    width="13"
-                    height="13"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <circle cx="5.5" cy="5.5" r="1.35" />
-                    <circle cx="10.5" cy="5.5" r="1.35" />
-                    <circle cx="5.5" cy="10.5" r="1.35" />
-                    <circle cx="10.5" cy="10.5" r="1.35" />
-                  </svg>
-                </button>
-                <!-- 未命名空白草稿会话：右侧显示蓝点指示器 -->
+                <!-- 运行中：右侧同行显示 2×2 四点流光追逐动画 -->
                 <span
-                  v-else-if="isUntitledDraftSession(s)"
-                  class="codex-session-unread-dot"
+                  v-if="isSessionBusy(s.id)"
+                  class="session-live-spinner"
+                  :title="t('studio.chat.sessionRunningHint')"
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                    <circle class="quad-dot quad-dot-1" cx="5.2" cy="5.2" r="1.5" />
+                    <circle class="quad-dot quad-dot-2" cx="10.8" cy="5.2" r="1.5" />
+                    <circle class="quad-dot quad-dot-3" cx="10.8" cy="10.8" r="1.5" />
+                    <circle class="quad-dot quad-dot-4" cx="5.2" cy="10.8" r="1.5" />
+                  </svg>
+                </span>
+                <!-- 待确认/提问：右侧同行显示橙色圆点 -->
+                <span
+                  v-else-if="isSessionWaitingInput(s)"
+                  class="session-waiting-dot codex-session-right-indicator"
+                  :title="t('studio.chat.sessionWaitingActionHint')"
+                  aria-hidden="true"
+                />
+                <!-- 执行完成：右侧同行显示蓝色圆点 -->
+                <span
+                  v-else-if="isSessionUnreadDone(s.id)"
+                  class="session-done-dot codex-session-right-indicator"
+                  :title="t('studio.chat.sessionUnreadDoneHint')"
                   aria-hidden="true"
                 />
                 <!-- 历史会话：显示 3d / 6d / 13d 紧凑相对时间 -->
-                <span v-else class="codex-session-age-label">
+                <span v-else-if="!isUntitledDraftSession(s)" class="codex-session-age-label">
                   {{ formatChatSessionRelativeAge(s.updatedAt) }}
                 </span>
               </li>
@@ -5241,7 +6105,6 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="codex-header-icon-btn"
-              :disabled="running"
               :title="t('studio.chat.newConversationBtn')"
               :aria-label="t('studio.chat.newConversationBtn')"
               @click.stop="onNewWorkspaceSession"
@@ -5257,13 +6120,14 @@ onBeforeUnmount(() => {
               class="codex-conv-entry flat"
               :class="{
                 active: activeChatScope === currentProjectChatScope && s.id === activeId,
-                pinned: Boolean(s.pinned)
+                pinned: Boolean(s.pinned),
+                'is-running': isSessionBusy(s.id),
+                'is-waiting': isSessionWaitingInput(s)
               }"
             >
               <button
                 type="button"
                 class="codex-session-btn"
-                :disabled="running"
                 @click.stop="onSelectProjectSession(currentProjectChatScope, s.id)"
               >
                 <span class="codex-session-title">
@@ -5274,7 +6138,7 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="codex-conv-tool-btn"
-                  :disabled="running || exportBusy"
+                  :disabled="isSessionBusy(s.id) || exportBusy"
                   :title="t('studio.chat.exportSession')"
                   @click.stop="onExportSessionById(s.id)"
                 >
@@ -5319,7 +6183,7 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="codex-conv-tool-btn danger"
-                  :disabled="running"
+                  :disabled="isSessionBusy(s.id)"
                   :title="t('studio.chat.deleteSession')"
                   @click.stop="onDeleteProjectSession(currentProjectChatScope, s.id)"
                 >
@@ -5336,33 +6200,32 @@ onBeforeUnmount(() => {
                   </svg>
                 </button>
               </div>
-              <button
-                v-if="activeChatScope === currentProjectChatScope && s.id === activeId"
-                type="button"
-                class="codex-session-dots-btn"
-                :disabled="running"
-                :title="t('studio.chat.deleteSession')"
-                @click.stop="onDeleteProjectSession(currentProjectChatScope, s.id)"
-              >
-                <svg
-                  viewBox="0 0 16 16"
-                  width="13"
-                  height="13"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <circle cx="5.5" cy="5.5" r="1.35" />
-                  <circle cx="10.5" cy="5.5" r="1.35" />
-                  <circle cx="5.5" cy="10.5" r="1.35" />
-                  <circle cx="10.5" cy="10.5" r="1.35" />
-                </svg>
-              </button>
               <span
-                v-else-if="isUntitledDraftSession(s)"
-                class="codex-session-unread-dot"
+                v-if="isSessionBusy(s.id)"
+                class="session-live-spinner"
+                :title="t('studio.chat.sessionRunningHint')"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                  <circle class="quad-dot quad-dot-1" cx="5.2" cy="5.2" r="1.5" />
+                  <circle class="quad-dot quad-dot-2" cx="10.8" cy="5.2" r="1.5" />
+                  <circle class="quad-dot quad-dot-3" cx="10.8" cy="10.8" r="1.5" />
+                  <circle class="quad-dot quad-dot-4" cx="5.2" cy="10.8" r="1.5" />
+                </svg>
+              </span>
+              <span
+                v-else-if="isSessionWaitingInput(s)"
+                class="session-waiting-dot codex-session-right-indicator"
+                :title="t('studio.chat.sessionWaitingActionHint')"
                 aria-hidden="true"
               />
-              <span v-else class="codex-session-age-label">
+              <span
+                v-else-if="isSessionUnreadDone(s.id)"
+                class="session-done-dot codex-session-right-indicator"
+                :title="t('studio.chat.sessionUnreadDoneHint')"
+                aria-hidden="true"
+              />
+              <span v-else-if="!isUntitledDraftSession(s)" class="codex-session-age-label">
                 {{ formatChatSessionRelativeAge(s.updatedAt) }}
               </span>
             </li>
@@ -5410,6 +6273,14 @@ onBeforeUnmount(() => {
         </span>
         <span class="dot" />
         <span class="status-text">{{ statusText }}</span>
+        <span
+          v-if="runningSessionCount > 1 || backgroundRunningCount > 0"
+          class="chat-parallel-badge"
+          :title="t('studio.chat.parallelRunningBadge', { count: runningSessionCount })"
+        >
+          <span class="chat-parallel-dot" aria-hidden="true" />
+          {{ t('studio.chat.parallelRunningBadge', { count: runningSessionCount }) }}
+        </span>
         <!-- 瞬时状态：正在启动 / 已提交给模型 / 仍在等待…，只在状态栏出现，不进消息流 -->
         <span
           v-if="activity"
@@ -7127,11 +7998,18 @@ onBeforeUnmount(() => {
               class="tool-btn"
               :title="t('studio.chat.sessionSelect')"
               :aria-label="t('studio.chat.sessionSelect')"
-              :disabled="running || !sessions.length"
+              :disabled="!sessions.length"
               @click.stop="sessionOpen = !sessionOpen"
             >
               <span class="session-trigger-label">
                 {{ t('studio.chat.sessionSelect') }}
+              </span>
+              <span
+                v-if="backgroundRunningCount > 0"
+                class="session-trigger-running-badge"
+                :title="t('studio.chat.parallelRunningBadge', { count: runningSessionCount })"
+              >
+                {{ backgroundRunningCount }}
               </span>
               <svg
                 class="session-chevron"
@@ -7155,8 +8033,33 @@ onBeforeUnmount(() => {
                   @click.stop="selectSession(s.id)"
                 >
                   <span class="session-item-label">{{ s.title || t('studio.chat.newChat') }}</span>
+                  <span
+                    v-if="isSessionBusy(s.id)"
+                    class="session-live-spinner"
+                    :title="t('studio.chat.sessionRunningHint')"
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                      <circle class="quad-dot quad-dot-1" cx="5.2" cy="5.2" r="1.5" />
+                      <circle class="quad-dot quad-dot-2" cx="10.8" cy="5.2" r="1.5" />
+                      <circle class="quad-dot quad-dot-3" cx="10.8" cy="10.8" r="1.5" />
+                      <circle class="quad-dot quad-dot-4" cx="5.2" cy="10.8" r="1.5" />
+                    </svg>
+                  </span>
+                  <span
+                    v-else-if="isSessionWaitingInput(s)"
+                    class="session-waiting-dot"
+                    :title="t('studio.chat.sessionWaitingActionHint')"
+                    aria-hidden="true"
+                  />
+                  <span
+                    v-else-if="isSessionUnreadDone(s.id)"
+                    class="session-done-dot"
+                    :title="t('studio.chat.sessionUnreadDoneHint')"
+                    aria-hidden="true"
+                  />
                   <svg
-                    v-if="s.id === activeId"
+                    v-else-if="s.id === activeId"
                     class="session-check"
                     viewBox="0 0 24 24"
                     fill="none"
@@ -7178,7 +8081,7 @@ onBeforeUnmount(() => {
                   class="session-item-remove"
                   :title="t('studio.chat.deleteSession')"
                   :aria-label="t('studio.chat.deleteSession')"
-                  :disabled="running"
+                  :disabled="isSessionBusy(s.id)"
                   @click.stop="onDeleteSessionById(s.id)"
                 >
                   ×
@@ -7191,7 +8094,6 @@ onBeforeUnmount(() => {
             class="tool-btn icon-only"
             :title="t('studio.chat.newSession')"
             :aria-label="t('studio.chat.newSession')"
-            :disabled="running"
             @click="onNewSession"
           >
             <svg
@@ -8243,6 +9145,9 @@ onBeforeUnmount(() => {
 .codex-session-btn {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
   padding: 1px 0;
   border: none;
   background: transparent;
@@ -8260,6 +9165,8 @@ onBeforeUnmount(() => {
 }
 
 .codex-session-title {
+  flex: 1;
+  min-width: 0;
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -8292,6 +9199,7 @@ onBeforeUnmount(() => {
 
 .codex-conv-entry:hover .codex-session-dots-btn,
 .codex-conv-entry:hover .codex-session-unread-dot,
+.codex-conv-entry:hover .codex-session-right-indicator,
 .codex-conv-entry:hover .codex-session-age-label {
   display: none;
 }
@@ -12342,5 +13250,120 @@ onBeforeUnmount(() => {
 
 .next-pill-icon {
   font-size: 11px;
+}
+
+.chat-parallel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chat-parallel-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.session-trigger-running-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  background: var(--accent);
+}
+
+.session-live-spinner {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.session-live-spinner svg {
+  display: block;
+}
+
+.session-live-spinner .quad-dot {
+  opacity: 0.22;
+  animation: chat-quad-dot-chase 0.96s ease-in-out infinite;
+}
+
+.session-live-spinner .quad-dot-1 {
+  animation-delay: 0s;
+}
+
+.session-live-spinner .quad-dot-2 {
+  animation-delay: 0.24s;
+}
+
+.session-live-spinner .quad-dot-3 {
+  animation-delay: 0.48s;
+}
+
+.session-live-spinner .quad-dot-4 {
+  animation-delay: 0.72s;
+}
+
+.codex-session-right-indicator {
+  flex: none;
+  margin: 0 5.5px;
+}
+
+.session-waiting-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 0 3.5px rgba(245, 158, 11, 0.18);
+  flex-shrink: 0;
+}
+
+.session-done-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 3.5px rgba(59, 130, 246, 0.16);
+  flex-shrink: 0;
+}
+
+@keyframes chat-quad-dot-chase {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  18% {
+    opacity: 0.96;
+  }
+  44% {
+    opacity: 0.52;
+  }
+  72% {
+    opacity: 0.24;
+  }
 }
 </style>

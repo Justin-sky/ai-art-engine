@@ -908,10 +908,108 @@ export function useChatHistory() {
 
   /** 当前会话（始终存在；调用前需先 load） */
   const activeSession = computed(() => sessions.value.find((s) => s.id === activeId.value) ?? null)
+  const sessionScopeHint = new Map<string, string>()
 
   function persist(): void {
     writeSessions(sessions.value, scope.value)
     bumpTree()
+  }
+
+  function candidateOtherScopes(sessionId: string): string[] {
+    const raw = [
+      sessionScopeHint.get(sessionId),
+      workspaceScope.value,
+      ...projects.value.map((p) => p.scope),
+      ''
+    ]
+    const seen = new Set<string>([scope.value])
+    const out: string[] = []
+    for (const item of raw) {
+      if (item === undefined) continue
+      const norm = item.trim()
+      if (seen.has(norm)) continue
+      seen.add(norm)
+      out.push(norm)
+    }
+    return out
+  }
+
+  function findSessionLocation(
+    sessionId: string
+  ): { scope: string; session: ChatSession; inCurrentScope: boolean } | null {
+    const id = String(sessionId ?? '').trim()
+    if (!id) return null
+    const localHit = sessions.value.find((s) => s.id === id)
+    if (localHit) {
+      sessionScopeHint.set(id, scope.value)
+      return { scope: scope.value, session: localHit, inCurrentScope: true }
+    }
+    for (const candScope of candidateOtherScopes(id)) {
+      const list = readSessions(candScope)
+      const hit = list.find((s) => s.id === id)
+      if (hit) {
+        sessionScopeHint.set(id, candScope)
+        return { scope: candScope, session: hit, inCurrentScope: false }
+      }
+    }
+    return null
+  }
+
+  function getSessionById(sessionId: string): ChatSession | null {
+    return findSessionLocation(sessionId)?.session ?? null
+  }
+
+  function getSessionScope(sessionId: string): string | null {
+    return findSessionLocation(sessionId)?.scope ?? null
+  }
+
+  /**
+   * 按会话 ID 原地更新任意作用域下的会话（支持后台并行运行的其它会话或跨工程目录会话实时落盘）。
+   */
+  function updateSessionById(
+    sessionId: string,
+    updater: (session: ChatSession) => ChatSession | void,
+    opts?: { persistNow?: boolean }
+  ): ChatSession | null {
+    const id = String(sessionId ?? '').trim()
+    if (!id) return null
+    const idx = sessions.value.findIndex((s) => s.id === id)
+    if (idx >= 0) {
+      sessionScopeHint.set(id, scope.value)
+      const prev = sessions.value[idx]!
+      const draft: ChatSession = { ...prev, messages: [...prev.messages] }
+      const returned = updater(draft)
+      if (returned === prev) return prev
+      const base = returned ?? draft
+      const derived = base.title || titleFromMessages(base.messages)
+      const next: ChatSession = derived !== base.title ? { ...base, title: derived } : base
+      const copy = [...sessions.value]
+      copy[idx] = next
+      sessions.value = copy
+      if (opts?.persistNow !== false) {
+        persist()
+      }
+      return next
+    }
+    for (const candScope of candidateOtherScopes(id)) {
+      const list = readSessions(candScope)
+      const cIdx = list.findIndex((s) => s.id === id)
+      if (cIdx >= 0) {
+        sessionScopeHint.set(id, candScope)
+        const prev = list[cIdx]!
+        const draft: ChatSession = { ...prev, messages: [...prev.messages] }
+        const returned = updater(draft)
+        if (returned === prev) return prev
+        const base = returned ?? draft
+        const derived = base.title || titleFromMessages(base.messages)
+        const next: ChatSession = derived !== base.title ? { ...base, title: derived } : base
+        list[cIdx] = next
+        writeSessions(list, candScope)
+        bumpTree()
+        return next
+      }
+    }
+    return null
   }
 
   /** 新建空会话并激活 */
@@ -1077,8 +1175,22 @@ export function useChatHistory() {
     localStorage.setItem(activeSessionStorageKey(scope.value), id)
   }
 
-  /** 把消息写入当前会话（覆盖式，供外层在状态变化后调用） */
-  function commitMessages(messages: ChatMsg[]): void {
+  /** 把消息写入当前或指定会话（覆盖式，供外层在状态变化后调用） */
+  function commitMessages(messages: ChatMsg[], targetSessionId?: string): void {
+    const sid = (targetSessionId ?? activeId.value).trim()
+    if (!sid) return
+    if (sid !== activeId.value) {
+      updateSessionById(sid, (prev) => {
+        const derived = titleFromMessages(messages)
+        return {
+          ...prev,
+          title: prev.title || derived,
+          updatedAt: Date.now(),
+          messages
+        }
+      })
+      return
+    }
     const index = sessions.value.findIndex((s) => s.id === activeId.value)
     if (index < 0) return
     const prev = sessions.value[index]!
@@ -1092,10 +1204,18 @@ export function useChatHistory() {
   }
 
   /**
-   * 记录当前会话最近一次 harness 上报的真实上下文 token（环形进度条据此在重启 / 切回会话后恢复）。
+   * 记录当前或指定会话最近一次 harness 上报的真实上下文 token（环形进度条据此在重启 / 切回会话后恢复）。
    * 刻意不更新 updatedAt：用量上报不是会话活动，不该把会话列表顺序搅乱。
    */
-  function commitContextUsed(used: number | undefined): void {
+  function commitContextUsed(used: number | undefined, targetSessionId?: string): void {
+    const sid = (targetSessionId ?? activeId.value).trim()
+    if (!sid) return
+    if (sid !== activeId.value) {
+      updateSessionById(sid, (prev) =>
+        prev.contextUsed === used ? prev : { ...prev, contextUsed: used }
+      )
+      return
+    }
     const index = sessions.value.findIndex((s) => s.id === activeId.value)
     if (index < 0) return
     const prev = sessions.value[index]!
@@ -1103,14 +1223,26 @@ export function useChatHistory() {
     sessions.value[index] = { ...prev, contextUsed: used }
   }
 
-  function commitTodos(todos: HarnessTodoItem[] | undefined): void {
+  function commitTodos(todos: HarnessTodoItem[] | undefined, targetSessionId?: string): void {
+    const sid = (targetSessionId ?? activeId.value).trim()
+    if (!sid) return
+    if (sid !== activeId.value) {
+      updateSessionById(sid, (prev) => ({ ...prev, todos }))
+      return
+    }
     const index = sessions.value.findIndex((s) => s.id === activeId.value)
     if (index < 0) return
     const prev = sessions.value[index]!
     sessions.value[index] = { ...prev, todos }
   }
 
-  function commitGoal(goal: HarnessGoalView | null | undefined): void {
+  function commitGoal(goal: HarnessGoalView | null | undefined, targetSessionId?: string): void {
+    const sid = (targetSessionId ?? activeId.value).trim()
+    if (!sid) return
+    if (sid !== activeId.value) {
+      updateSessionById(sid, (prev) => ({ ...prev, goal }))
+      return
+    }
     const index = sessions.value.findIndex((s) => s.id === activeId.value)
     if (index < 0) return
     const prev = sessions.value[index]!
@@ -1247,6 +1379,9 @@ export function useChatHistory() {
     commitContextUsed,
     commitTodos,
     commitGoal,
+    getSessionById,
+    getSessionScope,
+    updateSessionById,
     forkSession
   }
 }
