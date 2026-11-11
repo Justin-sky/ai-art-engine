@@ -8,8 +8,11 @@ import {
   approvalAnswerFileText,
   approvalAnswerForDecision,
   approvalViewOf,
+  isAssistantReportingSandboxBlock,
   normalizeApprovalDecision,
-  parseApprovalMarker
+  parseApprovalMarker,
+  resolvePromptSandboxModeIntent,
+  shouldAppendAlwaysAllowOption
 } from '../src/shared/dshApproval'
 
 /**
@@ -479,5 +482,214 @@ describe('接线守卫：两侧字面量与 patch 行', () => {
       /for \(const \[id, entry\] of harnessApprovalRequests\) \{\s*if \(entry\.runId === runIdForRelease\) harnessApprovalRequests\.delete\(id\)/
     )
     expect(HARNESS).toMatch(/harnessApprovalRequests\.clear\(\)/)
+  })
+
+  it('思考流未闭合时到达的 APPROVAL_BEGIN 不会被吞进 reasoningBuf，且同 requestId 去重', () => {
+    expect(HARNESS).toContain('!isControlMarker && inReasoning')
+    expect(HARNESS).toContain('seenApprovalRequestIds.has(payload.requestId)')
+    expect(HARNESS).toContain('seenApprovalRequestIds.add(payload.requestId)')
+  })
+})
+
+describe('用户可选受限模式（workspace-write / danger-full-access）', () => {
+  const RUNNER = resolve('src/main/services/aiartHeadlessRunner.template.mjs')
+  const CHAT_PANEL = readFileSync(resolve('src/renderer/src/components/ChatPanel.vue'), 'utf8')
+
+  interface RunnerSandboxExports {
+    normalizeSandboxMode: (raw?: unknown) => 'workspace-write' | 'danger-full-access'
+    applySessionSandboxMode: (
+      ctx: { get: (name: string) => unknown },
+      agent: { session?: Record<string, unknown> } | undefined,
+      sandboxMode: unknown,
+      chatMode: string
+    ) => void
+    modePreamble: (mode: string, sandboxMode?: string) => string
+    detectSandboxBlockedResult: (
+      eventData: Record<string, unknown> | undefined
+    ) => string | undefined
+  }
+
+  it('normalizeSandboxMode 默认收敛到受限模式 workspace-write', async () => {
+    const mod = (await import(pathToFileURL(RUNNER).href)) as unknown as RunnerSandboxExports
+    expect(mod.normalizeSandboxMode(undefined)).toBe('workspace-write')
+    expect(mod.normalizeSandboxMode('')).toBe('workspace-write')
+    expect(mod.normalizeSandboxMode('invalid')).toBe('workspace-write')
+    expect(mod.normalizeSandboxMode('workspace-write')).toBe('workspace-write')
+    expect(mod.normalizeSandboxMode('danger-full-access')).toBe('danger-full-access')
+  })
+
+  it('applySessionSandboxMode 按用户选择切换会话 permissionPresets，且在 Ask 模式下保持受限', async () => {
+    const mod = (await import(pathToFileURL(RUNNER).href)) as unknown as RunnerSandboxExports
+    let activePreset = 'workspace-write'
+    const calls: string[] = []
+    const session = { id: 'session-1' }
+    const ctx = {
+      get: (serviceName: string) => {
+        if (serviceName === 'permissionPresets') {
+          return {
+            current: () => activePreset,
+            set: (_s: unknown, target: string) => {
+              activePreset = target
+              calls.push(target)
+            }
+          }
+        }
+        return undefined
+      }
+    }
+
+    // 默认受限模式与初始状态一致：不重复追加事件
+    mod.applySessionSandboxMode(ctx, { session }, 'workspace-write', 'craft')
+    expect(calls).toEqual([])
+    expect(activePreset).toBe('workspace-write')
+
+    // 用户关闭受限模式（Craft / Plan）：切换为 danger-full-access
+    mod.applySessionSandboxMode(ctx, { session }, 'danger-full-access', 'craft')
+    expect(activePreset).toBe('danger-full-access')
+    expect(calls).toEqual(['danger-full-access'])
+
+    // Ask 模式不允许放开沙箱，自动收敛回 workspace-write
+    mod.applySessionSandboxMode(ctx, { session }, 'danger-full-access', 'ask')
+    expect(activePreset).toBe('workspace-write')
+    expect(calls).toEqual(['danger-full-access', 'workspace-write'])
+
+    // Plan 模式关闭受限模式同样生效，随后用户重开受限模式可切回 workspace-write
+    mod.applySessionSandboxMode(ctx, { session }, 'danger-full-access', 'plan')
+    expect(activePreset).toBe('danger-full-access')
+    mod.applySessionSandboxMode(ctx, { session }, 'workspace-write', 'craft')
+    expect(activePreset).toBe('workspace-write')
+  })
+
+  it('modePreamble 在关闭受限模式时明确告知模型本地完全访问已启用', async () => {
+    const mod = (await import(pathToFileURL(RUNNER).href)) as unknown as RunnerSandboxExports
+    expect(mod.modePreamble('craft', 'workspace-write')).not.toContain('danger-full-access')
+    expect(mod.modePreamble('craft', 'danger-full-access')).toContain('danger-full-access')
+    expect(mod.modePreamble('ask', 'danger-full-access')).not.toContain('danger-full-access')
+  })
+
+  it('前端工具栏持久化受限模式开关并透传 sandboxMode 到主进程', () => {
+    expect(CHAT_PANEL).toContain(
+      "const CHAT_SANDBOX_RESTRICTED_KEY = 'studio.chat.sandboxRestricted'"
+    )
+    expect(CHAT_PANEL).toContain(
+      "sandboxMode: sandboxRestricted.value ? 'workspace-write' : 'danger-full-access'"
+    )
+    expect(HARNESS).toContain('sandboxMode = normalizeSandboxMode(input.sandboxMode)')
+  })
+
+  it('approvalMarkerPayload 兼容 dsh-sandbox 传入的 { zh, en } 多语言 displayReason 对象', async () => {
+    const mod = await loadAnswerer()
+    const payload = mod.approvalMarkerPayload(
+      {
+        toolName: 'pwsh',
+        reason: 'escalate sandbox to danger-full-access',
+        displayReason: { zh: '启动 IDA 逆向分析脚本', en: 'Run IDA script' }
+      },
+      'req-zh-1',
+      '/tmp/ans.json'
+    )
+    expect(payload.displayReason).toBe('启动 IDA 逆向分析脚本')
+  })
+
+  it('detectSandboxBlockedResult 精准识别沙箱受阻结果并排除用户主动拒绝与普通错误', async () => {
+    const mod = (await import(pathToFileURL(RUNNER).href)) as unknown as RunnerSandboxExports
+    expect(
+      mod.detectSandboxBlockedResult({
+        message: {
+          content: [
+            { type: 'text', text: '[sandbox: file access denied under workspace-write mode]' }
+          ]
+        }
+      })
+    ).toBe('[sandbox: file access denied under workspace-write mode]')
+
+    expect(
+      mod.detectSandboxBlockedResult({
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: 'actions that require approval are rejected automatically under current policy'
+            }
+          ]
+        }
+      })
+    ).toContain('actions that require approval are rejected automatically')
+
+    // 用户主动点「拒绝」不应再弹二次提示卡
+    expect(
+      mod.detectSandboxBlockedResult({
+        message: {
+          content: [{ type: 'text', text: 'the user rejected escalating sandbox permissions' }]
+        }
+      })
+    ).toBeUndefined()
+
+    // 普通业务报错不应误判为沙箱拦截
+    expect(
+      mod.detectSandboxBlockedResult({
+        message: {
+          content: [{ type: 'text', text: 'ENOENT: no such file or directory' }]
+        }
+      })
+    ).toBeUndefined()
+  })
+
+  it('isAssistantReportingSandboxBlock 识别 IDA 255 / 提权通道不可用等诊断汇报且不误伤普通说明', () => {
+    expect(
+      isAssistantReportingSandboxBlock(
+        '受限模式下 IDA 确实起不来（255），而提权通道现在不可用。换一条不需要提权的路：Ghidra。'
+      )
+    ).toBe(true)
+    expect(
+      isAssistantReportingSandboxBlock(
+        '沙箱提权通道现在不可用。但回头看，我之前从没在受限模式下用正确的 -S 顺序测过。'
+      )
+    ).toBe(true)
+    expect(
+      isAssistantReportingSandboxBlock(
+        '在受限模式下，AI 默认只能写入当前项目工作区目录，外部目录操作需要单次审批。'
+      )
+    ).toBe(false)
+  })
+
+  it('resolvePromptSandboxModeIntent 与 shouldAppendAlwaysAllowOption 支持「总是允许」并按工程持久化自动放行', () => {
+    expect(
+      resolvePromptSandboxModeIntent('当前受限模式受阻，是否开启完全访问？', '开启完全访问')
+    ).toBe('danger-full-access')
+    expect(
+      resolvePromptSandboxModeIntent('运行外部 IDA 脚本需要授权，是否允许？', '总是允许')
+    ).toBe('danger-full-access')
+    expect(resolvePromptSandboxModeIntent('Switch sandbox mode?', 'Always allow')).toBe(
+      'danger-full-access'
+    )
+    expect(
+      resolvePromptSandboxModeIntent('当前受限模式受阻，是否开启完全访问？', '保持受限模式')
+    ).toBeNull()
+    expect(resolvePromptSandboxModeIntent('请选择导出分辨率', '1920x1080')).toBeNull()
+
+    expect(
+      shouldAppendAlwaysAllowOption('运行外部 IDA 脚本需要授权，是否允许？', ['允许', '拒绝'])
+    ).toBe(true)
+    expect(shouldAppendAlwaysAllowOption('权限确认', ['允许一次', '拒绝'])).toBe(true)
+    expect(shouldAppendAlwaysAllowOption('请选择导出分辨率', ['1080p', '4K'])).toBe(false)
+    expect(
+      shouldAppendAlwaysAllowOption('运行外部工具需要授权', ['允许一次', '总是允许', '拒绝'])
+    ).toBe(false)
+  })
+
+  it('用户在受阻提示卡或审批卡选择「总是允许」后，按工程持久化放行并同步切换下方沙箱按钮', () => {
+    expect(CHAT_PANEL).toContain(
+      "const CHAT_PROJECT_SANDBOX_MAP_KEY = 'studio.chat.projectSandboxRestricted.v1'"
+    )
+    expect(CHAT_PANEL).toContain('function setSandboxRestrictedMode(')
+    expect(CHAT_PANEL).toContain('approvalAllowAlways')
+    expect(CHAT_PANEL).toContain("if (!sandboxRestricted.value && mode.value !== 'ask')")
+    expect(CHAT_PANEL).toContain('.setHarnessSandboxMode({')
+    expect(CHAT_PANEL).toContain('enableFullAccessForApproval')
+    expect(CHAT_PANEL).toContain('decideSandboxBlockedPrompt')
+    expect(HARNESS).toContain('export function setHarnessSandboxMode(')
+    expect(HARNESS).toContain("op: 'set_sandbox_mode'")
+    expect(HARNESS).toContain("const SANDBOX_BLOCKED_BEGIN = '===BEGIN_SANDBOX_BLOCKED==='")
   })
 })

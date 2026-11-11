@@ -1344,6 +1344,14 @@ export default {
       modeCraft: 'Craft',
       modeAsk: 'Ask',
       modePlan: 'Plan',
+      sandboxRestrictedLabel: 'Sandbox',
+      sandboxUnrestrictedLabel: 'Full Access',
+      sandboxRestrictedHint:
+        'Restricted sandbox mode ON: writes are confined to the current project workspace; cross-directory or privileged commands ask once for approval (click to switch to Full Access)',
+      sandboxUnrestrictedHint:
+        'Restricted sandbox mode OFF (Full Access): external tools (IDA, engine CLIs, etc.) and cross-directory access run without sandbox confinement (click to re-enable Sandbox)',
+      sandboxSwitchedRestricted: 'Restricted sandbox mode enabled (workspace-confined)',
+      sandboxSwitchedUnrestricted: 'Restricted sandbox mode disabled (Full Access enabled)',
       skills: 'Skills',
       skillsTitle:
         'Installed skills: pick one to insert a /skill command or workflow reference; marked when loaded by the model',
@@ -1376,13 +1384,30 @@ export default {
       approvalTool: 'Tool: {tool}',
       approvalReason: 'Reason: {reason}',
       approvalAllowOnce: 'Allow once',
+      approvalAllowAlways: 'Always allow',
+      approvalAllowFullAccess: 'Enable Full Access',
       approvalReject: 'Reject',
       approvalAllowedOnce: 'Allowed once (this call only)',
+      approvalAllowedAlways:
+        'Set to Always Allow for this project (all subsequent authorizations in this project are auto-allowed; mode below switched to Full Access)',
+      approvalAllowedFullAccess:
+        'Full Access enabled and allowed (the mode button below is now Full Access)',
       approvalRejected: 'Rejected',
       /** 本轮已结束 / 进程已换：请求失效且未放行 */
       approvalExpired: 'The run ended, so this request expired (nothing was allowed)',
       approvalOnceHint:
-        'The grant covers this one call: dsh approvals are one-shot and the app never remembers an “always allow”.',
+        '“Allow once” covers this single call; “Always allow” permits all subsequent authorizations in this project and switches the mode button below to Full Access (you can switch back anytime).',
+      sandboxBlockedTitle: 'Operation blocked under Restricted Sandbox mode',
+      sandboxBlockedHint:
+        'External tools (such as IDA or engine CLIs) or cross-directory access were restricted by the sandbox. Enable Full Access (Always allow) for this project? Selecting this also updates the mode button below.',
+      sandboxBlockedEnable: 'Always allow (Full Access)',
+      sandboxBlockedEnableAndRetry: 'Always allow & Retry',
+      sandboxBlockedKeep: 'Keep Restricted',
+      sandboxBlockedEnabledDone:
+        'Set to Always Allow / Full Access for this project (mode button below updated)',
+      sandboxBlockedKeptDone: 'Kept Restricted Sandbox mode',
+      sandboxBlockedRetryPrompt:
+        'Full Access mode is now enabled. Please retry the operation that was restricted by the sandbox.',
       thinking: 'Thinking',
       copy: 'Copy',
       copied: 'Copied',

@@ -435,6 +435,8 @@ export const IpcChannels = {
   HARNESS_OPEN_FILE: 'harness:open-file',
   /** Harness：盘中实时转向（向当前正在运行的 Turn / 子代理立即注入纠偏指令，无需打断重跑） */
   HARNESS_STEER: 'harness:steer',
+  /** Harness：实时切换当前常驻会话的沙箱受限模式（workspace-write ↔ danger-full-access） */
+  HARNESS_SET_SANDBOX_MODE: 'harness:set-sandbox-mode',
   /** Harness：画布 / 异步作业响应式事件触发器（节点报错诊断、渲染完成接力） */
   HARNESS_CANVAS_EVENT: 'harness:canvas-event',
   /** Git：采集工程当前变更（对话「变更预览」用；只读，不写仓库） */
@@ -1057,6 +1059,19 @@ export interface HarnessStatus {
 /** Chat 面板的 agent 交互模式（类似 Cursor 的 Craft / Ask / Plan） */
 export type ChatMode = 'craft' | 'ask' | 'plan'
 
+/**
+ * Chat 面板的终端与文件沙箱受限模式：
+ * - `workspace-write`：受限模式（默认开启，写入限制在当前工程目录与临时目录内，越界或敏感命令需单次确认）
+ * - `danger-full-access`：关闭受限模式（完全访问，可直接运行 IDA / 外部引擎 CLI 等工具并跨目录读写）
+ */
+export type HarnessSandboxMode = 'workspace-write' | 'danger-full-access'
+
+export interface SetHarnessSandboxModeInput {
+  sandboxMode: HarnessSandboxMode
+  /** 若为 true 且当前轮次正在运行，向正在执行的 Agent 注入实时切换提示，无需打断重跑 */
+  steerLiveTurn?: boolean
+}
+
 /** Harness：一次对话任务输入（渲染层 → 主进程） */
 export interface HarnessRunInput {
   /** 用户发给 agent 的任务文本 */
@@ -1068,6 +1083,12 @@ export interface HarnessRunInput {
    * - plan：先输出执行计划并用 ask_user 请求用户确认，确认后才动手
    */
   mode?: ChatMode
+  /**
+   * 可选：沙箱受限模式。
+   * - `workspace-write`：开启受限模式（默认）
+   * - `danger-full-access`：关闭受限模式（完全访问）
+   */
+  sandboxMode?: HarnessSandboxMode
   /**
    * 可选：会话 id（对应前端 ChatSession.id）。
    * dsh 据此「有则恢复、无则创建」持久化会话——多轮对话是真实消息序列
@@ -1680,6 +1701,12 @@ export type HarnessEvent =
   | { type: 'final'; text: string }
   | { type: 'done'; runId: string }
   | { type: 'error'; message: string }
+  | {
+      /** 受限模式下工具或子代理因沙箱权限受阻（未走审批或提权不可用），供界面提示开启完全访问 */
+      type: 'sandbox_blocked'
+      toolName: string
+      detail?: string
+    }
   | {
       /**
        * Harness provider 报告的最新一次 LLM 请求的真实输入上下文 token。
@@ -2520,6 +2547,9 @@ export interface StudioApi {
 
   /** Harness：盘中实时转向（向正在运行的 Turn / 子代理立即注入纠偏指令） */
   steerHarnessTurn: (input: SteerHarnessTurnInput) => Promise<SteerHarnessTurnResult>
+
+  /** Harness：实时切换当前会话沙箱受限模式（workspace-write / danger-full-access） */
+  setHarnessSandboxMode: (input: SetHarnessSandboxModeInput) => Promise<{ ok: boolean }>
 
   /** Harness：画布 / 异步作业响应式事件触发器 */
   notifyHarnessCanvasEvent: (input: HarnessCanvasEventInput) => Promise<HarnessCanvasEventResult>

@@ -120,12 +120,23 @@ export type ChatMsg =
       /** dsh 给出的可读原因（原样展示，不做翻译） */
       reason?: string
       /** 用户决定（null=未决定；非 null=已决定）。缺省视为未决定（旧会话无此字段） */
-      decision?: 'allow-once' | 'reject' | null
+      decision?: 'allow-once' | 'allow-always' | 'allow-full-access' | 'reject' | null
       /**
        * 请求已失效（本轮结束 / 进程已换）：按钮不再可点，且**没有放行**。
        * 与 `decision` 分开记：用户从未决定过，界面不该显示成「已拒绝」。
        */
       expired?: boolean
+    }
+  | {
+      /**
+       * 受限模式受阻提示卡：当外部工具或跨目录访问在受限模式下受阻且未走标准审批弹窗时插入，
+       * 询问用户是否切换为「完全访问」，确认后同步更新底部沙箱模式选择器。
+       */
+      kind: 'sandbox-blocked'
+      id: string
+      toolName?: string
+      reason?: string
+      decision?: 'enabled-full-access' | 'keep-restricted' | null
     }
 
 export interface ChatSession {

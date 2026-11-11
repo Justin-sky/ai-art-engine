@@ -138,3 +138,70 @@ export function approvalAnswerFileText(decision: ApprovalDecision): string {
 export function approvalAnswerForDecision(decision: unknown): string {
   return approvalAnswerFileText(normalizeApprovalDecision(decision) ?? 'reject')
 }
+
+const ASSISTANT_SANDBOX_BLOCK_RE =
+  /(?:受限模式|沙箱(?:环境|模式|限制)?)(?:下|中|内|里)?[^。\n]{0,28}(?:起不来|无法启动|无法运行|不能运行|无法访问|无法写入|无权限|拒绝访问|被拦截|被拒绝|受阻|跑不起来|不可用)|(?:沙箱提权|提权通道)[^。\n]{0,18}(?:不可用|失败|无法使用|超时)|\[sandbox:\s*file access denied|\bblocked by (?:the )?sandbox\b|\bsandbox[^.\n]{0,20}access denied\b/i // cjk-ok
+
+/**
+ * 识别助手正文是否在汇报「当前操作因受限模式 / 沙箱限制或提权通道不可用而受阻」。
+ *
+ * 典型场景：Windows 受限沙箱下，部分外部工具（如 IDA `idat64.exe`）直接以退出码 255 退出且无标准
+ * `Access is denied` 文本，`tool/result` 未必带标准沙箱前缀，但模型诊断后会汇报「受限模式下 … 起不来」
+ * 或「沙箱提权通道不可用」。集中放在 `@shared/dshApproval` 供渲染层与单测共用。
+ */
+export function isAssistantReportingSandboxBlock(text: unknown): boolean {
+  if (typeof text !== 'string') return false
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  return ASSISTANT_SANDBOX_BLOCK_RE.test(trimmed)
+}
+
+const PROMPT_SANDBOX_TOPIC_RE =
+  /(?:受限模式|完全访问|完全模式|沙箱|总是允许|始终允许|授权|sandbox|full[- ]access|always\s+allow|workspace-write)/i // cjk-ok
+const ANSWER_ENABLE_FULL_ACCESS_RE =
+  /(?:(?:开启|启用|切换(?:到|为)?|打开|使用|改为)\s*(?:完全访问|完全模式)|^(?:完全访问|完全模式)(?:模式)?$|总是允许|始终允许|全部允许|关闭受限模式|解除(?:沙箱|限制)|always\s+allow|enable\s+full[- ]access|switch\s+to\s+full[- ]access|^full[- ]access$)/i // cjk-ok
+const ANSWER_NEGATION_RE =
+  /(?:不开启|不启用|不要|暂不|拒绝|保持受限|维持受限|\bkeep\s+restricted\b|\bno\b)/i // cjk-ok
+const ANSWER_ENABLE_RESTRICTED_RE =
+  /(?:(?:开启|启用|切换(?:到|为)?|恢复)\s*受限模式|enable\s+(?:restricted\s+)?sandbox)/i // cjk-ok
+
+const AUTH_PROMPT_TOPIC_RE =
+  /(?:受限模式|完全访问|完全模式|沙箱|越界|提权|授权|权限|外部(?:工具|命令|目录)|跨目录|sandbox|escalat|permission)/i // cjk-ok
+const AUTH_OPTION_ALLOW_RE = /(?:允许|同意|放行|开启|启用|授权|allow|approve|grant|enable)/i // cjk-ok
+const AUTH_OPTION_ALWAYS_RE = /(?:总是允许|始终允许|全部允许|always\s+allow)/i // cjk-ok
+
+/**
+ * 判断 `ask_user` 提问卡是否属于沙箱/权限授权类提问，且尚未提供「总是允许」选项。
+ */
+export function shouldAppendAlwaysAllowOption(
+  question: unknown,
+  options?: ReadonlyArray<string>
+): boolean {
+  const q = typeof question === 'string' ? question.trim() : ''
+  const opts = Array.isArray(options)
+    ? options.map((o) => String(o ?? '').trim()).filter(Boolean)
+    : []
+  if (opts.some((o) => AUTH_OPTION_ALWAYS_RE.test(o))) return false
+  if (opts.some((o) => /^(?:允许一次|allow\s+once)$/i.test(o))) return true // cjk-ok
+  if (!AUTH_PROMPT_TOPIC_RE.test(`${q} ${opts.join(' ')}`)) return false
+  return opts.length === 0 || opts.some((o) => AUTH_OPTION_ALLOW_RE.test(o))
+}
+
+/**
+ * 若模型通过 `ask_user_question` 询问沙箱/受限模式/授权选择，识别用户的回答意图以同步切换真实沙箱状态与底部按钮。
+ */
+export function resolvePromptSandboxModeIntent(
+  question: unknown,
+  answer: unknown
+): 'danger-full-access' | 'workspace-write' | null {
+  const q = typeof question === 'string' ? question.trim() : ''
+  const a = typeof answer === 'string' ? answer.trim() : ''
+  if (!a || !PROMPT_SANDBOX_TOPIC_RE.test(`${q} ${a}`)) return null
+  if (!ANSWER_NEGATION_RE.test(a) && ANSWER_ENABLE_FULL_ACCESS_RE.test(a)) {
+    return 'danger-full-access'
+  }
+  if (ANSWER_ENABLE_RESTRICTED_RE.test(a)) {
+    return 'workspace-write'
+  }
+  return null
+}

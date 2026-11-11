@@ -27,6 +27,8 @@ const { installModelSelection } = await imp('@deepseek-ai/dsh-agent')
 const { createUserMessage } = await imp('@deepseek-ai/dsh-llm')
 const { SessionId, SessionSeq } = await imp('@deepseek-ai/dsh-session')
 const { defineTool } = await imp('@deepseek-ai/dsh-tools')
+const { setSandboxMode } = await imp('@deepseek-ai/dsh-sandbox-policy')
+const { setApprovalPolicy } = await imp('@deepseek-ai/dsh-user-approval')
 let foldScheduleEvents
 let scheduleView
 try {
@@ -53,6 +55,7 @@ const PRESENT_BEGIN = '===BEGIN_PRESENT==='
 const SCHEDULE_BEGIN = '===BEGIN_SCHEDULE==='
 const SUBAGENT_BEGIN = '===BEGIN_SUBAGENT==='
 const STEER_BEGIN = '===BEGIN_STEER==='
+const SANDBOX_BLOCKED_BEGIN = '===BEGIN_SANDBOX_BLOCKED==='
 const PERSISTENT_TASK = '__AIART_PERSISTENT__'
 
 /**
@@ -137,6 +140,47 @@ function extractToolResultSteps(eventData) {
           .map((item) => item.trim())
         if (steps.length > 0) return steps
       }
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined
+}
+
+/**
+ * Detect when a confined tool or subagent failed due to sandbox restrictions
+ * without going through user approval (e.g. subagent `approval: 'never'`,
+ * `[sandbox: file access denied ...]`, or Windows ACL `UnauthorizedAccessException` / `EPERM`).
+ */
+function detectSandboxBlockedResult(eventData) {
+  try {
+    const chunks = []
+    const content = eventData?.message?.content ?? eventData?.content
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block && block.type === 'text' && typeof block.text === 'string' && block.text) {
+          chunks.push(block.text)
+        }
+      }
+    }
+    if (typeof eventData?.error?.reason === 'string' && eventData.error.reason) {
+      chunks.push(eventData.error.reason)
+    }
+    const combined = chunks.join('\n')
+    if (!combined) return undefined
+    if (/the user rejected escalating|rejected by the user/i.test(combined)) return undefined
+    const patterns = [
+      /\[sandbox:\s*file access denied[^\]]*\]/i,
+      /\[sandbox:\s*the sandbox runner itself failed[^\]]*\]/i,
+      /sandbox escalation to\s+"[^"]+"\s+requires approval,\s*but[^\n]*/i,
+      /actions that require approval are rejected automatically/i,
+      /UnauthorizedAccessException[^\n]*/i,
+      /Access to the path\s+['"][^'"]+['"]\s+is denied/i,
+      /(?:EACCES|EPERM):\s*(?:permission denied|operation not permitted)[^\n]*/i
+    ]
+    for (const re of patterns) {
+      const m = re.exec(combined)
+      if (m) return m[0].trim().slice(0, 240)
     }
   } catch {
     /* ignore */
@@ -1248,20 +1292,75 @@ async function buildUserContent(task, attachments, io) {
   return blocks
 }
 
-function modePreamble(mode) {
+function normalizeSandboxMode(raw) {
+  return raw === 'danger-full-access' ? 'danger-full-access' : 'workspace-write'
+}
+
+/**
+ * Apply the user-selected sandbox mode to the live session while idle before the turn starts.
+ * Uses `permissionPresets.set` (the same non-injecting durable switch used by `dsh-headless`),
+ * so both root agent and delegated subagents inherit the selected preset cleanly without
+ * triggering spurious autonomous turns.
+ */
+function applySessionSandboxMode(ctx, agent, sandboxMode, chatMode, io) {
+  if (!agent?.session) return
+  const targetPreset =
+    chatMode !== 'ask' && normalizeSandboxMode(sandboxMode) === 'danger-full-access'
+      ? 'danger-full-access'
+      : 'workspace-write'
+  const perm = ctx?.get?.('permissionPresets')
+  try {
+    if (perm && typeof perm.set === 'function') {
+      if (typeof perm.current !== 'function' || perm.current(agent.session) !== targetPreset) {
+        perm.set(agent.session, targetPreset)
+      }
+      return
+    }
+    const sandboxSvc = ctx?.get?.('sandboxPolicy')
+    const currentSandbox =
+      typeof sandboxSvc?.overrideOf === 'function' ? sandboxSvc.overrideOf(agent.session) : void 0
+    if (typeof setSandboxMode === 'function' && currentSandbox !== targetPreset) {
+      setSandboxMode(agent.session, targetPreset)
+    }
+    const approvalSvc = ctx?.get?.('approval')
+    const targetApproval = targetPreset === 'danger-full-access' ? 'never' : 'ask'
+    const currentApproval =
+      typeof approvalSvc?.overrideOf === 'function' ? approvalSvc.overrideOf(agent.session) : void 0
+    if (typeof setApprovalPolicy === 'function' && currentApproval !== targetApproval) {
+      setApprovalPolicy(agent.session, targetApproval)
+    }
+  } catch (error) {
+    io?.stderr?.write?.(
+      '[aiart-runner] applySessionSandboxMode failed: ' +
+        (error instanceof Error ? error.message : String(error)) +
+        '\n'
+    )
+  }
+}
+
+function modePreamble(mode, sandboxMode) {
   if (mode === 'ask') {
     return (
       '[AIArtEngine panel mode: Ask]\n' +
       'Answer in text only. Do not call tools or modify files.\n\n'
     )
   }
+  const fullAccessLine =
+    normalizeSandboxMode(sandboxMode) === 'danger-full-access'
+      ? 'Local sandbox restriction is OFF (Full Access / danger-full-access): external CLI tools (e.g. IDA, Ghidra, compilers, scripts) and cross-directory file operations run directly without sandbox confinement.\n'
+      : ''
   if (mode === 'plan') {
     return (
       '[AIArtEngine panel mode: Plan]\n' +
+      fullAccessLine +
       'First outline a concise plan, then call ask_user_question to confirm before any write/generate tools.\n\n'
     )
   }
-  return '[AIArtEngine panel mode: Craft]\nPrefer MCP tools to complete the request.\n\n'
+  return (
+    '[AIArtEngine panel mode: Craft]\n' +
+    fullAccessLine +
+    'Prefer MCP tools to complete the request.\n\n'
+  )
 }
 
 /** Tools that start a child agent; their callId anchors the child's activity in the panel. */
@@ -1797,11 +1896,16 @@ async function runOneTurn(ctx, io, opts) {
     task,
     sessionId: rawSessionId,
     mode,
+    sandboxMode,
+    getSandboxMode,
     runId,
     selection,
     answerAskUserQuestion,
     agentSlot
   } = opts
+  if (runId) {
+    process.env.AIART_RUN_ID = String(runId)
+  }
   const agents = ctx.get('agents')
   const sessions = ctx.get('sessions')
   if (agents === void 0 || sessions === void 0) throw new Error('agents/sessions unavailable')
@@ -1945,11 +2049,15 @@ async function runOneTurn(ctx, io, opts) {
   }
 
   await agent.whenIdle()
+  applySessionSandboxMode(ctx, agent, sandboxMode, mode, io)
   const firstSeq = agent.session.seq
 
   let inReasoning = false
   let streamedText = false
   let lastSubagentJson = ''
+  let emittedSandboxBlocked = false
+  const effectiveSandboxModeNow = () =>
+    normalizeSandboxMode(typeof getSandboxMode === 'function' ? getSandboxMode() : sandboxMode)
   const closeReasoning = () => {
     if (inReasoning) {
       inReasoning = false
@@ -2144,6 +2252,25 @@ async function runOneTurn(ctx, io, opts) {
           sendIpc({ type: 'tool', state: 'done', payload: toolEndPayload }, () => {
             io.stdout.write('\n' + TOOL_END + JSON.stringify(toolEndPayload) + '\n')
           })
+          if (
+            !emittedSandboxBlocked &&
+            mode !== 'ask' &&
+            effectiveSandboxModeNow() === 'workspace-write'
+          ) {
+            const blockedDetail = detectSandboxBlockedResult(event.data)
+            if (blockedDetail) {
+              emittedSandboxBlocked = true
+              const blockedPayload = {
+                toolName: pending?.name || 'tool',
+                detail: blockedDetail
+              }
+              sendIpc({ type: 'sandbox_blocked', ...blockedPayload }, () => {
+                io.stdout.write(
+                  '\n' + SANDBOX_BLOCKED_BEGIN + JSON.stringify(blockedPayload) + '\n'
+                )
+              })
+            }
+          }
         }
         continue
       }
@@ -2286,7 +2413,7 @@ async function runOneTurn(ctx, io, opts) {
           throw new Error(errMsg)
         }
       } else {
-        const fullTask = modePreamble(mode) + task
+        const fullTask = modePreamble(mode, sandboxMode) + task
         const userContent = await buildUserContent(fullTask, ctx.get('attachments'), io)
         agent.followup(
           createUserMessage({
@@ -2352,6 +2479,7 @@ async function runOneTurn(ctx, io, opts) {
 
 async function runPersistent(ctx, io) {
   let currentMode = (process.env.AIART_MODE || 'craft').trim() || 'craft'
+  let currentSandboxMode = normalizeSandboxMode(process.env.AIART_SANDBOX_MODE)
   let currentRunId = process.env.AIART_RUN_ID || 'run'
   let forcedSelection = null
   const agentSlot = { handle: undefined, sessionId: '', model: '', provider: '' }
@@ -2404,6 +2532,8 @@ async function runPersistent(ctx, io) {
             autonomousTurn: true,
             sessionId: agentSlot.sessionId,
             mode: currentMode,
+            sandboxMode: currentSandboxMode,
+            getSandboxMode: () => currentSandboxMode,
             runId: schedRunId,
             selection,
             answerAskUserQuestion,
@@ -2461,6 +2591,43 @@ async function runPersistent(ctx, io) {
         rl.close()
         io.exit(0)
       })
+      return
+    }
+    if (op === 'set_sandbox_mode') {
+      const nextMode = normalizeSandboxMode(msg.sandboxMode)
+      currentSandboxMode = nextMode
+      const liveAgent = agentSlot.handle?.agent
+      if (liveAgent && currentMode !== 'ask') {
+        applySessionSandboxMode(ctx, liveAgent, nextMode, currentMode, io)
+        if (typeof agents?.list === 'function') {
+          for (const childAgent of agents.list()) {
+            if (childAgent !== liveAgent && childAgent?.session?.header?.origin === 'subagent') {
+              applySessionSandboxMode(ctx, childAgent, nextMode, currentMode, io)
+            }
+          }
+        }
+        if (
+          msg.steerLiveTurn &&
+          turnBusy &&
+          liveAgent.status === 'running' &&
+          typeof liveAgent.inject === 'function'
+        ) {
+          const notice =
+            nextMode === 'danger-full-access'
+              ? '[System Notice: User just switched the sandbox mode selector to Full Access (danger-full-access). Local sandbox confinement is now OFF for this session — you may run external CLI tools (e.g. IDA) and cross-directory file operations directly without workarounds.]'
+              : '[System Notice: User switched the sandbox mode selector back to Restricted Sandbox (workspace-write).]'
+          try {
+            liveAgent.inject(
+              createUserMessage({
+                content: [{ type: 'text', text: notice }],
+                source: { kind: 'user' }
+              })
+            )
+          } catch {
+            /* ignore */
+          }
+        }
+      }
       return
     }
     if (op === 'steer') {
@@ -2524,6 +2691,8 @@ async function runPersistent(ctx, io) {
               task: '/goal resume',
               sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : agentSlot.sessionId,
               mode: currentMode,
+              sandboxMode: currentSandboxMode,
+              getSandboxMode: () => currentSandboxMode,
               runId: currentRunId,
               selection,
               answerAskUserQuestion,
@@ -2678,11 +2847,15 @@ async function runPersistent(ctx, io) {
         }
         turnBusy = true
         currentMode = typeof msg.mode === 'string' && msg.mode ? msg.mode : currentMode
+        if (typeof msg.sandboxMode === 'string' && msg.sandboxMode) {
+          currentSandboxMode = normalizeSandboxMode(msg.sandboxMode)
+        }
         currentRunId = typeof msg.runId === 'string' && msg.runId ? msg.runId : currentRunId
         const selection = forcedSelection || defaultModel.currentSelection()
         const promptStartPayload = {
           runId: currentRunId,
           mode: currentMode,
+          sandboxMode: currentSandboxMode,
           model: selection?.model || ''
         }
         sendIpc({ type: 'prompt_start', ...promptStartPayload }, () => {
@@ -2695,6 +2868,8 @@ async function runPersistent(ctx, io) {
             task,
             sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : '',
             mode: currentMode,
+            sandboxMode: currentSandboxMode,
+            getSandboxMode: () => currentSandboxMode,
             runId: currentRunId,
             selection,
             answerAskUserQuestion,
@@ -2747,6 +2922,7 @@ async function runPersistent(ctx, io) {
 /** One-shot path (npx / legacy): single task then exit */
 async function runOnce(ctx, task, io) {
   const mode = (process.env.AIART_MODE || 'craft').trim() || 'craft'
+  const sandboxMode = normalizeSandboxMode(process.env.AIART_SANDBOX_MODE)
   const runId = process.env.AIART_RUN_ID || 'run'
   // Ask：不注册 ask_user_question（与历史 one-shot 行为一致）
   const answerAskUserQuestion =
@@ -2769,6 +2945,8 @@ async function runOnce(ctx, task, io) {
     task,
     sessionId: (process.env.AIART_SESSION_ID || '').trim(),
     mode,
+    sandboxMode,
+    getSandboxMode: () => sandboxMode,
     runId,
     selection,
     answerAskUserQuestion,
@@ -2798,11 +2976,15 @@ function apply(ctx, config) {
 export {
   Config,
   apply,
+  applySessionSandboxMode,
   createDelegationTracker,
+  detectSandboxBlockedResult,
   inject,
   installOpenAiCompatFetchBridge,
+  modePreamble,
   name,
   normalizeGeminiChatModelId,
+  normalizeSandboxMode,
   parseDsmlToolCalls,
   registerDelegationGuard,
   registerDsmlStreamTranspiler,

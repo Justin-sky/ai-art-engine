@@ -1317,6 +1317,15 @@ export default {
       modeCraft: 'Craft',
       modeAsk: 'Ask',
       modePlan: 'Plan',
+      sandboxRestrictedLabel: '受限模式',
+      sandboxUnrestrictedLabel: '完全访问',
+      sandboxRestrictedHint:
+        '受限模式已开启：写入限制在当前工程目录内，敏感或跨目录操作会请求单次授权（点击关闭受限模式，切换为完全访问）',
+      sandboxUnrestrictedHint:
+        '受限模式已关闭（完全访问）：允许直接运行 IDA / 引擎 CLI 等外部工具并跨目录读写（点击重新开启受限模式）',
+      sandboxSwitchedRestricted: '已开启受限模式（仅限当前工程目录写入，越界需单次授权）',
+      sandboxSwitchedUnrestricted:
+        '已关闭受限模式（切换为完全访问，可直接运行外部工具与跨目录操作）',
       skills: '技能',
       skillsTitle: '已安装技能：选中即可插入 /技能 或工作流引用，模型调用时标记为已加载',
       skillsMeta: '已加载 {loaded}/{total}',
@@ -1345,12 +1354,28 @@ export default {
       approvalTool: '工具：{tool}',
       approvalReason: '原因：{reason}',
       approvalAllowOnce: '允许一次',
+      approvalAllowAlways: '总是允许',
+      approvalAllowFullAccess: '开启完全访问',
       approvalReject: '拒绝',
       approvalAllowedOnce: '已允许一次（仅本次调用）',
+      approvalAllowedAlways:
+        '已在此工程设为「总是允许」（此后本工程所有授权均自动允许，下方模式已同步切换为「完全访问」）',
+      approvalAllowedFullAccess: '已开启完全访问并放行（下方模式按钮已同步切换为「完全访问」）',
       approvalRejected: '已拒绝',
       /** 本轮已结束 / 进程已换：这条请求失效，且**没有放行** */
       approvalExpired: '本轮已结束，这条请求已失效（未放行）',
-      approvalOnceHint: '授权只对这一次调用有效：dsh 的审批是一次性的，应用不会记住「总是允许」。',
+      approvalOnceHint:
+        '「允许一次」仅放行本次调用；「总是允许」将在此后允许此工程中的所有授权，并同步切换为「完全访问」（可随时在下方切回受限模式）。',
+      sandboxBlockedTitle: '检测到当前操作在「受限模式」下受阻',
+      sandboxBlockedHint:
+        '外部工具（如 IDA、引擎 CLI 等）或跨目录读写受到本地沙箱限制。是否在此工程中开启「完全访问」（总是允许）？选择后下方「受限模式」按钮将同步变为「完全访问」。',
+      sandboxBlockedEnable: '总是允许（完全访问）',
+      sandboxBlockedEnableAndRetry: '总是允许并继续',
+      sandboxBlockedKeep: '保持受限模式',
+      sandboxBlockedEnabledDone:
+        '已在此工程设为「总是允许 / 完全访问」（此后本工程授权自动允许，下方模式按钮已同步更新）',
+      sandboxBlockedKeptDone: '已保持「受限模式」',
+      sandboxBlockedRetryPrompt: '已开启完全访问模式，请直接重试刚才受沙箱限制的操作。',
       thinking: '思考过程',
       copy: '复制',
       copied: '已复制',

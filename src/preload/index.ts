@@ -468,6 +468,7 @@ const api: StudioApi = {
   deleteHarnessSchedule: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_DELETE_SCHEDULE, input),
   openHarnessFile: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_OPEN_FILE, input),
   steerHarnessTurn: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_STEER, input),
+  setHarnessSandboxMode: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_SET_SANDBOX_MODE, input),
   notifyHarnessCanvasEvent: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_CANVAS_EVENT, input),
   abortHarnessTask: () => ipcRenderer.invoke(IpcChannels.HARNESS_ABORT),
   prewarmHarness: () => ipcRenderer.invoke(IpcChannels.HARNESS_PREWARM),

@@ -48,7 +48,17 @@ export function resolveApprovalAnswer(raw) {
 export function approvalMarkerPayload(request, requestId, answerFile) {
   const callId = request?.callId
   const reason = request?.reason
-  const displayReason = request?.displayReason
+  const rawDisplayReason = request?.displayReason
+  const displayReason =
+    typeof rawDisplayReason === 'string'
+      ? rawDisplayReason
+      : rawDisplayReason !== null && typeof rawDisplayReason === 'object'
+        ? typeof rawDisplayReason.zh === 'string' && rawDisplayReason.zh
+          ? rawDisplayReason.zh
+          : typeof rawDisplayReason.en === 'string' && rawDisplayReason.en
+            ? rawDisplayReason.en
+            : undefined
+        : undefined
   return {
     requestId,
     toolName: typeof request?.toolName === 'string' && request.toolName ? request.toolName : 'tool',
@@ -116,6 +126,21 @@ function defaultDeps() {
     },
     writeMarker: (line) => {
       process.stdout.write(line)
+      if (
+        process.env.AIART_PERSISTENT === '1' &&
+        typeof process.send === 'function' &&
+        process.connected
+      ) {
+        try {
+          const idx = line.indexOf(APPROVAL_BEGIN)
+          if (idx >= 0) {
+            const payload = JSON.parse(line.slice(idx + APPROVAL_BEGIN.length).trim())
+            process.send({ __aiartEvent: true, type: 'approval', payload })
+          }
+        } catch {
+          // IPC 辅助双发失败不阻断 stdout 标记主通道
+        }
+      }
     },
     log: (text) => {
       process.stderr.write(text)

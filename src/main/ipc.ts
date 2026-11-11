@@ -86,6 +86,7 @@ import {
   runHarnessJobWait,
   runHarnessTask,
   searchHarnessSessions,
+  setHarnessSandboxMode,
   steerHarnessTurn,
   writeDshSkillsTemplate,
   writeHarnessTextFile
@@ -797,6 +798,10 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.HARNESS_STEER, (input: import('@shared/ipc').SteerHarnessTurnInput) =>
     steerHarnessTurn(input)
+  )
+  handle(
+    IpcChannels.HARNESS_SET_SANDBOX_MODE,
+    (input: import('@shared/ipc').SetHarnessSandboxModeInput) => setHarnessSandboxMode(input)
   )
   handle(IpcChannels.HARNESS_CANVAS_EVENT, (input: import('@shared/ipc').HarnessCanvasEventInput) =>
     notifyHarnessCanvasEvent(input)

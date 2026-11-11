@@ -31,6 +31,11 @@ import type {
 } from '@shared/ipc'
 import { modalityConfig, providerModelDisplayName } from '@shared/modelProvider'
 import { detectChatSkillInstallOrSearchIntent } from '@shared/claudeSkill'
+import {
+  isAssistantReportingSandboxBlock,
+  resolvePromptSandboxModeIntent,
+  shouldAppendAlwaysAllowOption
+} from '@shared/dshApproval'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   extractProjectFolderName,
@@ -110,6 +115,8 @@ import {
 
 const CHAT_MODEL_KEY = 'studio.chat.model'
 const CHAT_MODE_KEY = 'studio.chat.mode'
+const CHAT_SANDBOX_RESTRICTED_KEY = 'studio.chat.sandboxRestricted'
+const CHAT_PROJECT_SANDBOX_MAP_KEY = 'studio.chat.projectSandboxRestricted.v1'
 const CHAT_COMPOSER_HEIGHT_KEY = 'studio.chat.composerHeight'
 const CHAT_MODES: ChatMode[] = ['craft', 'ask', 'plan']
 const COMPOSER_HEIGHT_MIN = 64
@@ -1774,6 +1781,136 @@ function selectMode(value: ChatMode): void {
   mode.value = value
   modeOpen.value = false
 }
+
+const effectiveSandboxProjectScope = computed(
+  () =>
+    activeChatScope.value?.trim() ||
+    resolveProjectChatScope(project.config?.id, project.rootPath) ||
+    'global'
+)
+
+function readProjectSandboxMap(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(CHAT_PROJECT_SANDBOX_MAP_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, boolean> = {}
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof v === 'boolean') out[k] = v
+      }
+      return out
+    }
+  } catch {
+    /* ignore */
+  }
+  return {}
+}
+
+function readSandboxRestricted(scope = effectiveSandboxProjectScope.value): boolean {
+  const map = readProjectSandboxMap()
+  if (scope && typeof map[scope] === 'boolean') {
+    return map[scope]
+  }
+  try {
+    const raw = localStorage.getItem(CHAT_SANDBOX_RESTRICTED_KEY)
+    if (raw === '0' || raw === 'false') return false
+  } catch {
+    /* ignore */
+  }
+  return true
+}
+
+function persistProjectSandboxRestricted(scope: string, restricted: boolean): void {
+  try {
+    const targetScope = scope || 'global'
+    const map = readProjectSandboxMap()
+    map[targetScope] = restricted
+    localStorage.setItem(CHAT_PROJECT_SANDBOX_MAP_KEY, JSON.stringify(map))
+    if (targetScope === 'global') {
+      localStorage.setItem(CHAT_SANDBOX_RESTRICTED_KEY, restricted ? '1' : '0')
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+const sandboxRestricted = ref<boolean>(readSandboxRestricted())
+const sandboxJustSwitched = ref<boolean>(false)
+let sandboxSwitchFlashTimer: number | null = null
+
+watch(sandboxRestricted, (value) => {
+  persistProjectSandboxRestricted(effectiveSandboxProjectScope.value, value)
+})
+
+watch(effectiveSandboxProjectScope, (nextScope, prevScope) => {
+  if (nextScope === prevScope) return
+  const nextRestricted = readSandboxRestricted(nextScope)
+  sandboxRestricted.value = nextRestricted
+  if (typeof window.studio?.setHarnessSandboxMode === 'function') {
+    void window.studio
+      .setHarnessSandboxMode({
+        sandboxMode: nextRestricted ? 'workspace-write' : 'danger-full-access',
+        steerLiveTurn: false
+      })
+      .catch(() => undefined)
+  }
+})
+
+function setSandboxRestrictedMode(
+  restricted: boolean,
+  opts?: { steerLiveTurn?: boolean; flashSelector?: boolean; silentStatus?: boolean }
+): void {
+  const changed = sandboxRestricted.value !== restricted
+  sandboxRestricted.value = restricted
+  persistProjectSandboxRestricted(effectiveSandboxProjectScope.value, restricted)
+  if (opts?.flashSelector && changed) {
+    sandboxJustSwitched.value = true
+    if (sandboxSwitchFlashTimer !== null) window.clearTimeout(sandboxSwitchFlashTimer)
+    sandboxSwitchFlashTimer = window.setTimeout(() => {
+      sandboxJustSwitched.value = false
+      sandboxSwitchFlashTimer = null
+    }, 1400)
+  }
+  if (!restricted) {
+    for (let i = messages.value.length - 1; i >= sessionStart; i--) {
+      const m = messages.value[i]
+      if (m?.kind === 'user') break
+      if (m?.kind === 'sandbox-blocked' && (m.decision === null || m.decision === undefined)) {
+        m.decision = 'enabled-full-access'
+      } else if (
+        m?.kind === 'approval' &&
+        !m.expired &&
+        (m.decision === null || m.decision === undefined)
+      ) {
+        m.decision = 'allow-always'
+        void window.studio
+          ?.answerApproval?.({ requestId: m.requestId, decision: 'allow-once' })
+          .catch(() => undefined)
+      }
+    }
+  }
+  if (typeof window.studio?.setHarnessSandboxMode === 'function') {
+    void window.studio
+      .setHarnessSandboxMode({
+        sandboxMode: restricted ? 'workspace-write' : 'danger-full-access',
+        steerLiveTurn: Boolean(opts?.steerLiveTurn)
+      })
+      .catch(() => undefined)
+  }
+  if (!opts?.silentStatus && changed) {
+    pushStatus(
+      restricted
+        ? t('studio.chat.sandboxSwitchedRestricted')
+        : t('studio.chat.sandboxSwitchedUnrestricted')
+    )
+  }
+  scheduleHistoryPersist()
+}
+
+function toggleSandboxRestricted(): void {
+  setSandboxRestrictedMode(!sandboxRestricted.value, { steerLiveTurn: running.value })
+}
 /** 技能面板：统一展示已安装的市场技能（含画布工作流模板）、GitHub 技能、项目技能与自定义技能 */
 const skillsOpen = ref(false)
 const skillsDropdownRef = ref<HTMLElement | null>(null)
@@ -2565,6 +2702,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       if (event.state === 'start' && inAbortCooldown) return
       if (event.state === 'start' && !running.value) running.value = true
       if (event.state === 'start') {
+        checkRecentAssistantSandboxBlock()
         notifyWeatherTaskPulse({
           preferLightning: /graph_|canvas_|node_|cook|gen|split|render/i.test(event.name)
         })
@@ -2658,6 +2796,11 @@ function onHarnessEvent(event: HarnessEvent): void {
     case 'steered':
       pushStatus(t('studio.chat.steeredStatus'), 'waiting')
       break
+    case 'sandbox_blocked':
+      if (!inAbortCooldown) {
+        pushSandboxBlockedPrompt(event.toolName, event.detail)
+      }
+      break
     case 'subagent':
       sessionSubagents.value = event.subagents ?? []
       if (
@@ -2689,12 +2832,14 @@ function onHarnessEvent(event: HarnessEvent): void {
       } else if (event.text) {
         pushAssistant(event.text, true)
       }
+      checkRecentAssistantSandboxBlock()
       break
     }
     case 'done':
       lastRoundOutcome.value = 'success'
       if (!preparingTask) running.value = false
       notifyWeatherTaskComplete('ai-chat')
+      checkRecentAssistantSandboxBlock()
       // 本轮结束：未决定的审批请求已随主进程丢弃，卡片标记失效（未放行）
       expirePendingApprovals()
       // 运行结束：采集本轮 git 变更（有改动才追加预览卡）
@@ -3723,9 +3868,18 @@ function handleAskUser(question: AskUserQuestion): void {
 
 /** prompt 卡的候选选项：缺省时提供默认按钮（继续 / 取消） */
 function promptOptions(msg: ChatMsg & { kind: 'prompt' }): string[] {
-  return msg.options?.length
-    ? msg.options
+  const base = msg.options?.length
+    ? [...msg.options]
     : [t('studio.chat.promptContinue'), t('studio.chat.promptCancel')]
+  const alwaysLabel = t('studio.chat.approvalAllowAlways')
+  if (
+    (sandboxRestricted.value || msg.answered === alwaysLabel) &&
+    shouldAppendAlwaysAllowOption(msg.question, base)
+  ) {
+    const insertAt = Math.min(1, base.length)
+    base.splice(insertAt, 0, alwaysLabel)
+  }
+  return base
 }
 
 /** 用户点击选项：回传选择给主进程（MCP ask_user 工具继续），并锁定按钮 */
@@ -3736,6 +3890,13 @@ async function answerPrompt(
 ): Promise<void> {
   if (msg.answered !== null && msg.answered !== undefined) return
   msg.answered = option
+  const sandboxIntent = resolvePromptSandboxModeIntent(msg.question, option)
+  if (sandboxIntent) {
+    setSandboxRestrictedMode(sandboxIntent !== 'danger-full-access', {
+      steerLiveTurn: false,
+      flashSelector: true
+    })
+  }
   try {
     await window.studio.answerAskUser({
       requestId: msg.requestId,
@@ -3761,12 +3922,17 @@ async function submitPromptDraft(msg: ChatMsg & { kind: 'prompt' }): Promise<voi
 }
 
 /**
- * dsh 请求越过沙箱边界（沙箱升级）：在消息流里插一条同意卡。
- *
- * 卡片**只提供「允许一次 / 拒绝」**，没有「总是允许」：dsh 的审批是一次性授权，
- * 持久化会静默放宽 agent 之后能跑的东西，而用户以为自己只同意过一次。
+ * dsh 请求越过沙箱边界（沙箱升级）：
+ * - 若当前工程已设为「总是允许 / 完全访问」（!sandboxRestricted），直接自动放行，不再弹窗打断用户；
+ * - 否则在消息流中插入审批卡，提供「允许一次 / 总是允许 / 拒绝」。
  */
 function handleApprovalRequest(request: ApprovalRequestView): void {
+  if (!sandboxRestricted.value && mode.value !== 'ask') {
+    void window.studio
+      ?.answerApproval?.({ requestId: request.requestId, decision: 'allow-once' })
+      .catch(() => undefined)
+    return
+  }
   if (messages.value.some((m) => m.kind === 'approval' && m.requestId === request.requestId)) return
   messages.value.push({
     kind: 'approval',
@@ -3797,6 +3963,84 @@ async function answerApprovalRequest(
     await window.studio.answerApproval({ requestId: msg.requestId, decision })
   } catch {
     // 主进程不可达：请求随本轮一起失效，未放行
+  }
+}
+
+/**
+ * 用户在审批卡上点击「总是允许」：
+ * 1. 放行当前待决审批（allow-once）；
+ * 2. 将当前工程持久化设为「完全访问」（总是允许），此后本工程中的所有授权均自动允许；
+ * 3. 同步将底部工具栏沙箱按钮切换为「完全访问」，并实时切换当前会话及子代理的沙箱模式。
+ */
+async function enableFullAccessForApproval(msg: ChatMsg & { kind: 'approval' }): Promise<void> {
+  if (msg.decision !== null && msg.decision !== undefined) return
+  msg.decision = 'allow-always'
+  setSandboxRestrictedMode(false, { steerLiveTurn: false, flashSelector: true })
+  try {
+    await window.studio.answerApproval({ requestId: msg.requestId, decision: 'allow-once' })
+  } catch {
+    // 主进程不可达：请求随本轮一起失效
+  }
+}
+
+/**
+ * 当受限模式下工具执行受阻且未弹出标准审批卡时，向对话流插入一张「是否开启完全访问」交互卡（每轮最多一张）。
+ */
+function pushSandboxBlockedPrompt(toolName?: string, reason?: string): void {
+  if (!sandboxRestricted.value || mode.value === 'ask') return
+  for (let i = messages.value.length - 1; i >= sessionStart; i--) {
+    const m = messages.value[i]
+    if (m?.kind === 'user') break
+    if (m?.kind === 'sandbox-blocked') return
+    if (m?.kind === 'approval' && !m.expired && (m.decision === null || m.decision === undefined)) {
+      return
+    }
+  }
+  const cleanTool = toolName?.trim()
+  const cleanReason = reason?.trim()
+  messages.value.push({
+    kind: 'sandbox-blocked',
+    id: `sbx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    ...(cleanTool && cleanTool !== 'tool' ? { toolName: cleanTool } : {}),
+    ...(cleanReason ? { reason: cleanReason } : {}),
+    decision: null
+  })
+  scrollToBottom()
+  scheduleHistoryPersist()
+}
+
+function checkRecentAssistantSandboxBlock(): void {
+  if (!sandboxRestricted.value || mode.value === 'ask') return
+  for (let i = messages.value.length - 1; i >= sessionStart; i--) {
+    const m = messages.value[i]
+    if (m?.kind === 'user') break
+    if (m?.kind === 'assistant') {
+      if (isAssistantReportingSandboxBlock(m.text)) {
+        pushSandboxBlockedPrompt()
+      }
+      break
+    }
+  }
+}
+
+function decideSandboxBlockedPrompt(
+  msg: ChatMsg & { kind: 'sandbox-blocked' },
+  enableFullAccess: boolean,
+  retryNow = false
+): void {
+  if (msg.decision !== null && msg.decision !== undefined) return
+  if (!enableFullAccess) {
+    msg.decision = 'keep-restricted'
+    scheduleHistoryPersist()
+    return
+  }
+  msg.decision = 'enabled-full-access'
+  setSandboxRestrictedMode(false, {
+    steerLiveTurn: running.value && !retryNow,
+    flashSelector: true
+  })
+  if (retryNow && !running.value) {
+    void runTask(t('studio.chat.sandboxBlockedRetryPrompt'))
   }
 }
 
@@ -4070,6 +4314,7 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
       ...(workspace.value ? { workspace: workspace.value } : {}),
       // 当前 agent 模式：main 进程按 craft/ask/plan 切换 dsh 的 system-prompt
       mode: mode.value,
+      sandboxMode: sandboxRestricted.value ? 'workspace-write' : 'danger-full-access',
       ...(canvasContext ? { canvasContext } : {})
     })
   } catch (err) {
@@ -6097,7 +6342,10 @@ onBeforeUnmount(() => {
                   v-for="opt in promptOptions(msg)"
                   :key="opt"
                   class="prompt-option"
-                  :class="{ chosen: msg.answered === opt }"
+                  :class="{
+                    chosen: msg.answered === opt,
+                    'full-access-opt': opt === t('studio.chat.approvalAllowAlways')
+                  }"
                   :disabled="msg.answered !== null && msg.answered !== undefined"
                   @click="answerPrompt(msg, opt)"
                 >
@@ -6136,10 +6384,7 @@ onBeforeUnmount(() => {
                 {{ t('studio.chat.promptAnswered', { answer: msg.answered }) }}
               </div>
             </div>
-            <!--
-            审批卡：dsh 请求越过沙箱边界时出现。只有「允许一次 / 拒绝」两个选项 ——
-            没有「总是允许」（dsh 的授权设计成一次性，持久化会静默放宽 agent 的权限面）。
-          -->
+            <!-- 审批卡：dsh 请求越过沙箱边界时出现，支持「允许一次 / 总是允许（此工程）/ 拒绝」，选择「总是允许」后同步切换下方模式为完全访问 -->
             <div v-else-if="msg.kind === 'approval'" class="msg-prompt approval">
               <div class="prompt-question">{{ t('studio.chat.approvalTitle') }}</div>
               <div class="prompt-hint">
@@ -6158,6 +6403,17 @@ onBeforeUnmount(() => {
                 </button>
                 <button
                   type="button"
+                  class="prompt-option full-access-opt"
+                  :class="{
+                    chosen: msg.decision === 'allow-always' || msg.decision === 'allow-full-access'
+                  }"
+                  :disabled="msg.expired || (msg.decision !== null && msg.decision !== undefined)"
+                  @click="enableFullAccessForApproval(msg)"
+                >
+                  {{ t('studio.chat.approvalAllowAlways') }}
+                </button>
+                <button
+                  type="button"
                   class="prompt-option"
                   :class="{ chosen: msg.decision === 'reject' }"
                   :disabled="msg.expired || (msg.decision !== null && msg.decision !== undefined)"
@@ -6169,6 +6425,12 @@ onBeforeUnmount(() => {
               <div v-if="msg.decision === 'allow-once'" class="prompt-answered">
                 {{ t('studio.chat.approvalAllowedOnce') }}
               </div>
+              <div
+                v-else-if="msg.decision === 'allow-always' || msg.decision === 'allow-full-access'"
+                class="prompt-answered"
+              >
+                {{ t('studio.chat.approvalAllowedAlways') }}
+              </div>
               <div v-else-if="msg.decision === 'reject'" class="prompt-answered">
                 {{ t('studio.chat.approvalRejected') }}
               </div>
@@ -6176,6 +6438,52 @@ onBeforeUnmount(() => {
                 {{ t('studio.chat.approvalExpired') }}
               </div>
               <div class="prompt-hint">{{ t('studio.chat.approvalOnceHint') }}</div>
+            </div>
+            <!-- 受限模式受阻提示卡：当沙箱直接拦截或提权通道不可用时询问用户是否开启完全访问，并联动下方沙箱按钮 -->
+            <div
+              v-else-if="msg.kind === 'sandbox-blocked'"
+              class="msg-prompt approval sandbox-blocked-card"
+            >
+              <div class="prompt-question">{{ t('studio.chat.sandboxBlockedTitle') }}</div>
+              <div v-if="msg.toolName" class="prompt-hint">
+                {{ t('studio.chat.approvalTool', { tool: msg.toolName }) }}
+              </div>
+              <div v-if="msg.reason" class="prompt-hint approval-reason">{{ msg.reason }}</div>
+              <div class="prompt-hint">{{ t('studio.chat.sandboxBlockedHint') }}</div>
+              <div class="prompt-options">
+                <button
+                  type="button"
+                  class="prompt-option full-access-opt"
+                  :class="{ chosen: msg.decision === 'enabled-full-access' }"
+                  :disabled="msg.decision !== null && msg.decision !== undefined"
+                  @click="decideSandboxBlockedPrompt(msg, true, false)"
+                >
+                  {{ t('studio.chat.sandboxBlockedEnable') }}
+                </button>
+                <button
+                  v-if="!running && (msg.decision === null || msg.decision === undefined)"
+                  type="button"
+                  class="prompt-option full-access-opt"
+                  @click="decideSandboxBlockedPrompt(msg, true, true)"
+                >
+                  {{ t('studio.chat.sandboxBlockedEnableAndRetry') }}
+                </button>
+                <button
+                  type="button"
+                  class="prompt-option"
+                  :class="{ chosen: msg.decision === 'keep-restricted' }"
+                  :disabled="msg.decision !== null && msg.decision !== undefined"
+                  @click="decideSandboxBlockedPrompt(msg, false, false)"
+                >
+                  {{ t('studio.chat.sandboxBlockedKeep') }}
+                </button>
+              </div>
+              <div v-if="msg.decision === 'enabled-full-access'" class="prompt-answered">
+                {{ t('studio.chat.sandboxBlockedEnabledDone') }}
+              </div>
+              <div v-else-if="msg.decision === 'keep-restricted'" class="prompt-answered">
+                {{ t('studio.chat.sandboxBlockedKeptDone') }}
+              </div>
             </div>
             <!-- MCP 与工具操作流卡片：按实际调用时序在对话流中直接展示创建节点、删除节点、连线等操作 -->
             <div
@@ -6604,6 +6912,52 @@ onBeforeUnmount(() => {
               </li>
             </ul>
           </div>
+          <button
+            v-if="mode !== 'ask'"
+            type="button"
+            class="sandbox-mode-btn"
+            :class="{ unrestricted: !sandboxRestricted, 'just-switched': sandboxJustSwitched }"
+            :title="
+              sandboxRestricted
+                ? t('studio.chat.sandboxRestrictedHint')
+                : t('studio.chat.sandboxUnrestrictedHint')
+            "
+            @click="toggleSandboxRestricted"
+          >
+            <span class="sandbox-mode-icon" aria-hidden="true">
+              <svg
+                v-if="sandboxRestricted"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+                <path d="m9 12 2 2 4-4" />
+              </svg>
+              <svg
+                v-else
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+              </svg>
+            </span>
+            <span class="sandbox-mode-label">
+              {{
+                sandboxRestricted
+                  ? t('studio.chat.sandboxRestrictedLabel')
+                  : t('studio.chat.sandboxUnrestrictedLabel')
+              }}
+            </span>
+          </button>
           <span class="toolbar-spacer" />
           <!--
           用量环与引用资产按钮**合成一个不可拆分的单元**。
@@ -9352,6 +9706,23 @@ onBeforeUnmount(() => {
   opacity: 0.5;
 }
 
+.prompt-option.full-access-opt {
+  border-color: color-mix(in srgb, var(--warning, #f59e0b) 55%, var(--border));
+  background: color-mix(in srgb, var(--warning, #f59e0b) 12%, var(--bg-panel));
+  color: var(--warning, #f59e0b);
+}
+
+.prompt-option.full-access-opt:hover:not(:disabled) {
+  border-color: var(--warning, #f59e0b);
+  background: color-mix(in srgb, var(--warning, #f59e0b) 20%, var(--bg-panel));
+}
+
+.prompt-option.full-access-opt.chosen {
+  border-color: var(--warning, #f59e0b);
+  background: color-mix(in srgb, var(--warning, #f59e0b) 24%, var(--bg-panel));
+  color: var(--warning, #f59e0b);
+}
+
 /* 审批卡：与提问卡同一套骨架，但用警告色边框 —— 它拦下的是一次权限扩张 */
 .msg-prompt.approval {
   border-color: var(--warn, var(--accent, var(--border)));
@@ -9755,6 +10126,94 @@ onBeforeUnmount(() => {
 
 .mode-chevron.rotated {
   transform: rotate(180deg);
+}
+
+.sandbox-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 8px 4px 4px;
+  background: var(--bg-elevated, var(--bg-panel));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.sandbox-mode-btn:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.sandbox-mode-btn:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.sandbox-mode-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex: none;
+  background: var(--bg-input);
+  color: var(--success, #22c55e);
+  border: 1px solid var(--border);
+}
+
+.sandbox-mode-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.sandbox-mode-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sandbox-mode-btn.unrestricted {
+  border-color: color-mix(in srgb, var(--warning, #f59e0b) 52%, var(--border));
+  background: color-mix(in srgb, var(--warning, #f59e0b) 10%, var(--bg-elevated, var(--bg-panel)));
+  color: var(--warning, #f59e0b);
+}
+
+.sandbox-mode-btn.unrestricted:hover:not(:disabled) {
+  border-color: var(--warning, #f59e0b);
+}
+
+.sandbox-mode-btn.unrestricted .sandbox-mode-icon {
+  background: color-mix(in srgb, var(--warning, #f59e0b) 18%, var(--bg-input));
+  border-color: color-mix(in srgb, var(--warning, #f59e0b) 45%, var(--border));
+  color: var(--warning, #f59e0b);
+}
+
+@keyframes sandbox-switch-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
+    transform: scale(1.03);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+    transform: scale(1);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+    transform: scale(1);
+  }
+}
+
+.sandbox-mode-btn.just-switched {
+  animation: sandbox-switch-pulse 0.9s ease-out;
 }
 
 .mode-menu {

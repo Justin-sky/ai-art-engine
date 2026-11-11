@@ -40,8 +40,10 @@ import {
   type SearchHarnessSessionsInput,
   type SearchHarnessSessionsResult,
   type SessionSkill,
+  type SetHarnessSandboxModeInput,
   type SteerHarnessTurnInput,
-  type SteerHarnessTurnResult
+  type SteerHarnessTurnResult,
+  type HarnessSandboxMode
 } from '@shared/ipc'
 import { parseClaudeSkillMarkdown, parseGitHubSkillSourceUrl } from '@shared/claudeSkill'
 import { accessHeaders, isCancelAnswer, normalizeChatMode } from '@shared/mcpModeAccess'
@@ -1064,6 +1066,8 @@ const SCHEDULE_BEGIN = '===BEGIN_SCHEDULE==='
 const SUBAGENT_BEGIN = '===BEGIN_SUBAGENT==='
 /** 盘中实时转向生效标记：runner 在注入 steer 指令后输出（单行 JSON 载荷） */
 const STEER_BEGIN = '===BEGIN_STEER==='
+/** 受限沙箱受阻标记：runner 检测到工具调用在受限模式下受阻且未走审批弹窗时输出（单行 JSON 载荷） */
+const SANDBOX_BLOCKED_BEGIN = '===BEGIN_SANDBOX_BLOCKED==='
 
 /**
  * 影视 / 美术 / 3D / 剪辑四大领域专属子代理矩阵定义。
@@ -1662,11 +1666,17 @@ function sendWorkerCommand(payload: Record<string, unknown>): boolean {
 }
 
 /** 常驻 worker 协议版本：改 runner 交互或 MCP 核心工具集时递增，强制热进程重建 */
-const WORKER_PROTOCOL = '13'
+const WORKER_PROTOCOL = '15'
 const RUNNER_TEMPLATE_FP = createHash('sha1')
   .update(AIART_RUNNER_TEMPLATE)
+  .update('\0')
+  .update(AIART_APPROVAL_ANSWERER_TEMPLATE)
   .digest('hex')
   .slice(0, 12)
+
+function normalizeSandboxMode(raw?: string): HarnessSandboxMode {
+  return raw === 'danger-full-access' ? 'danger-full-access' : 'workspace-write'
+}
 
 function workerFingerprintOf(input: {
   workspace: string
@@ -1738,6 +1748,8 @@ function attachWorkerIo(opts: {
   let reasoningBuf = ''
   let turnFinalized = false
   let procAborted = false
+  let turnEmittedSandboxBlocked = false
+  const seenApprovalRequestIds = new Set<string>()
 
   const setRunId = (id: string): void => {
     currentRunId = id
@@ -1758,7 +1770,9 @@ function attachWorkerIo(opts: {
     inReasoning = false
     reasoningBuf = ''
     turnFinalized = false
+    turnEmittedSandboxBlocked = false
     errBuf = ''
+    seenApprovalRequestIds.clear()
   }
   ;(proc as ChildProcess & { __aiartTurnSawOutput?: () => boolean }).__aiartTurnSawOutput = () =>
     sawOutput
@@ -1779,7 +1793,8 @@ function attachWorkerIo(opts: {
       text.startsWith(PRESENT_BEGIN) ||
       text.startsWith(SCHEDULE_BEGIN) ||
       text.startsWith(SUBAGENT_BEGIN) ||
-      text.startsWith(STEER_BEGIN))
+      text.startsWith(STEER_BEGIN) ||
+      text.startsWith(SANDBOX_BLOCKED_BEGIN))
 
   const emitAssistantDelta = (delta: string): void => {
     if (!delta || !turnActive) return
@@ -1896,6 +1911,13 @@ function attachWorkerIo(opts: {
     if (!turnActive) return
     const payload = parseApprovalMarker(line)
     if (!payload) return
+    if (
+      seenApprovalRequestIds.has(payload.requestId) ||
+      harnessApprovalRequests.has(payload.requestId)
+    ) {
+      return
+    }
+    seenApprovalRequestIds.add(payload.requestId)
     if (
       payload.answerFile &&
       shouldAutoApproveSkillTool(activeSkillTurn, payload.toolName, payload.reason)
@@ -2047,6 +2069,25 @@ function attachWorkerIo(opts: {
     }
   }
 
+  const emitSandboxBlockedFromLine = (line: string): void => {
+    if (!turnActive || turnEmittedSandboxBlocked) return
+    const payload = line.slice(SANDBOX_BLOCKED_BEGIN.length).trim()
+    try {
+      const parsed = JSON.parse(payload) as { toolName?: string; detail?: string }
+      const toolName =
+        typeof parsed.toolName === 'string' && parsed.toolName.trim()
+          ? parsed.toolName.trim()
+          : 'tool'
+      const detail =
+        typeof parsed.detail === 'string' && parsed.detail.trim() ? parsed.detail.trim() : undefined
+      turnEmittedSandboxBlocked = true
+      emit({ type: 'sandbox_blocked', toolName, ...(detail ? { detail } : {}) })
+      sawOutput = true
+    } catch {
+      /* ignore */
+    }
+  }
+
   const parseStdout = (until: number): void => {
     let i = parsedLen
     let start = i
@@ -2055,6 +2096,19 @@ function attachWorkerIo(opts: {
         const line = stripAnsi(fullOut.slice(start, i)).trim()
         start = i + 1
         if (line) {
+          const isControlMarker =
+            line.startsWith(TOOL_BEGIN) ||
+            line.startsWith(TOOL_END) ||
+            line.startsWith(ASK_USER_BEGIN) ||
+            line.startsWith(APPROVAL_BEGIN) ||
+            line.startsWith(CONTEXT_BEGIN) ||
+            line.startsWith(TODO_BEGIN) ||
+            line.startsWith(GOAL_BEGIN) ||
+            line.startsWith(PRESENT_BEGIN) ||
+            line.startsWith(SCHEDULE_BEGIN) ||
+            line.startsWith(SUBAGENT_BEGIN) ||
+            line.startsWith(STEER_BEGIN) ||
+            line.startsWith(SANDBOX_BLOCKED_BEGIN)
           if (line === REASONING_BEGIN) {
             inReasoning = true
             reasoningBuf = ''
@@ -2062,33 +2116,41 @@ function attachWorkerIo(opts: {
           } else if (inReasoning && line === REASONING_END) {
             inReasoning = false
             emit({ type: 'reasoning', text: reasoningBuf })
-          } else if (inReasoning) {
+          } else if (!isControlMarker && inReasoning) {
             reasoningBuf = reasoningBuf ? reasoningBuf + '\n' + line : line
             emit({ type: 'reasoning', text: reasoningBuf })
-          } else if (line.startsWith(TOOL_BEGIN)) {
-            emitToolFromLine(line, 'start')
-          } else if (line.startsWith(TOOL_END)) {
-            emitToolFromLine(line, 'done')
-          } else if (line.startsWith(ASK_USER_BEGIN)) {
-            emitAskUserFromLine(line)
-          } else if (line.startsWith(APPROVAL_BEGIN)) {
-            emitApprovalFromLine(line)
-          } else if (line.startsWith(CONTEXT_BEGIN)) {
-            emitContextFromLine(line)
-          } else if (line.startsWith(TODO_BEGIN)) {
-            emitTodoFromLine(line)
-          } else if (line.startsWith(GOAL_BEGIN)) {
-            emitGoalFromLine(line)
-          } else if (line.startsWith(PRESENT_BEGIN)) {
-            emitPresentFromLine(line)
-          } else if (line.startsWith(SCHEDULE_BEGIN)) {
-            emitScheduleFromLine(line)
-          } else if (line.startsWith(SUBAGENT_BEGIN)) {
-            emitSubagentFromLine(line)
-          } else if (line.startsWith(STEER_BEGIN)) {
-            emitSteerFromLine(line)
           } else {
-            emitAssistantDelta(line + '\n')
+            if (inReasoning) {
+              inReasoning = false
+              emit({ type: 'reasoning', text: reasoningBuf })
+            }
+            if (line.startsWith(TOOL_BEGIN)) {
+              emitToolFromLine(line, 'start')
+            } else if (line.startsWith(TOOL_END)) {
+              emitToolFromLine(line, 'done')
+            } else if (line.startsWith(ASK_USER_BEGIN)) {
+              emitAskUserFromLine(line)
+            } else if (line.startsWith(APPROVAL_BEGIN)) {
+              emitApprovalFromLine(line)
+            } else if (line.startsWith(CONTEXT_BEGIN)) {
+              emitContextFromLine(line)
+            } else if (line.startsWith(TODO_BEGIN)) {
+              emitTodoFromLine(line)
+            } else if (line.startsWith(GOAL_BEGIN)) {
+              emitGoalFromLine(line)
+            } else if (line.startsWith(PRESENT_BEGIN)) {
+              emitPresentFromLine(line)
+            } else if (line.startsWith(SCHEDULE_BEGIN)) {
+              emitScheduleFromLine(line)
+            } else if (line.startsWith(SUBAGENT_BEGIN)) {
+              emitSubagentFromLine(line)
+            } else if (line.startsWith(STEER_BEGIN)) {
+              emitSteerFromLine(line)
+            } else if (line.startsWith(SANDBOX_BLOCKED_BEGIN)) {
+              emitSandboxBlockedFromLine(line)
+            } else {
+              emitAssistantDelta(line + '\n')
+            }
           }
         }
       }
@@ -2252,7 +2314,8 @@ function attachWorkerIo(opts: {
       !textChunk.includes(TODO_BEGIN) &&
       !textChunk.includes(PRESENT_BEGIN) &&
       !textChunk.includes(SUBAGENT_BEGIN) &&
-      !textChunk.includes(STEER_BEGIN)
+      !textChunk.includes(STEER_BEGIN) &&
+      !textChunk.includes(SANDBOX_BLOCKED_BEGIN)
     ) {
       // 常驻空闲时忽略普通 stdout 噪声，但放行带外状态快照
       return
@@ -2295,6 +2358,7 @@ function attachWorkerIo(opts: {
           inReasoning = false
           reasoningBuf = ''
           turnFinalized = false
+          turnEmittedSandboxBlocked = false
           setRunId(schedRunId)
           registerHarnessRunAccess(schedRunId, schedMode)
           setActiveHarnessRun(schedRunId, schedMode)
@@ -2401,6 +2465,13 @@ function attachWorkerIo(opts: {
       case 'steered':
         emitSteerFromLine(`${STEER_BEGIN} ${JSON.stringify(msg)}`)
         break
+      case 'sandbox_blocked': {
+        const blockedPayload = JSON.stringify(
+          msg.payload && typeof msg.payload === 'object' ? msg.payload : msg
+        )
+        emitSandboxBlockedFromLine(`${SANDBOX_BLOCKED_BEGIN} ${blockedPayload}`)
+        break
+      }
     }
   })
   proc.on('error', (err) => {
@@ -2538,6 +2609,7 @@ export async function runHarnessJobWait(input: HarnessJobWaitInput): Promise<Har
   const rest: HarnessRunInput = {
     task: input.task,
     mode: input.mode,
+    sandboxMode: input.sandboxMode,
     sessionId: input.sessionId,
     model: input.model,
     providerId: input.providerId
@@ -3224,6 +3296,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   }
   const workspace = resolveWorkspace(input.workspace)
   const mode = normalizeChatMode(input.mode)
+  const sandboxMode = normalizeSandboxMode(input.sandboxMode)
   const isNativeSlashCommand = /^\/(compact|goal|feedback)(?=$|\s)/i.test(rawInputTask)
   const skillPreprocessed = isNativeSlashCommand
     ? { taskText: rawInputTask, activeSkill: null }
@@ -3359,7 +3432,8 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
         ...(effectiveSessionId ? { AIART_SESSION_ID: effectiveSessionId } : {}),
         AIART_ASK_DIR: join(app.getPath('temp'), 'aiart-harness-ask'),
         AIART_RUN_ID: runId,
-        AIART_MODE: mode
+        AIART_MODE: mode,
+        AIART_SANDBOX_MODE: sandboxMode
       } as NodeJS.ProcessEnv,
       runId,
       dshEntry,
@@ -3430,6 +3504,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     task: rawTask,
     sessionId: effectiveSessionId,
     mode,
+    sandboxMode,
     runId
   })
   if (!ok) {
@@ -4436,6 +4511,22 @@ export async function steerHarnessTurn(
       : '⚡ 已注入盘中实时转向指令（无需中断当前轮次）'
   )
   return { ok: true, steered: true }
+}
+
+/**
+ * 动态切换当前常驻 worker 会话及活跃子代理的沙箱模式（受限模式 / 完全访问）。
+ * 支持用户在审批卡、受阻提示卡或底部工具栏随时切换并实时生效。
+ */
+export function setHarnessSandboxMode(input: SetHarnessSandboxModeInput): { ok: boolean } {
+  const sandboxMode = normalizeSandboxMode(input?.sandboxMode)
+  if (child && !child.killed) {
+    sendWorkerCommand({
+      op: 'set_sandbox_mode',
+      sandboxMode,
+      steerLiveTurn: Boolean(input?.steerLiveTurn)
+    })
+  }
+  return { ok: true }
 }
 
 /**
