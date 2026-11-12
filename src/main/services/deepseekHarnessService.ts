@@ -215,6 +215,10 @@ interface WorkerSlot {
   lastGoalSnapshot: HarnessGoalView | null
   lastSchedulesSnapshot: HarnessScheduleView[]
   sessionReleaseWaiters: Array<() => void>
+  /** 上一任子进程正在退出（如 abort / 模型渠道切换重启）时等待内核句柄释放的屏障 */
+  pendingExitPromise: Promise<void> | null
+  /** 当前常驻进程启动时已写入 dsh catalog 的模型 ID 集合 */
+  bootedModelIds: Set<string>
 }
 
 const workerSlots = new Map<string, WorkerSlot>()
@@ -253,7 +257,9 @@ function createWorkerSlot(slotId: string): WorkerSlot {
     activeScheduleCount: 0,
     lastGoalSnapshot: null,
     lastSchedulesSnapshot: [],
-    sessionReleaseWaiters: []
+    sessionReleaseWaiters: [],
+    pendingExitPromise: null,
+    bootedModelIds: new Set<string>()
   }
   workerSlots.set(slotId, slot)
   return slot
@@ -1399,7 +1405,7 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     '(h) Spatial World generation & export: `typeId: "spatialWorld.generate"` (`params: { prompt, model, seed, panoMode, disableRecaption, referenceImageUrls, referenceVideoUrl }`), `spatialWorld.export`',
     '(i) Game Economy System (`经济系统`, `typeId: "game.economy"`) & Game Numerical System (`数值系统`, `typeId: "game.numerical"`): `game.economy` (`params: { prompt, gameEconomyPreset, gameEconomyDiagramJson, gameEconomySteps, gameEconomyMonteCarloRuns }`) runs Machinations macro resource & gameplay mechanics loops (Source / Pool / Converter / Gate / Trader / Register / Delay / Queue / Drain / End, inflation & source/sink telemetry) and outputs its economy bundle on port `out-text` (`经济系统`). **Default Lightweight Single-Node Rule (CRITICAL)**: When the user asks to create or design a game mechanic or economy (e.g. "创建一个游戏机制", "做个抽卡机制", "设计塔防经济机制", "体力恢复机制", "卡牌能量机制"), by default create **ONLY ONE `game.economy` node** modeling the requested core loop concisely (either selecting a matching `gameEconomyPreset` or building a focused 6–12 node `gameEconomyDiagramJson` on the single default `Base` layer `[{ id: "layer_base", name: "Base", visible: true, locked: false }]`) — **DO NOT** default to creating a full-suite complex 20–32 node multi-layer diagram, and **NEVER** automatically create or attach `asset.gameSystem` (`策划案生成` / 游戏策划案) or `game.numerical` (`数值系统`) nodes unless the user **explicitly** asks for them! **Explicit Opt-In ONLY for Complete Multi-Layer Mechanics**: **ONLY** when the user **explicitly** requests complete / full-suite gameplay mechanics (e.g. explicitly asking for "完整机制", "全套机制", "所有机制", "完整全套玩法系统"), construct a comprehensive `gameEconomyDiagramJson` (`schema: "mx@2"`, 20–32 nodes across resource supply/reset, conserved draw-discard-reshuffle-exhaust or inventory cycles, heterogeneous converters with `state` activators like `">=2"`, deterministic `register` formulas using `if(cond, thenVal, elseVal)` / `round(...)` / `max(...)` / `min(...)`, defense/block & enemy scaling drains, shop/relic meta-economy, and win/loss `end` nodes) and categorize subsystems into separate Machinations `layers` (keeping `{ id: "layer_base", name: "Base", visible: true, locked: false }` at index 0, adding named subsystem layers, and setting `layerId` on each node while omitting `x`/`y` for automatic swimlane layout). **Strict `mx@2` Structural Rules**: (1) `converter -> pool` and `source -> pool` ALWAYS ADD (`+`) resources — to deduct HP/lives on leak or enemy damage, you MUST wire `hp_pool -> drain` (NEVER wire a `leak`/`damage` converter into `base_hp`/`player_hp`!); (2) `resource` edge `formula` directly evaluates `register` and `pool` IDs (e.g. `"wave_scale"`, `"min(enemy_pool, defense_dps)"`), whereas `state` edge modifiers MUST carry an explicit `+`/`-` sign (`"+1"`, `"-2"`, `"+20%"`) and `state` activators MUST use a comparison (`">=1"`, `"<=0"`, `"2..8"`) — NEVER put an unsigned number `"1"` on a `state` edge; (3) `end` nodes combine multiple incoming `state` edges with `AND` and NEVER emit outgoing `resource` edges (gate rewards by wave/step instead); (4) avoid greedy starvation and per-step build+sell churn among `automatic` converters (use `interactive` + `botCondition` or `state` activators for `sell`/emergency actions, and gate once-per-match stamina/meta nodes by `wave_count <= 1` so time scales do not collide); (5) when an `automatic` refill/gift converter pushes `+A` into a capped pool (`capacity = C`), ALWAYS add a headroom state gate `pool -> converter` with `"<=C-A"` (e.g. `"<=60"` for `+60` into a `cap 120` stamina pool) so it waits for headroom instead of capacity-blocking; (6) when a high-cost converter (`cost = K`, e.g. `-40` elite stage) shares a pool with a low-threshold refill branch (`<= T`, e.g. `<=40` stamina item), gate the high-cost converter at `">=K"` (`">=40"`, NOT `">=80"`) so the pool is not locked in a deadzone above `T` that prevents the refill branch from ever firing. `game.numerical` (`params: { prompt, gameNumericalPreset, gameNumericalWorkbenchJson }`, `preset: "slay_the_spire_dbg" | "hearthstone_tcg" | "onmyoji_atb" | "balatro_roguelike" | "survivor_brotato" | "short_drama_progression"`) is created ONLY when the user explicitly requests numerical combat/progression tables or GDD domain data tables: (1) Combat & Novel Progression mode (accepts optional upstream `game.economy` `out-text -> in-economy`); (2) Non-Combat GDD Domain Spec Data Tables mode (`domainTables`: automatically activated when `title` / `prompt` targets teaching, medical/TCM, simulation, VR/XR training, digital twin, or tool GDDs — NEVER set `gameNumericalPreset: "short_drama_progression"` and NEVER wire unrelated novel `game.economy` or `novel.outline` nodes on the same canvas to a non-combat GDD `game.numerical` node; wire `game.numerical (out-text) -> asset.gameSystem (in-numerical)` cleanly).',
     '(j) Novel Outline (`小说大纲`, `typeId: "novel.outline"`) & Markov-Chain Chapter Serialization (`创建小说`, `typeId: "asset.novel"`): `params: { prompt, novelNodeMode, novelGenre, novelTotalChapters, novelCurrentChapter, novelTargetWords, novelAutoAdvanceChapter, novelWorldBible, novelStateLedger, novelRollingSummary, novelCustomStagesText, novelCustomAxisProtagonist, novelCustomAxisAntagonist, novelCustomUnlockTerm, novelCharacterRosterJson, novelForeshadowingJson }`. Recommended **Chained Markov-Chain Pipeline ($P(C_t | C_{t-1}, O_t, E_t, N_t)$)**: (1) create `novel.outline` (`title: "小说大纲"`, wired from `text.plain` `out -> in`, `game.economy` `out-text -> in-economy`, and/or `game.numerical` `out-text -> in-numerical`) to generate the global World Bible + Character Roster + Volume Plan + `第1章：...`/`第2章：...` per-chapter outlines; (2) create independent per-chapter `asset.novel` nodes (`第1章`, `第2章`, `第3章`... with `novelCurrentChapter: 1, 2, 3` and `novelAutoAdvanceChapter: false`), wiring dedicated ports into every chapter node $C_t$: `C_{t-1} (out: 下一章) -> C_t (in: 上一章)` (Markov state transfer), `novel.outline (out) -> C_t (in-outline: 小说大纲)` (Chapter $t$ outline slice), `game.economy (out-text) -> C_t (in-economy: 经济系统)`, and `game.numerical (out-text) -> C_t (in-numerical: 数值系统)`; the final chapter node emits cumulative chapters $1..N$ on port `out-all` (`全部`).',
-    '(k) Game System Design Document / GDD (`策划案生成`): `typeId: "asset.gameSystem"`, `params: { prompt, gameSystemArchetype, gameSystemTargetAspect, gameSystemSpecJson }` — **ONLY create `asset.gameSystem` when the user explicitly asks to write/generate a game design document / GDD ("游戏策划案" / "系统策划案" / "GDD"); NEVER auto-create `asset.gameSystem` when the user only asks to create game mechanics or an economy system!** When requested, it accepts optional upstream `asset.novel` (`out-all -> in`), `game.economy` (`out-text -> in-economy`), and `game.numerical` (`out-text -> in-numerical`), generates structured 6-section GDD specs (overview, goals, features, UI layout wireframes, UI specs, data & formulas), and outputs Markdown on `out` / `out-all` (ready to wire into `ui.split` `in` if UI breakdown is requested).',
+    '(k) Game System Design Document / GDD (`策划案生成`): `typeId: "asset.gameSystem"`, `params: { prompt, text, gameSystemArchetype, gameSystemTargetAspect, synthesizeOffline, autoFixQa }` — **ONLY create `asset.gameSystem` when the user explicitly asks to write/generate a game design document / GDD ("游戏策划案" / "系统策划案" / "GDD"); NEVER auto-create `asset.gameSystem` when the user only asks to create game mechanics or an economy system!** **Two-Step Lightweight Canvas-First Rule (CRITICAL)**: Whenever creating `asset.gameSystem`, ALWAYS call `graph_edit` FIRST with a compact `node_upsert` (`< 500` chars: `{ op: "node_upsert", nodeId: "gdd_1", typeId: "asset.gameSystem", title: "...", params: { prompt: "<concise core design summary>", gameSystemArchetype: "...", gameSystemTargetAspect: "16:9" } }`) so the canvas and `asset.gameSystem` node are created and visible in real time immediately — **NEVER** stuff a multi-kilobyte full GDD Markdown or nested JSON string into `node_upsert` (doing so hits `max_tokens` output truncation where the tool call is dropped, or causes unescaped `"` JSON syntax errors)! After the node is live on canvas, either call `task_run({ assetId, nodeIds: ["gdd_1"] })` to generate the 6-section GDD on the node, OR if writing verified project-reverse-engineered GDD Markdown into `params.text`, update `params.text` in a separate `node_update` step using backticks / `「…」` instead of unescaped `"`. Accepts optional upstream `asset.novel` (`out-all -> in`), `game.economy` (`out-text -> in-economy`), and `game.numerical` (`out-text -> in-numerical`), and outputs Markdown on `out` / `out-all` (ready to wire into `ui.split` `in` if UI breakdown is requested).',
     'Step 2 (Execute Live on Canvas via `task_run` & Mandatory Economy Self-Repair Gate): Immediately after `graph_edit`, call `task_run({ assetId, nodeIds })` (passing the `assetId` and `nodeIds` returned by `graph_edit`, or simply `task_run({})` to run the just-edited canvas nodes; NEVER pass `wait: false` so `task_run` waits for the node generation to finish and updates the Dive / Canvas UI in place). `task_run` executes the nodes on the live canvas with real-time progress spinners (equivalent to clicking the node\'s "⚡ 生成" / "生成第 N 章" button), updates the node preview in place, waits until completion by default, and returns `{ relativePath, relativePaths, economyDiagnostics }` plus visual inspection images. Whenever you edit or run a `game.economy` node, inspect any `warnings` from `graph_edit` and `economyDiagnostics` from `task_run`: if `topologyWarnings` is non-empty, if HP/lives increase when taking damage, if any converter is blocked in `starvedConverters` (`>= 5` blocked steps or `>= 20%`), if any supply/item pool stays untouched in `idleNodes`, or if end/meta conditions misfire, you MUST repair `gameEconomyDiagramJson` via `graph_edit` and re-run `task_run` until clean — NEVER rename a broken node to "草稿（仿真待修正）" or write bug disclaimers into `prompt` instead of fixing the diagram!',
     'The user may reference project assets by writing @ followed by a workspace-relative path (e.g. @Assets/Images/foo.png).',
     'Image references are attached to your user message as image blocks, so you can see the picture content directly.',
@@ -1838,13 +1844,7 @@ function scheduleSlotIdleShutdown(slot: WorkerSlot): void {
     const latestSchedules = slot.activeScheduleCount
     if (slot.turnActive || !slot.child || latestSchedules > 0) return
     emitSlotStatus(slot, 'dsh 空闲回收，已关闭常驻进程')
-    sendSlotWorkerCommand(slot, { op: 'shutdown' })
-    setTimeout(() => {
-      if (slot.child && !slot.turnActive) {
-        slot.child.kill()
-        resetSlotWorkerState(slot)
-      }
-    }, 2000)
+    void gracefulShutdownAndKillSlotChild(slot)
   }, WORKER_IDLE_MS)
 }
 
@@ -1854,6 +1854,7 @@ function resetSlotWorkerState(slot: WorkerSlot): void {
   slot.child = null
   slot.workerFingerprint = ''
   slot.workerModelId = ''
+  slot.bootedModelIds.clear()
   slot.workerReady = false
   slot.workerPersistent = false
   slot.workerRunId = ''
@@ -2953,7 +2954,10 @@ function selectOrCreateSlotForInput(input: HarnessRunInput): WorkerSlot | null {
         })
       : ''
 
-  // 1. 优先复用上次服务过该 sessionId 且同工作区/配置的空闲热槽位（保留内存中的 Agent 实例）
+  // 1. 优先复用上次服务过该 sessionId 的空闲槽位：
+  //    - 1a: 同工作区/同 Provider 指纹的热槽位（直接保留内存状态与热进程）
+  //    - 1b: 同一会话切换了模型服务商 / 工作区导致指纹变化时，依然复用原槽位并由 ensurePersistentWorker
+  //          干净关闭旧进程后再重启，严禁把旧槽位留在后台继续持有 Windows 会话写信号量而另开新槽位竞争！
   if (targetSessionId) {
     for (const slot of workerSlots.values()) {
       if (
@@ -2961,6 +2965,11 @@ function selectOrCreateSlotForInput(input: HarnessRunInput): WorkerSlot | null {
         slot.lastSessionId === targetSessionId &&
         (!desiredFp || !slot.workerFingerprint || slot.workerFingerprint === desiredFp)
       ) {
+        return slot
+      }
+    }
+    for (const slot of workerSlots.values()) {
+      if (isSlotIdle(slot) && slot.lastSessionId === targetSessionId) {
         return slot
       }
     }
@@ -3169,26 +3178,6 @@ async function ensurePersistentWorkerUnlocked(opts: {
   const dshModules = locateNodeModules(dshEntry)
   if (!dshModules) throw new Error('no dsh modules')
 
-  if (
-    slot.child &&
-    slot.workerPersistent &&
-    slot.workerFingerprint === fingerprint &&
-    slot.workerReady
-  ) {
-    return
-  }
-
-  if (slot.child) {
-    ;(slot.child as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted?.()
-    try {
-      sendSlotWorkerCommand(slot, { op: 'shutdown' })
-    } catch {
-      /* ignore */
-    }
-    slot.child.kill()
-    resetSlotWorkerState(slot)
-  }
-
   const mode = opts.mode ?? 'craft'
   const isGoogle =
     opts.provider.provider.providerKind === 'google' ||
@@ -3208,6 +3197,25 @@ async function ensurePersistentWorkerUnlocked(opts: {
     opts.inputModalities ??
     resolveDshChatInputModalitiesForProvider(opts.provider.provider, modelId)
   const modelName = opts.modelName?.trim() || textCatalog?.name?.trim() || modelId
+
+  if (slot.pendingExitPromise) {
+    await slot.pendingExitPromise.catch(() => undefined)
+    slot.pendingExitPromise = null
+  }
+
+  if (
+    slot.child &&
+    slot.workerPersistent &&
+    slot.workerFingerprint === fingerprint &&
+    slot.workerReady &&
+    (slot.bootedModelIds.size === 0 || slot.bootedModelIds.has(modelId))
+  ) {
+    return
+  }
+
+  if (slot.child) {
+    await gracefulShutdownAndKillSlotChild(slot)
+  }
 
   let projectMemory: string | null = null
   const memFile = join(workspace, PROJECT_MEMORY_RELATIVE_PATH)
@@ -3317,6 +3325,15 @@ async function ensurePersistentWorkerUnlocked(opts: {
     })
     slot.workerFingerprint = fingerprint
     slot.workerModelId = modelId
+    slot.bootedModelIds = new Set(
+      buildDshCatalogModelEntries({
+        baseUrl: opts.provider.baseUrl,
+        modelId,
+        modelName,
+        inputModalities,
+        provider: opts.provider.provider
+      }).map((entry) => entry.id)
+    )
   })
   configWriteChain = spawnStep.then(
     () => undefined,
@@ -3327,8 +3344,7 @@ async function ensurePersistentWorkerUnlocked(opts: {
   const ready = await waitUntilSlotReady(slot, 180_000)
   if (!ready) {
     const bootError = slot.lastWorkerBootError
-    slot.child?.kill()
-    resetSlotWorkerState(slot)
+    await gracefulShutdownAndKillSlotChild(slot)
     throw new Error(bootError || 'dsh 常驻进程就绪超时')
   }
 }
@@ -3854,6 +3870,10 @@ async function startHarnessOnSlot(
   slot.lastStatusText = ''
   clearSlotIdleTimer(slot)
 
+  if (effectiveSessionId) {
+    await releaseSessionFromOtherSlots(effectiveSessionId, slot)
+  }
+
   if (!canPersist) {
     // npx / 无 runner：保持 one-shot
     writeDshConfig(mcp.endpoint, mode, runId, getBlenderClientForHarness(), mcp.port, {
@@ -4099,6 +4119,109 @@ function forceKillProcess(proc: ChildProcess): void {
   }
 }
 
+/** 等待子进程真正退出并释放系统内核对象（如 Windows 会话排他写信号量） */
+function waitForChildProcessExit(proc: ChildProcess, timeoutMs = 2500): Promise<void> {
+  if (proc.exitCode !== null || proc.signalCode !== null) {
+    return Promise.resolve()
+  }
+  return new Promise<void>((resolve) => {
+    let settled = false
+    const finish = (): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      proc.off('close', finish)
+      proc.off('exit', finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, timeoutMs)
+    proc.once('close', finish)
+    proc.once('exit', finish)
+  })
+}
+
+/** 先发送优雅 shutdown 释放会话写锁，若超时未退则强制杀进程树并等待内核句柄释放 */
+async function gracefulShutdownAndKillSlotChild(slot: WorkerSlot): Promise<void> {
+  const proc = slot.child
+  if (!proc) {
+    if (slot.pendingExitPromise) {
+      await slot.pendingExitPromise.catch(() => undefined)
+      slot.pendingExitPromise = null
+    }
+    return
+  }
+  ;(proc as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted?.()
+  const exitWait = waitForChildProcessExit(proc, 2500)
+  slot.pendingExitPromise = exitWait
+  try {
+    sendSlotWorkerCommand(slot, { op: 'shutdown' })
+  } catch {
+    /* ignore */
+  }
+  await Promise.race([exitWait, new Promise<void>((resolve) => setTimeout(resolve, 350))])
+  if (proc.exitCode === null && proc.signalCode !== null) {
+    // already signaled
+  } else if (proc.exitCode === null && proc.signalCode === null) {
+    forceKillProcess(proc)
+    await exitWait
+  }
+  resetSlotWorkerState(slot)
+  slot.pendingExitPromise = null
+}
+
+/**
+ * 在当前槽位接管某 sessionId 前，确保池内其他槽位既没有正在退出中的残留子进程，
+ * 也没有继续持有该 sessionId 的活跃写句柄（例如带有定时提醒/Goal 的旧槽位或跨槽位迁移）。
+ */
+async function releaseSessionFromOtherSlots(
+  targetSessionId: string,
+  currentSlot: WorkerSlot
+): Promise<void> {
+  const cleanId = targetSessionId.trim()
+  if (!cleanId) return
+  const tasks: Promise<void>[] = []
+  for (const other of workerSlots.values()) {
+    if (other === currentSlot) continue
+    if (other.pendingExitPromise) {
+      tasks.push(other.pendingExitPromise.catch(() => undefined))
+    }
+    if (
+      other.child &&
+      other.workerPersistent &&
+      other.workerReady &&
+      !other.turnActive &&
+      (other.lastSessionId === cleanId || other.sessionId === cleanId)
+    ) {
+      if (other.lastSessionId === cleanId) other.lastSessionId = ''
+      tasks.push(
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            other.sessionReleaseWaiters = other.sessionReleaseWaiters.filter((w) => w !== onDone)
+            resolve()
+          }, 1500)
+          const onDone = (): void => {
+            clearTimeout(timer)
+            resolve()
+          }
+          other.sessionReleaseWaiters.push(onDone)
+          const ok = sendSlotWorkerCommand(other, {
+            op: 'release_session',
+            sessionId: cleanId
+          })
+          if (!ok) {
+            clearTimeout(timer)
+            other.sessionReleaseWaiters = other.sessionReleaseWaiters.filter((w) => w !== onDone)
+            resolve()
+          }
+        })
+      )
+    }
+  }
+  if (tasks.length > 0) {
+    await Promise.all(tasks)
+  }
+}
+
 function abortSingleSlot(slot: WorkerSlot, emitSessionOverride?: string): void {
   slot.abortSeq++
   clearSlotIdleTimer(slot)
@@ -4133,6 +4256,12 @@ function abortSingleSlot(slot: WorkerSlot, emitSessionOverride?: string): void {
   emitForSession(targetSid, prevRunId || '0', { type: 'status', text: '已请求中止' })
   const proc = slot.child
   ;(proc as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted?.()
+  const exitWait = waitForChildProcessExit(proc, 2500)
+  slot.pendingExitPromise = exitWait.finally(() => {
+    if (slot.pendingExitPromise === exitWait) {
+      slot.pendingExitPromise = null
+    }
+  })
   forceKillProcess(proc)
   resetSlotWorkerState(slot)
   // 必须发 error/done：面板只在这两种事件里把 running 置 false

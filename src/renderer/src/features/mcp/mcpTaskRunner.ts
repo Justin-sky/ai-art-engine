@@ -164,7 +164,7 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
   const effectiveAssetId =
     rawAssetId && rawAssetId !== 'current' && rawAssetId !== 'active'
       ? rawAssetId
-      : activeTargets.defaultAssetId || lastEditedAssetId
+      : activeTargets.defaultGraphAssetId || lastEditedAssetId || activeTargets.defaultAssetId
 
   const asset = findProjectOrDraftAsset(effectiveAssetId)
   if (asset) {
@@ -857,17 +857,23 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
     const curSel = editor.selection.current.value
     const activeTargets = resolveActiveWorkspaceTargets()
 
-    let effectiveAssetId =
+    const explicitAssetId =
       payload.assetId &&
       payload.assetId.trim() &&
       payload.assetId.trim() !== 'current' &&
       payload.assetId.trim() !== 'active'
         ? payload.assetId.trim()
-        : activeTargets.defaultAssetId
+        : ''
+
+    let effectiveAssetId =
+      explicitAssetId || activeTargets.defaultGraphAssetId || activeTargets.defaultAssetId
 
     const effectiveHostId =
       payload.hostId?.trim() ||
-      (effectiveAssetId === activeTargets.defaultAssetId ? activeTargets.defaultHostId : '')
+      (effectiveAssetId === activeTargets.defaultGraphAssetId ||
+      effectiveAssetId === activeTargets.defaultAssetId
+        ? activeTargets.defaultHostId
+        : '')
 
     const stageOps: Array<Record<string, unknown>> = []
     const projectOps: Array<Record<string, unknown>> = []
@@ -1178,21 +1184,55 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       return
     }
 
-    if (!effectiveAssetId && window.studio?.createAsset) {
-      const created = await window.studio.createAsset({ type: 'canvas' })
-      await project.refreshAssets()
-      effectiveAssetId = created.id
+    if (!explicitAssetId) {
+      effectiveAssetId = activeTargets.defaultGraphAssetId
+    }
+
+    if (!effectiveAssetId) {
+      if (project.isOpen && window.studio?.createAsset) {
+        const created = await window.studio.createAsset({ type: 'canvas' })
+        await project.refreshAssets()
+        effectiveAssetId = created.id
+      } else {
+        const draft = useDraftStore().createDraft(
+          'canvas',
+          project.config?.resolution ?? { w: 1280, h: 720 }
+        )
+        effectiveAssetId = draft.id
+      }
+    } else if (isDraftAssetId(effectiveAssetId) && !useDraftStore().getDraft(effectiveAssetId)) {
+      useDraftStore().ensureDraftWithId(effectiveAssetId, 'canvas')
     }
 
     const asset = findProjectOrDraftAsset(effectiveAssetId)
     payload.assetId = effectiveAssetId
 
-    // 默认自动打开画布编辑器（除非显式传 openEditor: false），保证画布节点变化全程实时可见
-    if (payload.openEditor !== false && asset && !isGraphEditorOpen(effectiveAssetId)) {
+    // 默认自动打开并聚焦画布编辑器（除非显式传 openEditor: false）：
+    // 即使画布已在后台 Dockview 标签页挂载（例如当前前台是 .md 文件查看器 file-editor-* 或剧本页），
+    // 也立即激活切换到该画布标签页，保证画布与新建节点变化全程实时可见
+    const targetEditorRootKind =
+      asset?.type === 'canvas' || !asset
+        ? 'canvas'
+        : asset.type === 'screenplay'
+          ? 'screenplay'
+          : asset.type === 'world'
+            ? 'world'
+            : asset.type === 'beat'
+              ? 'beat'
+              : 'asset'
+    const targetEditorRootKey = effectiveAssetId
+      ? editorDiveRootKey(targetEditorRootKind, effectiveAssetId)
+      : ''
+    const needsOpenOrFocusEditor =
+      payload.openEditor !== false &&
+      Boolean(asset) &&
+      (!isGraphEditorOpen(effectiveAssetId) ||
+        Boolean(targetEditorRootKey && workspace.activeDiveRootKey !== targetEditorRootKey))
+    if (needsOpenOrFocusEditor) {
       openMcpWorkflowAssetEditor(effectiveAssetId)
       const opened = await waitForGraphEditorOpen(effectiveAssetId)
       if (!opened && payload.openEditor === true) {
-        reply(false, { error: '无法打开图编辑器（openEditor），请确认资产可编辑' })
+        reply(false, { error: '无法打开图编辑器（openEditor），请确认资产可编辑' }) // cjk-ok
         return
       }
     }
@@ -1335,8 +1375,11 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
                       : null
           if (diveViewId) {
             const rootKind = asset?.type === 'canvas' || !asset ? 'canvas' : 'asset'
+            const expectedRootKey = editorDiveRootKey(rootKind, effectiveAssetId)
             const rootKey =
-              workspace.activeDiveRootKey || editorDiveRootKey(rootKind, effectiveAssetId)
+              workspace.activeDiveRootKey === expectedRootKey
+                ? workspace.activeDiveRootKey
+                : expectedRootKey
             workspace.diveIntoView(
               rootKey,
               { viewId: diveViewId, hostId, nodeId: diveNode.id },

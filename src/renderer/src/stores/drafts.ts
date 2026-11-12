@@ -101,6 +101,17 @@ export const useDraftStore = defineStore('drafts', () => {
     return draft
   }
 
+  function ensureDraftWithId(id: string, type: AssetType): DraftAssetRecord {
+    const existing = getDraft(id)
+    if (existing) return existing
+    const draft: DraftAssetRecord = {
+      ...emptyDraft(type),
+      id
+    }
+    drafts.value = [...drafts.value, draft]
+    return draft
+  }
+
   function updateDraft(id: string, patch: Partial<DraftAssetRecord>): DraftAssetRecord | null {
     const idx = drafts.value.findIndex((d) => d.id === id)
     if (idx < 0) return null
@@ -125,6 +136,7 @@ export const useDraftStore = defineStore('drafts', () => {
     drafts,
     getDraft,
     createDraft,
+    ensureDraftWithId,
     updateDraft,
     removeDraft,
     clearAll,

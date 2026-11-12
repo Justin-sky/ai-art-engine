@@ -24,8 +24,14 @@ const imp = async (id) => {
 
 const { default: z } = await imp('@deepseek-ai/schemastery')
 const { installModelSelection } = await imp('@deepseek-ai/dsh-agent')
-const { createUserMessage } = await imp('@deepseek-ai/dsh-llm')
-const { SessionId, SessionSeq } = await imp('@deepseek-ai/dsh-session')
+const { createUserMessage: dshCreateUserMessage } = await imp('@deepseek-ai/dsh-llm')
+const { SessionId: dshSessionId, SessionSeq: dshSessionSeq } = await imp('@deepseek-ai/dsh-session')
+const createUserMessage =
+  typeof dshCreateUserMessage === 'function'
+    ? dshCreateUserMessage
+    : (init) => ({ id: randomUUID(), role: 'user', ...init })
+const SessionId = typeof dshSessionId === 'function' ? dshSessionId : (id) => String(id)
+const SessionSeq = typeof dshSessionSeq === 'function' ? dshSessionSeq : (seq) => Number(seq)
 const { defineTool } = await imp('@deepseek-ai/dsh-tools')
 const { setSandboxMode } = await imp('@deepseek-ai/dsh-sandbox-policy')
 const { setApprovalPolicy } = await imp('@deepseek-ai/dsh-user-approval')
@@ -793,6 +799,210 @@ function stripDsmlFromText(text) {
   return text.slice(0, m.index).replace(/\s+$/, '')
 }
 
+/**
+ * Deterministically repair common LLM JSON malformations in tool-call arguments:
+ * - unescaped inner double quotes inside long Markdown / GDD / code string values
+ *   (e.g. `"Expected ',' or '}' after property value in JSON at position 6439"`),
+ * - raw control characters (`\n`, `\r`, `\t`) inside JSON string literals,
+ * - stray unescaped backslashes (`\s`, Windows paths, LaTeX) inside JSON string literals.
+ * Fast-paths valid JSON with zero allocation and only returns a repair if `JSON.parse` succeeds.
+ */
+function repairMalformedToolJson(raw) {
+  if (typeof raw !== 'string') return raw
+  const trimmed = raw.trim()
+  if (!trimmed || (trimmed[0] !== '{' && trimmed[0] !== '[')) return raw
+  try {
+    JSON.parse(raw)
+    return raw
+  } catch {
+    /* proceed to deterministic structural repair */
+  }
+
+  const len = trimmed.length
+  const skipWs = (idx) => {
+    let p = idx
+    while (p < len) {
+      const c = trimmed.charCodeAt(p)
+      if (c === 32 || c === 9 || c === 10 || c === 13) p++
+      else break
+    }
+    return p
+  }
+
+  // Verify that after a closing `}` or `]`, the next non-ws token is a valid JSON delimiter or EOF
+  const isValidPostClose = (closeIdx) => {
+    const p = skipWs(closeIdx + 1)
+    if (p >= len) return true
+    const ch = trimmed[p]
+    return ch === ',' || ch === '}' || ch === ']'
+  }
+
+  // Verify that after `,` in an object, a `"key":` token (or trailing `}`) actually follows
+  const looksLikeObjectMemberAfterComma = (commaIdx) => {
+    const p = skipWs(commaIdx + 1)
+    if (p >= len) return false
+    if (trimmed[p] === '}') return isValidPostClose(p)
+    if (trimmed[p] !== '"') return false
+    let q = p + 1
+    while (q < len) {
+      const ch = trimmed[q]
+      if (ch === '\\') {
+        q += 2
+        continue
+      }
+      if (ch === '"') {
+        const afterKey = skipWs(q + 1)
+        return afterKey < len && trimmed[afterKey] === ':'
+      }
+      if (ch === '\n' || ch === '\r') return false
+      q++
+    }
+    return false
+  }
+
+  const looksLikeArrayItemAfterComma = (commaIdx) => {
+    const p = skipWs(commaIdx + 1)
+    if (p >= len) return false
+    const ch = trimmed[p]
+    return (
+      ch === '"' ||
+      ch === '{' ||
+      ch === '[' ||
+      ch === ']' ||
+      ch === '-' ||
+      (ch >= '0' && ch <= '9') ||
+      ch === 't' ||
+      ch === 'f' ||
+      ch === 'n'
+    )
+  }
+
+  const stack = []
+  let inString = false
+  let stringRole = 'value'
+  let out = ''
+
+  for (let i = 0; i < len; i++) {
+    const ch = trimmed[i]
+    if (!inString) {
+      const top = stack[stack.length - 1]
+      if (ch === '{') {
+        if (top) top.state = 'comma_or_end'
+        stack.push({ type: 'object', state: 'key_or_end' })
+        out += ch
+      } else if (ch === '[') {
+        if (top) top.state = 'comma_or_end'
+        stack.push({ type: 'array', state: 'value_or_end' })
+        out += ch
+      } else if (ch === '}' || ch === ']') {
+        if (stack.length > 0) stack.pop()
+        out += ch
+      } else if (ch === ':') {
+        if (top && top.type === 'object') top.state = 'value'
+        out += ch
+      } else if (ch === ',') {
+        if (top) top.state = top.type === 'object' ? 'key_or_end' : 'value_or_end'
+        out += ch
+      } else if (ch === '"') {
+        inString = true
+        stringRole = top && top.type === 'object' && top.state === 'key_or_end' ? 'key' : 'value'
+        out += '"'
+      } else {
+        out += ch
+      }
+      continue
+    }
+
+    // Inside a JSON string literal
+    if (ch === '\\') {
+      const next = trimmed[i + 1]
+      if (next === undefined) {
+        out += '\\\\'
+        continue
+      }
+      if (
+        next === '"' ||
+        next === '\\' ||
+        next === '/' ||
+        next === 'b' ||
+        next === 'f' ||
+        next === 'n' ||
+        next === 'r' ||
+        next === 't'
+      ) {
+        out += '\\' + next
+        i += 1
+        continue
+      }
+      if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(trimmed.slice(i + 2, i + 6))) {
+        out += trimmed.slice(i, i + 6)
+        i += 5
+        continue
+      }
+      // Stray backslash (e.g. Windows path or regex/LaTeX in Markdown): escape the backslash
+      out += '\\\\'
+      continue
+    }
+
+    const code = ch.charCodeAt(0)
+    if (code < 0x20) {
+      if (ch === '\n') out += '\\n'
+      else if (ch === '\r') out += '\\r'
+      else if (ch === '\t') out += '\\t'
+      else out += '\\u' + code.toString(16).padStart(4, '0')
+      continue
+    }
+
+    if (ch === '"') {
+      const top = stack[stack.length - 1]
+      const nextIdx = skipWs(i + 1)
+      const nextCh = nextIdx < len ? trimmed[nextIdx] : ''
+      let isClosingQuote = false
+
+      if (stringRole === 'key') {
+        isClosingQuote = nextCh === ':'
+      } else if (!top) {
+        isClosingQuote = nextIdx >= len
+      } else if (top.type === 'object') {
+        if (nextCh === '}') {
+          isClosingQuote = isValidPostClose(nextIdx)
+        } else if (nextCh === ',') {
+          isClosingQuote = looksLikeObjectMemberAfterComma(nextIdx)
+        }
+      } else if (top.type === 'array') {
+        if (nextCh === ']') {
+          isClosingQuote = isValidPostClose(nextIdx)
+        } else if (nextCh === ',') {
+          isClosingQuote = looksLikeArrayItemAfterComma(nextIdx)
+        }
+      }
+
+      if (isClosingQuote) {
+        inString = false
+        if (top) {
+          top.state = stringRole === 'key' ? 'colon' : 'comma_or_end'
+        }
+        out += '"'
+      } else {
+        out += '\\"'
+      }
+      continue
+    }
+
+    out += ch
+  }
+
+  try {
+    const parsed = JSON.parse(out)
+    if (parsed && typeof parsed === 'object') {
+      return out
+    }
+  } catch {
+    /* keep original raw if unrecoverable (e.g. truncated stream) */
+  }
+  return raw
+}
+
 function parseDsmlToolCalls(dsmlText, availableTools) {
   if (typeof dsmlText !== 'string' || !dsmlText.trim()) return []
   const toolList = Array.isArray(availableTools) ? availableTools : []
@@ -892,7 +1102,7 @@ function parseDsmlToolCalls(dsmlText, availableTools) {
 
       if (shouldParseJson) {
         try {
-          argsObj[paramName] = JSON.parse(trimmedVal)
+          argsObj[paramName] = JSON.parse(repairMalformedToolJson(trimmedVal))
           continue
         } catch {
           /* fallback to string */
@@ -905,7 +1115,7 @@ function parseDsmlToolCalls(dsmlText, availableTools) {
       const cleanBody = bodyText.replace(/<\s*\/?\s*[｜|]\s*DSML\s*[｜|][^>]*>/gi, '').trim()
       if (cleanBody.startsWith('{')) {
         try {
-          const parsedBody = JSON.parse(cleanBody)
+          const parsedBody = JSON.parse(repairMalformedToolJson(cleanBody))
           if (parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)) {
             Object.assign(argsObj, parsedBody)
           }
@@ -926,6 +1136,7 @@ function parseDsmlToolCalls(dsmlText, availableTools) {
 
 async function* wrapDsmlStream(source, options, getMode) {
   const textBlocks = new Map()
+  const partialToolCalls = new Map()
   const pendingToolCalls = []
   let nativeToolCallCount = 0
   let nonTextBlocksOpened = 0
@@ -1112,6 +1323,36 @@ async function* wrapDsmlStream(source, options, getMode) {
       continue
     }
 
+    if (chunk.type === 'tool-call-delta') {
+      let tc = partialToolCalls.get(chunk.index)
+      if (!tc) {
+        tc = { id: chunk.id, name: chunk.name || '', args: '' }
+        partialToolCalls.set(chunk.index, tc)
+      } else {
+        if (chunk.id) tc.id = chunk.id
+        if (chunk.name) tc.name = chunk.name
+      }
+      tc.args += chunk.argumentsDelta ?? ''
+      yield chunk
+      continue
+    }
+
+    if (chunk.type === 'block-end' && chunk.block?.type === 'tool-call') {
+      partialToolCalls.delete(chunk.index)
+      const rawArgs = typeof chunk.block.arguments === 'string' ? chunk.block.arguments : ''
+      const repairedArgs = rawArgs ? repairMalformedToolJson(rawArgs) : rawArgs
+      yield repairedArgs !== rawArgs
+        ? {
+            ...chunk,
+            block: {
+              ...chunk.block,
+              arguments: repairedArgs
+            }
+          }
+        : chunk
+      continue
+    }
+
     if (chunk.type === 'usage') {
       yield* flushSynthesizedToolCalls()
       yield chunk
@@ -1119,6 +1360,31 @@ async function* wrapDsmlStream(source, options, getMode) {
     }
 
     if (chunk.type === 'finish') {
+      if (
+        partialToolCalls.size > 0 &&
+        chunk.reason?.kind !== 'error' &&
+        chunk.reason?.kind !== 'aborted' &&
+        chunk.reason?.kind !== 'max-tokens'
+      ) {
+        for (const [idx, tc] of partialToolCalls.entries()) {
+          if (tc.args) {
+            const repaired = repairMalformedToolJson(tc.args)
+            if (repaired !== tc.args) {
+              yield {
+                type: 'block-end',
+                index: idx,
+                block: {
+                  type: 'tool-call',
+                  id: tc.id || 'call-' + idx,
+                  name: tc.name || '',
+                  arguments: repaired
+                }
+              }
+            }
+          }
+        }
+      }
+      partialToolCalls.clear()
       if (
         textBlocks.size > 0 &&
         chunk.reason?.kind !== 'error' &&
@@ -1876,6 +2142,35 @@ function registerAskUserTool(ctx, io, getMode, getRunId) {
   return answerAskUserQuestion
 }
 
+/** Update a live agent's active model route in-place without tearing down its session write lease. */
+function applyLiveModelSelection(agentCtx, agent, selection) {
+  if (!selection?.provider || !selection?.model) return
+  if (agent?.model && typeof agent.model.select === 'function') {
+    const previous = typeof agent.model.current === 'function' ? agent.model.current() : undefined
+    const configured = {
+      provider: selection.provider,
+      model: selection.model,
+      ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {})
+    }
+    if (
+      configured.reasoningEffort === void 0 &&
+      previous !== void 0 &&
+      previous.provider === configured.provider &&
+      previous.model === configured.model &&
+      previous.reasoningEffort !== void 0
+    ) {
+      configured.reasoningEffort = previous.reasoningEffort
+    }
+    agent.model.select(configured)
+  }
+  if (agentCtx && typeof installModelSelection === 'function') {
+    installModelSelection(agentCtx, {
+      current: selection,
+      assembled: void 0
+    })
+  }
+}
+
 /** Drop a cached agent and release its session write handle (flush alone is not enough). */
 async function releaseAgentSlot(agentSlot) {
   const handle = agentSlot.handle
@@ -1890,6 +2185,8 @@ async function releaseAgentSlot(agentSlot) {
     /* ignore — next create/resume must not be blocked by a leaked write lease */
   }
 }
+
+const RESUME_WRITE_HANDLE_RETRY_DELAYS_MS = [100, 200, 350, 550, 800, 1100, 1500]
 
 async function runOneTurn(ctx, io, opts) {
   const {
@@ -1913,33 +2210,7 @@ async function runOneTurn(ctx, io, opts) {
   const sessionId = (rawSessionId || '').trim() || 'session-' + randomUUID()
   const agentOptions = { provider: selection.provider, model: selection.model }
   const setup = (agentCtx, agent) => {
-    if (
-      agent?.model &&
-      typeof agent.model.select === 'function' &&
-      selection?.provider &&
-      selection?.model
-    ) {
-      const previous = typeof agent.model.current === 'function' ? agent.model.current() : undefined
-      const configured = {
-        provider: selection.provider,
-        model: selection.model,
-        ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {})
-      }
-      if (
-        configured.reasoningEffort === void 0 &&
-        previous !== void 0 &&
-        previous.provider === configured.provider &&
-        previous.model === configured.model &&
-        previous.reasoningEffort !== void 0
-      ) {
-        configured.reasoningEffort = previous.reasoningEffort
-      }
-      agent.model.select(configured)
-    }
-    installModelSelection(agentCtx, {
-      current: selection,
-      assembled: void 0
-    })
+    applyLiveModelSelection(agentCtx, agent, selection)
     agentCtx.on('user-questions/request', (request) =>
       answerAskUserQuestion(request).catch((error) => {
         io.stderr.write(
@@ -1958,7 +2229,7 @@ async function runOneTurn(ctx, io, opts) {
   const sameModel =
     agent && agentSlot.model === selection.model && agentSlot.provider === selection.provider
 
-  if (agent && (!sameSession || !sameModel)) {
+  if (agent && !sameSession) {
     try {
       await sessions.flush(agent.session)
     } catch {
@@ -1966,6 +2237,12 @@ async function runOneTurn(ctx, io, opts) {
     }
     await releaseAgentSlot(agentSlot)
     agent = undefined
+  } else if (agent && sameSession && !sameModel) {
+    // Same session, model switched in-process: hot-switch the model route in place
+    // without closing/re-opening the persistence write handle.
+    applyLiveModelSelection(agent.ctx, agent, selection)
+    agentSlot.model = selection.model
+    agentSlot.provider = selection.provider
   }
 
   if (agent === undefined) {
@@ -1979,56 +2256,78 @@ async function runOneTurn(ctx, io, opts) {
               (entry) => (entry?.id ?? entry?.sessionId ?? entry?.header?.id) === sessionId
             )
       if (exists) {
-        try {
-          const resumed = await agents.resume({
-            resumeSessionId: sessionId,
-            agentOptions,
-            setup
-          })
-          agentSlot.handle = resumed
-          agent = resumed.agent
-          io.stderr.write('[aiart-runner] resumed session: ' + sessionId + '\n')
-        } catch (error) {
-          // Same-process leak recovery: agent still registered → reuse instead of resume
-          const live =
-            typeof agents.get === 'function' ? agents.get(SessionId(sessionId)) : undefined
-          const owned =
-            error instanceof Error && /already owned by an active write handle/i.test(error.message)
-          if (owned && live) {
-            agentSlot.handle = {
-              agent: live,
-              // Best-effort teardown: disposing the agent scope runs the loop's
-              // tracked disposer, which closes the persistence write handle.
-              dispose: async () => {
-                try {
-                  if (typeof live.cancel === 'function') live.cancel({ kind: 'disposed' })
-                } catch {
-                  /* ignore */
-                }
-                try {
-                  if (typeof live.whenIdle === 'function') await live.whenIdle()
-                } catch {
-                  /* ignore */
-                }
-                try {
-                  if (live.scope && typeof live.scope.dispose === 'function') {
-                    await live.scope.dispose()
+        let lastResumeError
+        for (let attempt = 0; attempt <= RESUME_WRITE_HANDLE_RETRY_DELAYS_MS.length; attempt++) {
+          try {
+            const resumed = await agents.resume({
+              resumeSessionId: sessionId,
+              agentOptions,
+              setup
+            })
+            agentSlot.handle = resumed
+            agent = resumed.agent
+            io.stderr.write('[aiart-runner] resumed session: ' + sessionId + '\n')
+            lastResumeError = undefined
+            break
+          } catch (error) {
+            lastResumeError = error
+            // Same-process leak recovery: agent still registered → reuse and hot-update model
+            const live =
+              typeof agents.get === 'function' ? agents.get(SessionId(sessionId)) : undefined
+            const owned =
+              error instanceof Error &&
+              /already owned by an active write handle/i.test(error.message)
+            if (owned && live) {
+              applyLiveModelSelection(live.ctx, live, selection)
+              agentSlot.handle = {
+                agent: live,
+                // Best-effort teardown: disposing the agent scope runs the loop's
+                // tracked disposer, which closes the persistence write handle.
+                dispose: async () => {
+                  try {
+                    if (typeof live.cancel === 'function') live.cancel({ kind: 'disposed' })
+                  } catch {
+                    /* ignore */
                   }
-                } catch {
-                  /* ignore */
+                  try {
+                    if (typeof live.whenIdle === 'function') await live.whenIdle()
+                  } catch {
+                    /* ignore */
+                  }
+                  try {
+                    if (live.scope && typeof live.scope.dispose === 'function') {
+                      await live.scope.dispose()
+                    }
+                  } catch {
+                    /* ignore */
+                  }
                 }
               }
+              agent = live
+              io.stderr.write('[aiart-runner] reused live session: ' + sessionId + '\n')
+              lastResumeError = undefined
+              break
             }
-            agent = live
-            io.stderr.write('[aiart-runner] reused live session: ' + sessionId + '\n')
-          } else {
-            io.stderr.write(
-              '[aiart-runner] resume failed: ' +
-                (error instanceof Error ? error.message : String(error)) +
-                '\n'
-            )
-            throw error
+            if (owned && attempt < RESUME_WRITE_HANDLE_RETRY_DELAYS_MS.length) {
+              const waitMs = RESUME_WRITE_HANDLE_RETRY_DELAYS_MS[attempt]
+              io.stderr.write(
+                `[aiart-runner] session "${sessionId}" write handle busy (attempt ${attempt + 1}/${RESUME_WRITE_HANDLE_RETRY_DELAYS_MS.length}), retrying in ${waitMs}ms\n`
+              )
+              await new Promise((resolve) => setTimeout(resolve, waitMs))
+              continue
+            }
+            break
           }
+        }
+        if (lastResumeError !== undefined && agent === undefined) {
+          io.stderr.write(
+            '[aiart-runner] resume failed: ' +
+              (lastResumeError instanceof Error
+                ? lastResumeError.message
+                : String(lastResumeError)) +
+              '\n'
+          )
+          throw lastResumeError
         }
       }
     }
@@ -2425,6 +2724,38 @@ async function runOneTurn(ctx, io, opts) {
       await waitTreeIdle()
     }
 
+    // Auto-recover when an oversized single-shot tool call hits `max_tokens` output truncation:
+    // `@deepseek-ai/dsh-llm` BlockAssembler drops incomplete `tool-call` blocks on `max-tokens`
+    // and `@deepseek-ai/dsh-agent-loop` immediately ends the turn, leaving prose like
+    // "现在把完整策划案写入画布节点。" with zero executed tool calls.
+    if (mode !== 'ask') {
+      const MAX_TOKENS_AUTO_CONTINUES = 2
+      let maxTokensRecoveryCount = 0
+      while (maxTokensRecoveryCount < MAX_TOKENS_AUTO_CONTINUES) {
+        const interim = summarize(agent.session, firstSeq)
+        if (interim.reason?.kind !== 'max-tokens') break
+        maxTokensRecoveryCount += 1
+        io.stderr.write(
+          `[aiart-runner] auto-recovering from max-tokens truncation (${maxTokensRecoveryCount}/${MAX_TOKENS_AUTO_CONTINUES})\n`
+        )
+        agent.followup(
+          createUserMessage({
+            content: [
+              {
+                type: 'text',
+                text:
+                  '[System Recovery: Your previous step hit the output token limit (max_tokens), so any tool-call block in that step was truncated and dropped before execution. ' +
+                  'Do NOT repeat your prose analysis. Execute the pending tool call immediately using a compact JSON payload: ' +
+                  'when creating canvas nodes such as `asset.gameSystem` / `asset.novel` / `game.economy` via `graph_edit`, ALWAYS create the node FIRST with concise params (<500 chars: title + short prompt + archetype/preset), then call `task_run` or update `params.text` in smaller steps.]'
+              }
+            ],
+            source: { kind: 'plugin', plugin: name }
+          })
+        )
+        await waitTreeIdle()
+      }
+    }
+
     // Multi-round Goal Driver: if a goal is active & armed, goal-round-driver
     // checkpoints the session after turn/end and queues the next round.
     const goalsService = ctx.get('goals')
@@ -2463,6 +2794,16 @@ async function runOneTurn(ctx, io, opts) {
     )
   }
   const outcome = summarize(agent.session, firstSeq)
+  const pendingSchedules = extractScheduleList(agent.session)
+  const activeGoal = extractGoalState(agent.session, ctx.get('goals'), agent)
+  const retainWriteHandle =
+    pendingSchedules.length > 0 ||
+    Boolean(activeGoal && activeGoal.phase === 'active' && activeGoal.activation === 'armed')
+  if (!retainWriteHandle) {
+    // Release the cross-process kernel write lease immediately when idle without schedules/armed goals,
+    // preventing `SessionAlreadyOwnedError` across model/provider/workspace switches or slot handoffs.
+    await releaseAgentSlot(agentSlot)
+  }
   if (!streamedText && outcome.text) {
     sendIpc({ type: 'assistant_delta', text: outcome.text + '\n' }, () => {
       io.stdout.write(outcome.text + '\n')
@@ -2826,8 +3167,15 @@ async function runPersistent(ctx, io) {
           provider: cur?.provider || 'deepseek-official',
           model: modelId
         }
-        // Must dispose so the session write lease is released before next resume
-        await releaseAgentSlot(agentSlot)
+        if (agentSlot.handle?.agent) {
+          applyLiveModelSelection(
+            agentSlot.handle.agent.ctx,
+            agentSlot.handle.agent,
+            forcedSelection
+          )
+          agentSlot.model = forcedSelection.model
+          agentSlot.provider = forcedSelection.provider
+        }
         io.stderr.write('[aiart-runner] model_set ' + JSON.stringify({ ok: true, modelId }) + '\n')
       })
       return
@@ -2899,6 +3247,12 @@ async function runPersistent(ctx, io) {
       if (msg && typeof msg === 'object' && typeof msg.op === 'string') {
         handleCommand(msg)
       }
+    })
+    process.once('disconnect', () => {
+      releaseAgentSlot(agentSlot).finally(() => {
+        rl.close()
+        io.exit(0)
+      })
     })
   }
 
@@ -2975,7 +3329,9 @@ function apply(ctx, config) {
 
 export {
   Config,
+  RESUME_WRITE_HANDLE_RETRY_DELAYS_MS,
   apply,
+  applyLiveModelSelection,
   applySessionSandboxMode,
   createDelegationTracker,
   detectSandboxBlockedResult,
@@ -2988,6 +3344,9 @@ export {
   parseDsmlToolCalls,
   registerDelegationGuard,
   registerDsmlStreamTranspiler,
+  releaseAgentSlot,
+  repairMalformedToolJson,
+  runOneTurn,
   sanitizeOpenAiChatPayload,
   stripDsmlFromText,
   transformGeminiSsePayload,

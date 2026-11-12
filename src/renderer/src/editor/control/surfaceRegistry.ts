@@ -21,6 +21,8 @@ import { useEditorKernel } from '../kernel'
 export interface ActiveWorkspaceTargetResolution {
   /** 默认目标资产 ID（当 AI 省略 assetId 时自动兜底） */
   defaultAssetId: string
+  /** 默认节点图宿主资产 ID（仅匹配可承载节点图的画布/子图/世界观/节拍资产，排除纯文本/.md/剧本/预览资产） */
+  defaultGraphAssetId: string
   /** 默认图编辑器宿主 ID（支持子图、世界观元素 tab、当前画布） */
   defaultHostId: string
   /** 默认目标节点 ID（当处于节点 Dive 内部或选中某节点且 AI 省略 nodeId 时自动兜底） */
@@ -59,6 +61,29 @@ function findAssetOrDraft(assetId: string, assets: AssetInfo[]): AssetInfo | und
     return draft ? draftToAssetInfo(draft) : undefined
   }
   return assets.find((a) => a.id === assetId)
+}
+
+export function isGraphCapableAsset(
+  assetId: string | null | undefined,
+  assets: AssetInfo[]
+): boolean {
+  const id = assetId?.trim() ?? ''
+  if (!id) return false
+  if (isDraftAssetId(id)) return true
+  if (graphEditorHosts.getLiveAssetDocument(id)) return true
+  const asset = findAssetOrDraft(id, assets)
+  if (!asset) return false
+  if (
+    asset.type === 'canvas' ||
+    asset.type === 'subgraph' ||
+    asset.type === 'world' ||
+    asset.type === 'beat'
+  ) {
+    return true
+  }
+  if (readAssetGraph(asset)) return true
+  const genParams = asset.genParams as Record<string, unknown> | undefined
+  return Boolean(genParams?.elementGraphs || genParams?.elementGraphsByNodeId)
 }
 
 function findNodeInHostOrAsset(
@@ -112,6 +137,8 @@ export function resolveActiveWorkspaceTargets(): ActiveWorkspaceTargetResolution
   const diveRootKey = workspaceStore.activeDiveRootKey
   const parsedDiveRoot = (() => {
     if (!diveRootKey) return { kind: '', assetId: null as string | null }
+    const fileMatch = diveRootKey.match(/^file-editor-(.+)$/)
+    if (fileMatch) return { kind: 'file', assetId: null as string | null }
     const m = diveRootKey.match(/^(canvas|asset|screenplay|world|beat|director)-editor-(.+)$/)
     if (m) return { kind: m[1] ?? '', assetId: m[2] || null }
     const parts = diveRootKey.split(':')
@@ -156,6 +183,19 @@ export function resolveActiveWorkspaceTargets(): ActiveWorkspaceTargetResolution
     diveOverrideHostId = `asset:${diveTop.assetId}`
   }
 
+  const graphCandidateIds = [
+    diveOverrideAssetId,
+    parsedDiveRoot.assetId,
+    lastOpenCanvas,
+    hostFromSelection,
+    lastOpenWorld,
+    lastOpenBeat,
+    lastLiveAssetId,
+    lastOpenAsset
+  ]
+  const defaultGraphAssetId =
+    graphCandidateIds.find((id) => isGraphCapableAsset(id, project.assets)) ?? ''
+
   const defaultAssetId =
     diveOverrideAssetId ||
     parsedDiveRoot.assetId ||
@@ -178,7 +218,11 @@ export function resolveActiveWorkspaceTargets(): ActiveWorkspaceTargetResolution
   const defaultHostId =
     diveOverrideHostId ||
     (selectedHostMatchesDefaultAsset ? workspaceStore.selectedGraphHostId : '') ||
-    (defaultAssetId ? `asset:${defaultAssetId}` : '')
+    (defaultGraphAssetId
+      ? `asset:${defaultGraphAssetId}`
+      : defaultAssetId
+        ? `asset:${defaultAssetId}`
+        : '')
 
   // 解析当前选中的节点
   const selNodeId =
@@ -194,7 +238,7 @@ export function resolveActiveWorkspaceTargets(): ActiveWorkspaceTargetResolution
     selNodeId && selHostId ? findNodeInHostOrAsset(selHostId, selNodeId, project.assets) : null
   const selectedNodeHostId = selectedNode ? selHostId : null
   const selectedNodeAssetId = selectedNode
-    ? resolveHostAssetIdFromHostId(selHostId) || defaultAssetId
+    ? resolveHostAssetIdFromHostId(selHostId) || defaultGraphAssetId || defaultAssetId
     : null
 
   const defaultNodeId = divedNode?.id ?? selectedNode?.id ?? selNodeId ?? null
@@ -203,6 +247,7 @@ export function resolveActiveWorkspaceTargets(): ActiveWorkspaceTargetResolution
 
   return {
     defaultAssetId,
+    defaultGraphAssetId,
     defaultHostId,
     defaultNodeId,
     defaultGroupId,

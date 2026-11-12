@@ -18,7 +18,10 @@ import {
   type GraphDocument,
   type GraphNode
 } from '@shared/graph'
-import { formatNodeEditableSchemaSummary } from '../../editor/control/surfaceRegistry'
+import {
+  formatNodeEditableSchemaSummary,
+  isGraphCapableAsset
+} from '../../editor/control/surfaceRegistry'
 import { useEditorKernel } from '../../editor/kernel'
 import { draftToAssetInfo, useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
@@ -358,17 +361,33 @@ export function buildActiveWorkspaceContext(): string | undefined {
     return null
   })()
 
-  // Parse activeDiveRootKey (supports both UI "canvas-editor-<assetId>" and shorthand "canvas:<assetId>")
+  // Parse activeDiveRootKey (supports UI "canvas-editor-<assetId>", "file-editor-<fileId>", and shorthand "canvas:<assetId>")
   const diveRootKey = workspaceStore.activeDiveRootKey
   const parsedDiveRoot = (() => {
-    if (!diveRootKey) return { kind: '', assetId: null as string | null }
+    if (!diveRootKey)
+      return { kind: '', assetId: null as string | null, fileId: null as string | null }
+    const fileMatch = diveRootKey.match(/^file-editor-(.+)$/)
+    if (fileMatch) {
+      return { kind: 'file', assetId: null as string | null, fileId: fileMatch[1] || null }
+    }
     const m = diveRootKey.match(/^(canvas|asset|screenplay|world|beat|director)-editor-(.+)$/)
-    if (m) return { kind: m[1] ?? '', assetId: m[2] || null }
+    if (m) return { kind: m[1] ?? '', assetId: m[2] || null, fileId: null as string | null }
     const parts = diveRootKey.split(':')
-    return { kind: parts[0] ?? '', assetId: parts.slice(1).join(':') || null }
+    return {
+      kind: parts[0] ?? '',
+      assetId: parts.slice(1).join(':') || null,
+      fileId: null as string | null
+    }
   })()
   const diveRootKind = parsedDiveRoot.kind
   const diveRootAssetId = parsedDiveRoot.assetId
+  const lastOpenFileId =
+    parsedDiveRoot.fileId ||
+    workspaceStore.openWorkspaceFileIds[workspaceStore.openWorkspaceFileIds.length - 1] ||
+    null
+  const activeWorkspaceFile = lastOpenFileId
+    ? workspaceStore.workspaceFilesById[lastOpenFileId]
+    : undefined
   const diveStack: EditorDiveFrame[] =
     (diveRootKey ? workspaceStore.editorDives[diveRootKey] : undefined) ?? []
   const diveTop = diveStack.length > 0 ? diveStack[diveStack.length - 1] : null
@@ -384,10 +403,25 @@ export function buildActiveWorkspaceContext(): string | undefined {
     lastLiveAssetId ||
     lastOpenAsset
 
+  const activeGraphAssetId =
+    [
+      diveRootAssetId,
+      lastOpenCanvas,
+      hostFromSelection,
+      lastOpenWorld,
+      lastOpenBeat,
+      lastLiveAssetId,
+      lastOpenAsset
+    ].find((id) => isGraphCapableAsset(id, project.assets)) ?? ''
+
   const rootAsset = findAssetOrDraft(activeAssetId, project.assets)
 
   // 1. Left Window Breadcrumb & Active View Header
-  if (diveStack.length > 0) {
+  if (diveRootKind === 'file' && activeWorkspaceFile) {
+    lines.push(
+      `Left Window Active File Viewer: "${activeWorkspaceFile.fileName}" (filePath="${activeWorkspaceFile.absPath}", kind="${activeWorkspaceFile.kind}")`
+    )
+  } else if (diveStack.length > 0) {
     const rootLabel = rootAsset?.name || diveRootAssetId || diveRootKind || 'Root'
     const crumbs = [rootLabel, ...diveStack.map((f) => describeDiveFrame(f))].join(' > ')
     lines.push(`Left Window Dive Breadcrumb: ${crumbs}`)
@@ -400,6 +434,11 @@ export function buildActiveWorkspaceContext(): string | undefined {
     const wAsset = findAssetOrDraft(lastOpenWorld, project.assets)
     lines.push(
       `Left Window Active Editor: World Element Editor (worldAssetId="${lastOpenWorld}", name="${wAsset?.name ?? ''}")`
+    )
+  } else if (lastOpenScreenplay && activeAssetId === lastOpenScreenplay) {
+    const spAsset = findAssetOrDraft(lastOpenScreenplay, project.assets)
+    lines.push(
+      `Left Window Active Editor: Screenplay Editor (screenplayAssetId="${lastOpenScreenplay}", name="${spAsset?.name ?? ''}")`
     )
   }
 
@@ -590,15 +629,15 @@ export function buildActiveWorkspaceContext(): string | undefined {
     )
   }
 
-  // 5. Root / Active Canvas Graph & Selected Node
-  const contextCanvasId = activeAssetId || fallbackEditAssetId
+  // 5. Root / Active Canvas Graph & Selected Node (ONLY graph-capable assets; .md files / screenplays / previews never impersonate a canvas)
+  const contextCanvasId = activeGraphAssetId
   if (contextCanvasId) {
     const asset = findAssetOrDraft(contextCanvasId, project.assets)
     const liveDoc = graphEditorHosts.getLiveAssetDocument(contextCanvasId) ?? readAssetGraph(asset)
     if (asset || liveDoc) {
       lines.push(
         `Active canvas asset: "${asset?.name ?? contextCanvasId}" (assetId: "${contextCanvasId}", type: ${asset?.type ?? 'canvas'})`,
-        `  [Canvas Node Generation & Execution Protocol]: Always target this currently open canvas (assetId: "${contextCanvasId}" or "current") when calling \`workflow_use_installed\`, \`graph_edit\`, or \`task_run\` — DO NOT switch to any other project canvas! To generate or process any image/video/audio/3D/world, call \`graph_edit({ assetId: "${contextCanvasId}", ops: [{ op: "node_upsert", nodeId: "...", typeId: "asset.image|asset.video|asset.voice|asset.dialogue|asset.sfx|asset.music|svg.gen|svg.anim|output.timeline|asset.model3d|asset.spatialWorld", title: "...", params: { prompt: "...", ... } }] })\` followed by \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["..."] })\`. When the user asks to create a game mechanic or economy ("游戏机制" / "经济系统"), create ONLY 1 focused \`game.economy\` node (concise core loop on \`Base\` layer by default) — NEVER auto-create \`asset.gameSystem\` (GDD / 策划案) or \`game.numerical\` nodes, and ONLY build complex 20–32 node multi-layer mechanics when the user explicitly requests "完整机制" / "全套机制". When the user says "根据下面文章生成科普视频" / "把这篇文档做成视频" (or gives any knowledge/popular-science document to turn into a video), automatically wire each section's \`asset.voice\` (narration) + visual node (\`svg.gen -> svg.anim\` 16:9 animated diagram, \`asset.image\`, or \`asset.video\`) + \`asset.music\` into \`output.timeline\` and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["<timelineNodeId>"] })\`. When the user provides multiple photos and asks for a Music Photo Album / Slideshow (e.g. "给定几张照片帮我生成音乐相册" / "电子相册"), automatically wire locked \`asset.image\` photo nodes (\`locked: true, params: { sourceRelativePath }\`) + \`asset.music\` BGM node into \`output.timeline\` (\`nodeId: "timeline-out"\`) and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["timeline-out"] })\` to synthesize the MP4 with Ken Burns camera motion and transitions. When the user asks for "一镜入画" / "古画复活" / "古画活起来" (e.g. with \`@Assets/qm-jpg.jpeg\`), NEVER generate a single long-take \`asset.video\` from the full painting; ALWAYS build the multi-act pipeline (\`N = 1..K\`, default 3 acts or any \`K\` acts requested by the user: \`scroll-src\` -> \`actN-crop\` [image.process crop 16:9] -> \`actN-recognize\` [image.toPrompt] -> \`actN-real\` [asset.image 1:1 photorealistic restoration] -> \`actN-video\` [asset.video with \`generateFrameMode: "first", generateAudio: true\`, \`actN-real\` wired to \`in-first-frame\`, starting from the 1:1 wide restored photo for 1.5s and then smoothly zooming/pushing the camera into a close-up of the talking characters in the scene with lip-synced dialogue audio] + \`actN-voice\` + \`actN-sfx\` + \`bgm\` -> \`output.timeline\` \`timeline-out\`) and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["timeline-out"] })\`.` // cjk-ok
+        `  [Canvas Node Generation & Execution Protocol]: Always target this currently open canvas (assetId: "${contextCanvasId}" or "current") when calling \`workflow_use_installed\`, \`graph_edit\`, or \`task_run\` — DO NOT switch to any other project canvas! To generate or process any image/video/audio/3D/world/GDD, call \`graph_edit({ assetId: "${contextCanvasId}", ops: [{ op: "node_upsert", nodeId: "...", typeId: "asset.image|asset.video|asset.voice|asset.dialogue|asset.sfx|asset.music|svg.gen|svg.anim|output.timeline|asset.model3d|asset.spatialWorld|game.economy|game.numerical|novel.outline|asset.novel|asset.gameSystem", title: "...", params: { prompt: "...", ... } }] })\` followed by \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["..."] })\`. When creating \`asset.gameSystem\`, ALWAYS create the node FIRST with a compact \`node_upsert\` (\`< 500\` chars: \`title\`, concise \`prompt\`, \`gameSystemArchetype\`) so the canvas & node appear immediately in real time — NEVER serialize a multi-kilobyte full GDD Markdown into \`node_upsert\` (run \`task_run\` or update \`params.text\` in a second step). When the user asks to create a game mechanic or economy ("游戏机制" / "经济系统"), create ONLY 1 focused \`game.economy\` node (concise core loop on \`Base\` layer by default) — NEVER auto-create \`asset.gameSystem\` (GDD / 策划案) or \`game.numerical\` nodes, and ONLY build complex 20–32 node multi-layer mechanics when the user explicitly requests "完整机制" / "全套机制". When the user says "根据下面文章生成科普视频" / "把这篇文档做成视频" (or gives any knowledge/popular-science document to turn into a video), automatically wire each section's \`asset.voice\` (narration) + visual node (\`svg.gen -> svg.anim\` 16:9 animated diagram, \`asset.image\`, or \`asset.video\`) + \`asset.music\` into \`output.timeline\` and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["<timelineNodeId>"] })\`. When the user provides multiple photos and asks for a Music Photo Album / Slideshow (e.g. "给定几张照片帮我生成音乐相册" / "电子相册"), automatically wire locked \`asset.image\` photo nodes (\`locked: true, params: { sourceRelativePath }\`) + \`asset.music\` BGM node into \`output.timeline\` (\`nodeId: "timeline-out"\`) and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["timeline-out"] })\` to synthesize the MP4 with Ken Burns camera motion and transitions. When the user asks for "一镜入画" / "古画复活" / "古画活起来" (e.g. with \`@Assets/qm-jpg.jpeg\`), NEVER generate a single long-take \`asset.video\` from the full painting; ALWAYS build the multi-act pipeline (\`N = 1..K\`, default 3 acts or any \`K\` acts requested by the user: \`scroll-src\` -> \`actN-crop\` [image.process crop 16:9] -> \`actN-recognize\` [image.toPrompt] -> \`actN-real\` [asset.image 1:1 photorealistic restoration] -> \`actN-video\` [asset.video with \`generateFrameMode: "first", generateAudio: true\`, \`actN-real\` wired to \`in-first-frame\`, starting from the 1:1 wide restored photo for 1.5s and then smoothly zooming/pushing the camera into a close-up of the talking characters in the scene with lip-synced dialogue audio] + \`actN-voice\` + \`actN-sfx\` + \`bgm\` -> \`output.timeline\` \`timeline-out\`) and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["timeline-out"] })\`.` // cjk-ok
       )
       const selectedNodeId = workspaceStore.selectedGraphNodeId
       const selectedHostId = workspaceStore.selectedGraphHostId ?? `asset:${contextCanvasId}`
@@ -684,16 +723,16 @@ export function buildActiveWorkspaceContext(): string | undefined {
   } else {
     lines.push(
       'Left Window Active Editor: None (no canvas is currently open in the left window).',
-      '  [Canvas Node Generation & Execution Protocol]: Because NO canvas is currently open in the left window, DO NOT reuse any existing project canvas assetId. Call `workflow_use_installed({ id: "...", mode: "seed" })` or `graph_edit({ ops: [{ op: "node_upsert", nodeId: "...", typeId: "asset.image|asset.video|asset.voice|asset.dialogue|asset.sfx|asset.music|svg.gen|svg.anim|output.timeline|asset.model3d|asset.spatialWorld|game.economy", title: "...", params: { prompt: "...", ... } }] })` WITHOUT passing `assetId` — the studio will automatically create and open a brand-new free canvas in the left window and return its new `assetId` for `task_run`. When the user asks to create a game mechanic or economy ("游戏机制" / "经济系统"), create ONLY 1 focused `game.economy` node (concise core loop on `Base` layer by default) — NEVER auto-create `asset.gameSystem` (GDD / 策划案) or `game.numerical` nodes, and ONLY build complex 20–32 node multi-layer mechanics when the user explicitly requests "完整机制" / "全套机制".' // cjk-ok
+      '  [Canvas Node Generation & Execution Protocol]: Because NO canvas is currently open in the left window, DO NOT reuse any existing project canvas assetId. Call `workflow_use_installed({ id: "...", mode: "seed" })` or `graph_edit({ ops: [{ op: "node_upsert", nodeId: "...", typeId: "asset.image|asset.video|asset.voice|asset.dialogue|asset.sfx|asset.music|svg.gen|svg.anim|output.timeline|asset.model3d|asset.spatialWorld|game.economy|game.numerical|novel.outline|asset.novel|asset.gameSystem", title: "...", params: { prompt: "...", ... } }] })` WITHOUT passing `assetId` — the studio will automatically create, open, and focus a brand-new free canvas in the left window (even if a `.md` / document viewer tab is currently open) and return its new `assetId` for `task_run`. When creating `asset.gameSystem`, ALWAYS call `graph_edit` FIRST with a compact `node_upsert` (`< 500` chars: `title`, concise `prompt`, `gameSystemArchetype`) so the canvas & node appear immediately in real time — NEVER serialize a multi-kilobyte full GDD Markdown into `node_upsert` (run `task_run` or update `params.text` in a second step). When the user asks to create a game mechanic or economy ("游戏机制" / "经济系统"), create ONLY 1 focused `game.economy` node (concise core loop on `Base` layer by default) — NEVER auto-create `asset.gameSystem` (GDD / 策划案) or `game.numerical` nodes, and ONLY build complex 20–32 node multi-layer mechanics when the user explicitly requests "完整机制" / "全套机制".' // cjk-ok
     )
   }
 
   // 6. Other Graph Assets in Project (only listed when a canvas is already open, so the AI creates a new canvas when none is open)
-  const otherCanvases = activeAssetId
+  const otherCanvases = activeGraphAssetId
     ? project.assets
         .filter(
           (a) =>
-            a.id !== activeAssetId &&
+            a.id !== activeGraphAssetId &&
             (a.type === 'canvas' || (readAssetGraph(a)?.nodes?.length ?? 0) > 0)
         )
         .slice(0, 10)

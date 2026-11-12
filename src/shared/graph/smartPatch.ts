@@ -1199,6 +1199,17 @@ function finalizeSubDocumentPatches(
       }
     }
   }
+  if (
+    (touchedTopKeys.has('gameSystemSpecJson') || touchedTopKeys.has('gameSystemSpec')) &&
+    (working.gameSystemSpecJson !== undefined || working.gameSystemSpec !== undefined)
+  ) {
+    const rawSpec = working.gameSystemSpec ?? working.gameSystemSpecJson
+    if (!touchedTopKeys.has('text') || !String(working.text ?? '').trim()) {
+      working.text = typeof rawSpec === 'string' ? rawSpec : JSON.stringify(rawSpec, null, 2)
+    }
+    delete working.gameSystemSpecJson
+    delete working.gameSystemSpec
+  }
   if (touchedTopKeys.has('novelGenre') && typeof working.novelGenre === 'string') {
     const rawGenre = working.novelGenre.trim().toLowerCase()
     const genreHit =

@@ -71,7 +71,7 @@ import {
   blenderToolDescriptors,
   blenderToolSpec
 } from '@shared/blenderMcp'
-import { isDraftAssetId, type AssetInfo } from '@shared/domain'
+import { createDraftAssetId, isDraftAssetId, type AssetInfo } from '@shared/domain'
 import {
   denialReasonForTool,
   isCancelAnswer,
@@ -399,7 +399,9 @@ async function collectTaskRunEconomyDiagnostics(
   if (diagnostics.length > 0) return diagnostics
 
   try {
-    const refreshed = projectService.listAssets().find((item) => item.id === assetId)
+    const refreshed = isDraftAssetId(assetId)
+      ? uiDraftCanvasCache.get(assetId)
+      : safeListProjectAssets().find((item) => item.id === assetId)
     const gDoc = (refreshed?.genParams as Record<string, unknown> | undefined)?.graphJson as
       GraphDocument | undefined
     if (!gDoc || !Array.isArray(gDoc.nodes)) return diagnostics
@@ -2407,10 +2409,12 @@ const TOOL_DEFS: McpToolDef[] = [
       required: []
     },
     handler: async (args, ctx) => {
-      assertProjectOpen()
       const asset = resolveOrEnsureCanvasAsset(optionalString(args, 'assetId'), {
         autoCreateCanvas: false
       })
+      if (!asset && !projectService.isOpen()) {
+        assertProjectOpen()
+      }
       const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
         GraphDocument | undefined
       if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
@@ -2841,7 +2845,7 @@ const TOOL_DEFS: McpToolDef[] = [
       '     * 数值系统（仅在用户明确要求战斗数值配表或策划案专属数值表时创建）：`game.numerical`（`params: { prompt, gameNumericalPreset, gameNumericalWorkbenchJson }`；游戏/小说模式支持 `preset: "slay_the_spire_dbg" | "hearthstone_tcg" | "onmyoji_atb" | "balatro_roguelike" | "survivor_brotato" | "short_drama_progression"`；非战斗类策划案如中医教学/实训仿真/数字孪生/工具应用会自动进入纯净「策划案专属数值表（domainTables）」模式——严禁为其传入 `short_drama_progression` 预设，也严禁将同画布上无关的小说/短剧 `game.economy` 节点连入该节点！只需将 `game.numerical` 的 `out-text`【数值系统】连入对应 `asset.gameSystem` 的 `in-numerical`）\n' +
       '     * 小说大纲（World Bible + 分卷总纲 + 逐章细纲）：`novel.outline`（输入端口 `in`、`in-economy`、`in-numerical`；将 `out` 广播连入下游每一个章节 `asset.novel` 的 `in-outline` 端口，各章节点会自动按章号 t 切片提取专属细纲）\n' +
       '     * 创建小说 / 马尔可夫链章节节点：`asset.novel`（推荐每章独立节点串联：第1章 → 第2章 → 第3章；输入端口：`in`【上一章】接 `C_{t-1} (out)`、`in-outline`【小说大纲】接 `novel.outline (out)`、`in-economy`【经济系统】接 `game.economy (out-text)`、`in-numerical`【数值系统】接 `game.numerical (out-text)`；输出端口：`out`【下一章】输出本章正文供下一章串联、`out-all`【全部】汇总第1..t章全部累计章节，在用户明确要求改编下游策划案或剧本时可在末章连入 `asset.gameSystem (in)` 或 `asset.screenplay (in)`）\n' +
-      '     * 策划案生成（游戏系统与模块规格 GDD，**仅在用户明确要求生成游戏策划案 / 系统策划案 / GDD 时创建，创建游戏机制时严禁默认附带创建**）：`asset.gameSystem`（输入端口：`in`【文本】接收末章小说 `out-all` 或立项文本、`in-economy`【经济系统】接收 `game.economy (out-text)`、`in-numerical`【数值系统】接收 `game.numerical (out-text)`；输出端口 `out` / `out-all` 可按需连 `ui.split` 的 `in` 或 `ui.atlasCompose` 的 `in-text`）\n' +
+      '     * 策划案生成（游戏系统与模块规格 GDD，**仅在用户明确要求生成游戏策划案 / 系统策划案 / GDD 时创建，创建游戏机制时严禁默认附带创建**）：`asset.gameSystem`（`params: { prompt, text, gameSystemArchetype, gameSystemTargetAspect }`；**两步轻量建图铁律**：第一步必须先用极简 `node_upsert`（`< 500` 字，仅传 `title` + 精炼 `prompt` + `gameSystemArchetype`）立即创建画布与节点使其在工作区实时可见，**严禁在单次 `node_upsert` 中塞入数千字完整策划案 Markdown 或嵌套 JSON**，以免触发 `max_tokens` 输出截断丢弃工具调用或内部双引号 JSON 语法报错；第二步再调用 `task_run` 生成，或分步用 `node_update` 写入 `params.text` 且内部引用一律用反引号/中文直角引号「」代替裸双引号；输入端口：`in`【文本】接收末章小说 `out-all` 或立项文本、`in-economy`【经济系统】接收 `game.economy (out-text)`、`in-numerical`【数值系统】接收 `game.numerical (out-text)`；输出端口 `out` / `out-all` 可按需连 `ui.split` 的 `in` 或 `ui.atlasCompose` 的 `in-text`）\n' +
       '     * 游戏 UI 生成模式选择与图集拼装（**当用户要求生成 UI 界面且未明确说明是“完全 AI 生成”还是“使用已有图集拼装”时，必须先调用 `ask_user_question` 提示用户选择**）：① 若用户选择「完全 AI 生成」：单张界面用 `asset.image -> image.layerSplit`，多界面系统用 `asset.gameSystem -> ui.split -> ui.gen -> image.layerSplit`；② 若用户选择「使用已有图集拼装」：使用 `ui.atlasCompose`（图集拼装 UI 节点，双击进入类 PS 分层编辑台，所有元素分层排放并直接导出 `.psd`），将工程内已有图集 `asset.image` 连入 `ui.atlasCompose` 的 `in` / `in-images`（或经 `ui.componentLib (out)` 连入 `in-components`），并将界面说明或策划案连入 `in-text`\n' +
       '   - 在 `params` 中传入 `referenceImageUrls` / `firstFrameImageUrl` / `lastFrameImageUrl` / `referenceVideoUrl` 时，系统会自动在画布上创建锁定的上游参考媒体节点并连线到对应端口；\n' +
       '   - 省略 `assetId` 时自动作用于当前左侧打开的画布（若工程尚无画布会自动创建并打开默认自由画布）；返回值包含 `assetId` 与本次触达的 `nodeIds`，可直接传给 `task_run` 执行。\n' +
@@ -3016,7 +3020,6 @@ const TOOL_DEFS: McpToolDef[] = [
       required: ['ops']
     },
     handler: async (args) => {
-      assertProjectOpen()
       const rawAssetIdArg = optionalString(args, 'assetId') ?? ''
       const normalizedRawAssetId =
         rawAssetIdArg === 'current' || rawAssetIdArg === 'active' ? '' : rawAssetIdArg
@@ -3054,11 +3057,18 @@ const TOOL_DEFS: McpToolDef[] = [
           op === 'auto_layout'
         )
       })
+      // 无 Studio project.json 打开时（如仅打开外部代码仓库或 .md 文件的全局工作区会话），
+      // 仍允许在 draft:<uuid> 内存自由画布上执行节点建图与编辑；仅对工程级非草稿操作强制要求已打开工程
+      if (!hasGraphNodeOp && (!normalizedRawAssetId || !isDraftAssetId(normalizedRawAssetId))) {
+        assertProjectOpen()
+      } else if (normalizedRawAssetId && !isDraftAssetId(normalizedRawAssetId)) {
+        assertProjectOpen()
+      }
       const openEditor = args.openEditor !== undefined ? args.openEditor === true : hasGraphNodeOp
       const asset = normalizedRawAssetId
         ? isDraftAssetId(normalizedRawAssetId)
           ? getOrEnsureDraftCanvasSnapshot(normalizedRawAssetId)
-          : projectService.listAssets().find((item) => item.id === normalizedRawAssetId)
+          : safeListProjectAssets().find((item) => item.id === normalizedRawAssetId)
         : undefined
       // 未显式指定 assetId 时：若左侧已打开画布（含 draft 草稿）则锁定当前画布；若本轮已新建过画布则继续复用；若左侧未打开任何画布则传空串由渲染层自动新建并打开新自由画布
       const fallbackActiveAssetId =
@@ -4849,8 +4859,10 @@ const TOOL_DEFS: McpToolDef[] = [
         }
       }
 
-      assertProjectOpen()
       const rawAssetIdArg = optionalString(args, 'assetId') ?? ''
+      if (rawAssetIdArg && !isDraftAssetId(rawAssetIdArg)) {
+        assertProjectOpen()
+      }
       let targetCanvas = resolveOrEnsureCanvasAsset(rawAssetIdArg, {
         autoCreateCanvas: true,
         preferUiActiveCanvas: true
@@ -4877,11 +4889,7 @@ const TOOL_DEFS: McpToolDef[] = [
         !initialExistingNodes.every((n) => planKeySet.has(n.id))
       if (hasUnrelatedExistingGraph) {
         // 保护用户当前正在编辑的非空画布：新建独立画布承载工作流种子，严禁 node_delete 清空用户已有节点图
-        const createdCanvas = projectService.createAsset({
-          type: 'canvas',
-          ...(bundle.title?.trim() ? { name: bundle.title.trim() } : {})
-        })
-        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, createdCanvas)
+        const createdCanvas = createCanvasOrDraftSnapshot(bundle.title?.trim())
         targetCanvas = createdCanvas
         existingGraph = { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }
       }
@@ -7494,10 +7502,35 @@ export function syncActiveCanvasFromWorkspaceContext(canvasContext?: string): vo
   }
 }
 
+function safeListProjectAssets(): AssetInfo[] {
+  try {
+    return projectService.listAssets()
+  } catch {
+    return []
+  }
+}
+
+function createCanvasOrDraftSnapshot(name?: string): AssetInfo {
+  try {
+    const created = projectService.createAsset({
+      type: 'canvas',
+      ...(name?.trim() ? { name: name.trim() } : {})
+    })
+    broadcastToAllWindows(IpcChannels.ASSET_UPDATED, created)
+    return created
+  } catch {
+    const draftId = createDraftAssetId()
+    return getOrEnsureDraftCanvasSnapshot(draftId, {
+      type: 'canvas',
+      ...(name?.trim() ? { name: name.trim() } : {})
+    })
+  }
+}
+
 /**
  * 解析或按需创建当前工程的宿主画布资产：
  * - 若左侧窗口已打开画布（`uiActiveCanvasAssetId` 为非空字符串），技能注入与缺省画布操作严格优先定位当前打开的画布（含 `draft:<uuid>` 草稿画布）；
- * - 若左侧窗口明确未打开任何画布（`uiActiveCanvasAssetId === null`），触发技能或建图时直接自动新建并打开新自由画布，绝不覆盖后台已关闭的旧画布；
+ * - 若左侧窗口明确未打开任何画布（`uiActiveCanvasAssetId === null`），触发技能或建图时直接自动新建并打开新自由画布（未打开 Studio 工程时自动降级创建 `draft:<uuid>` 内存自由画布），绝不覆盖后台已关闭的旧画布；
  * - 若未同步 UI 状态（外部 MCP 直连或单测），保留按显式 `assetId` / `lastMcpGraphEditTarget` / 工程现有画布回退。
  */
 export function resolveOrEnsureCanvasAsset(
@@ -7505,7 +7538,7 @@ export function resolveOrEnsureCanvasAsset(
   options?: { autoCreateCanvas?: boolean; preferUiActiveCanvas?: boolean }
 ): AssetInfo | undefined {
   const trimmed = rawAssetId?.trim() ?? ''
-  const assets = projectService.listAssets()
+  const assets = safeListProjectAssets()
   const hasGraphDoc = (item: AssetInfo | undefined): item is AssetInfo => {
     if (!item) return false
     const graphJson = (item.genParams as Record<string, unknown> | undefined)?.graphJson as
@@ -7531,8 +7564,7 @@ export function resolveOrEnsureCanvasAsset(
         if (hasGraphDoc(recent)) return recent
       }
       if (options?.autoCreateCanvas) {
-        const created = projectService.createAsset({ type: 'canvas' })
-        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, created)
+        const created = createCanvasOrDraftSnapshot()
         uiActiveCanvasAssetId = created.id
         lastMcpGraphEditTarget = { assetId: created.id, nodeIds: [] }
         return created
@@ -7563,8 +7595,7 @@ export function resolveOrEnsureCanvasAsset(
   // 3. 若左侧明确没有打开任何画布（uiActiveCanvasAssetId === null），绝不回退去改后台关闭的旧画布
   if (uiActiveCanvasAssetId === null) {
     if (options?.autoCreateCanvas) {
-      const created = projectService.createAsset({ type: 'canvas' })
-      broadcastToAllWindows(IpcChannels.ASSET_UPDATED, created)
+      const created = createCanvasOrDraftSnapshot()
       uiActiveCanvasAssetId = created.id
       lastMcpGraphEditTarget = { assetId: created.id, nodeIds: [] }
       return created
@@ -7584,8 +7615,7 @@ export function resolveOrEnsureCanvasAsset(
   if (anyGraphHost.length) return anyGraphHost[0]
 
   if (options?.autoCreateCanvas) {
-    const created = projectService.createAsset({ type: 'canvas' })
-    broadcastToAllWindows(IpcChannels.ASSET_UPDATED, created)
+    const created = createCanvasOrDraftSnapshot()
     uiActiveCanvasAssetId = created.id
     lastMcpGraphEditTarget = { assetId: created.id, nodeIds: [] }
     return created
