@@ -829,14 +829,13 @@ function persistLayout(api: DockviewApi): void {
   }, 250)
 }
 
-/** 文档编辑器属于工程会话，不应随 dock 布局跨工程保留 */
+/** 文档编辑器属于工程会话，不应随 dock 布局跨工程保留（注意不要清空当前刚加载工程排队的待打开面板意图） */
 function removeDocumentEditorPanels(api: DockviewApi): void {
   for (const panel of [...api.panels]) {
     if (panel.id === WORKSPACE_TOOLS_PANEL_ID || parseEditorPanelId(panel.id)) {
       api.removePanel(panel)
     }
   }
-  workspace.resetSession()
 }
 
 function stripDocumentEditorPanelsFromLayoutData(
@@ -1001,6 +1000,7 @@ function onReady(event: DockviewReadyEvent): void {
     switch (parsed.kind) {
       case 'canvas':
         bumpIfPresent(workspace.openCanvasEditorIds, parsed.assetId)
+        workspace.noteActiveCanvas(parsed.assetId)
         break
       case 'asset':
         bumpIfPresent(workspace.openAssetEditorIds, parsed.assetId)
@@ -1354,20 +1354,12 @@ function getTabContextMenuItems(params: GetTabContextMenuItemsParams) {
   return items
 }
 
-onMounted(() => {
-  registerSidePanelSizeProvider(sidePanelSizeOptions)
-  window.addEventListener('keydown', onGlobalKeyDown)
-  window.addEventListener('pointerup', cleanupStrayDockDropOverlays, true)
-  window.addEventListener('pointercancel', cleanupStrayDockDropOverlays, true)
-})
-
-onBeforeUnmount(() => {
-  registerSidePanelSizeProvider(null)
+function cleanupDockInstance(): void {
   registerSidePanelDockApi(null)
-  window.removeEventListener('keydown', onGlobalKeyDown)
-  window.removeEventListener('pointerup', cleanupStrayDockDropOverlays, true)
-  window.removeEventListener('pointercancel', cleanupStrayDockDropOverlays, true)
-  if (saveTimer) clearTimeout(saveTimer)
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
   layoutDisposable?.dispose()
   activePanelDisposable?.dispose()
   removeDisposable?.dispose()
@@ -1387,6 +1379,30 @@ onBeforeUnmount(() => {
   willDragPanelDisposable = null
   maximizedGroupDisposable = null
   dockApi.value = null
+}
+
+watch(
+  () => project.isOpen,
+  (open) => {
+    if (!open) {
+      cleanupDockInstance()
+    }
+  }
+)
+
+onMounted(() => {
+  registerSidePanelSizeProvider(sidePanelSizeOptions)
+  window.addEventListener('keydown', onGlobalKeyDown)
+  window.addEventListener('pointerup', cleanupStrayDockDropOverlays, true)
+  window.addEventListener('pointercancel', cleanupStrayDockDropOverlays, true)
+})
+
+onBeforeUnmount(() => {
+  registerSidePanelSizeProvider(null)
+  window.removeEventListener('keydown', onGlobalKeyDown)
+  window.removeEventListener('pointerup', cleanupStrayDockDropOverlays, true)
+  window.removeEventListener('pointercancel', cleanupStrayDockDropOverlays, true)
+  cleanupDockInstance()
 })
 </script>
 

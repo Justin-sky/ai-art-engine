@@ -685,6 +685,10 @@ export interface McpTaskRunPayload {
   assetId: string
   /** 可选：指定要运行的画布节点 id 列表（缺省自动运行最近编辑节点或全图汇点） */
   nodeIds?: string[]
+  /** 可选：发起本次画布运行的 AI 对话会话 ID（会话结束或中止时定向收敛孤儿运行态） */
+  sessionId?: string
+  /** 可选：允许在发起会话正常结束后继续后台运行（如一句话生成游戏卡自动运行） */
+  keepAliveAfterSessionEnd?: boolean
 }
 
 /** MCP：主进程 → 渲染层，workflow_commit 后打开工作流资产 */

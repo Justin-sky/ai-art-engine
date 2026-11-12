@@ -3439,7 +3439,7 @@ export async function executeGameSystemGenerateNode(
   if (
     localDraft &&
     !draftIsPreviousOutput &&
-    localDraft.length >= 600 &&
+    localDraft.length >= 200 &&
     /^#{1,3}\s+\S/m.test(localDraft)
   ) {
     return await persistScreenplayGeneration(ctx, localDraft)

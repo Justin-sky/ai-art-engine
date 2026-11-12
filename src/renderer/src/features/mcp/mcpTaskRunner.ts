@@ -1,4 +1,9 @@
-import type { GraphDocument, McpGraphEditOp as GraphEditOp } from '@shared/graph'
+import type {
+  GraphDocument,
+  GraphNode,
+  GraphNodeRunState,
+  McpGraphEditOp as GraphEditOp
+} from '@shared/graph'
 import {
   applyGraphEditOps,
   autoLayoutNodes,
@@ -28,7 +33,11 @@ import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { graphRunHosts } from '../graph/model/graphRunHosts'
 import { semanticTimelineSavePayload } from '../graph/model/semanticTimelineSave'
 import { isGraphEditorOpen } from './openGraphEditors'
-import { clearLiveCanvasRunStates, openMcpWorkflowAssetEditor } from './mcpGraphLiveCanvas'
+import {
+  clearLiveCanvasRunStates,
+  openMcpWorkflowAssetEditor,
+  syncLiveCanvasRunState
+} from './mcpGraphLiveCanvas'
 import { emitGraphDiffVfx } from '../../graph/vfx/graphVfxEngine'
 
 const GRAPH_EDITOR_OPEN_WAIT_MS = 8_000
@@ -41,6 +50,264 @@ const handledMcpTaskIds = new Set<string>()
 const handledGraphEditRequestIds = new Set<string>()
 let mcpTaskAbortEpoch = 0
 
+interface ActiveSessionMcpRunEntry {
+  mcpTaskId: string
+  sessionId: string
+  assetId: string
+  hostId: string
+  keepAliveAfterSessionEnd: boolean
+  aborted: boolean
+  graphTaskId?: string
+  timer?: number
+  streamedPaths: string[]
+}
+
+const activeSessionMcpRuns = new Map<string, ActiveSessionMcpRunEntry>()
+
+const DUAL_GALLERY_DIRECT_TEXT_TYPES = new Set([
+  'asset.gameSystem',
+  'asset.novel',
+  'novel.outline',
+  'asset.screenplay'
+])
+
+/**
+ * 对直接写入正文的文本/策划案/大纲/剧本节点构造已完成运行态（含下游端口所需的 out / out-all），
+ * 使 Agent 通过 graph_edit 落盘成稿后无需再额外跑一次慢速 LLM 即可直接就绪。
+ */
+export function buildDirectContentDoneState(node: GraphNode): GraphNodeRunState | null {
+  const rawText = typeof node.params?.text === 'string' ? node.params.text.trim() : ''
+  const title = typeof node.title === 'string' && node.title.trim() ? node.title.trim() : undefined
+  if (node.typeId && DUAL_GALLERY_DIRECT_TEXT_TYPES.has(node.typeId)) {
+    if (rawText.length < 40) return null
+    return {
+      status: 'done',
+      outputs: {
+        out: {
+          kind: 'text',
+          text: rawText,
+          id: 'direct:0',
+          ...(title ? { title } : {})
+        },
+        'out-all': {
+          kind: 'texts',
+          items: [
+            {
+              id: 'direct:0',
+              ...(title ? { title } : {}),
+              text: rawText
+            }
+          ]
+        }
+      }
+    }
+  }
+  if (node.typeId === 'text.plain') {
+    if (!rawText) return null
+    return {
+      status: 'done',
+      outputs: {
+        out: {
+          kind: 'text',
+          text: rawText,
+          ...(title ? { title } : {})
+        }
+      }
+    }
+  }
+  return null
+}
+
+function collectExplicitDirectTextOpNodeIds(ops: ReadonlyArray<GraphEditOp>): Set<string> {
+  const ids = new Set<string>()
+  for (const op of ops) {
+    if (!op || (op.op !== 'node_upsert' && op.op !== 'node_update')) continue
+    const rawOp = op as unknown as Record<string, unknown>
+    const nodeId = String(rawOp.nodeId ?? rawOp.id ?? '').trim()
+    if (!nodeId) continue
+    const params =
+      rawOp.params && typeof rawOp.params === 'object'
+        ? (rawOp.params as Record<string, unknown>)
+        : undefined
+    const directText =
+      params?.text ??
+      params?.gameSystemSpecJson ??
+      params?.gameSystemSpec ??
+      rawOp.text ??
+      rawOp.gameSystemSpecJson ??
+      rawOp.gameSystemSpec
+    if (typeof directText === 'string' && directText.trim().length > 0) {
+      ids.add(nodeId)
+    }
+  }
+  return ids
+}
+
+function collectSupersededAndDirectDoneNodes(
+  prevGraph: GraphDocument,
+  nextGraph: GraphDocument,
+  touchedNodeIds: ReadonlyArray<string>,
+  ops: ReadonlyArray<GraphEditOp>
+): {
+  supersededNodeIds: string[]
+  directDoneStates: Map<string, GraphNodeRunState>
+} {
+  const explicitTextIds = collectExplicitDirectTextOpNodeIds(ops)
+  const supersededSet = new Set<string>()
+  const directDoneStates = new Map<string, GraphNodeRunState>()
+  for (const nodeId of touchedNodeIds) {
+    const nextNode = nextGraph.nodes.find((n) => n.id === nodeId)
+    if (!nextNode) continue
+    const prevNode = prevGraph.nodes.find((n) => n.id === nodeId)
+    const nextDone = buildDirectContentDoneState(nextNode)
+    const prevText = typeof prevNode?.params?.text === 'string' ? prevNode.params.text.trim() : ''
+    const nextText = typeof nextNode.params?.text === 'string' ? nextNode.params.text.trim() : ''
+    if (nextDone && (nextText !== prevText || explicitTextIds.has(nodeId))) {
+      supersededSet.add(nodeId)
+      directDoneStates.set(nodeId, nextDone)
+      continue
+    }
+    if (nextNode.typeId === 'game.economy') {
+      const prevDiagram =
+        typeof prevNode?.params?.gameEconomyDiagramJson === 'string'
+          ? prevNode.params.gameEconomyDiagramJson.trim()
+          : ''
+      const nextDiagram =
+        typeof nextNode.params?.gameEconomyDiagramJson === 'string'
+          ? nextNode.params.gameEconomyDiagramJson.trim()
+          : ''
+      if (nextDiagram && nextDiagram !== prevDiagram) {
+        supersededSet.add(nodeId)
+      }
+      continue
+    }
+    if (nextNode.typeId === 'game.numerical') {
+      const prevSpec = String(
+        prevNode?.params?.gameNumericalWorkbenchJson ??
+          (prevNode?.params as Record<string, unknown> | undefined)?.gameNumericalSpecJson ??
+          ''
+      ).trim()
+      const nextSpec = String(
+        nextNode.params?.gameNumericalWorkbenchJson ??
+          (nextNode.params as Record<string, unknown> | undefined)?.gameNumericalSpecJson ??
+          ''
+      ).trim()
+      if (nextSpec && nextSpec !== prevSpec) {
+        supersededSet.add(nodeId)
+      }
+    }
+  }
+  return {
+    supersededNodeIds: [...supersededSet],
+    directDoneStates
+  }
+}
+
+function reconcileSettledNodeRunStates(
+  hostId: string,
+  assetId: string,
+  unfinishedNodeIds: ReadonlyArray<string>
+): void {
+  if (!unfinishedNodeIds.length) return
+  const liveDoc =
+    graphEditorHosts.getDocument(hostId) ?? graphEditorHosts.getLiveAssetDocument(assetId)
+  if (liveDoc) {
+    const clearIds: string[] = []
+    const promoted = new Map<string, GraphNodeRunState>()
+    for (const nodeId of unfinishedNodeIds) {
+      const node = liveDoc.nodes.find((n) => n.id === nodeId)
+      const directDone = node ? buildDirectContentDoneState(node) : null
+      if (directDone) {
+        promoted.set(nodeId, directDone)
+      } else {
+        clearIds.push(nodeId)
+      }
+    }
+    if (clearIds.length > 0) {
+      clearLiveCanvasRunStates(hostId, clearIds)
+    }
+    for (const [nodeId, doneState] of promoted) {
+      syncLiveCanvasRunState(hostId, nodeId, doneState)
+    }
+    void graphEditorHosts.flush(hostId)
+    return
+  }
+  const asset = findProjectOrDraftAsset(assetId)
+  const storedGraph = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
+    GraphDocument | undefined
+  if (!asset || !storedGraph || !Array.isArray(storedGraph.nodes)) return
+  const nextRunStates: Record<string, GraphNodeRunState> = { ...(storedGraph.runStates ?? {}) }
+  let mutated = false
+  for (const nodeId of unfinishedNodeIds) {
+    const node = storedGraph.nodes.find((n) => n.id === nodeId)
+    const directDone = node ? buildDirectContentDoneState(node) : null
+    if (directDone) {
+      nextRunStates[nodeId] = directDone
+      mutated = true
+    } else if (
+      nextRunStates[nodeId]?.status === 'running' ||
+      nextRunStates[nodeId]?.status === 'pending'
+    ) {
+      delete nextRunStates[nodeId]
+      mutated = true
+    }
+  }
+  if (mutated) {
+    void persistAssetRecord(assetId, {
+      genParams: {
+        ...(asset.genParams as Record<string, unknown>),
+        graphJson: {
+          ...storedGraph,
+          runStates: nextRunStates
+        }
+      }
+    })
+  }
+}
+
+/**
+ * AI 会话正常结束、报错或被中止时，定向收敛该会话遗留的在途 MCP 画布运行任务：
+ * - 对已在节点内保存了完整正文的文档节点（如逆向还原写入 params.text 的 asset.gameSystem），保留正文并收敛为 done；
+ * - 对真正尚未产出结果的节点，清除悬挂的 running/pending 光圈与许愿池注入态；
+ * - 不影响其他并行会话或标记了 keepAliveAfterSessionEnd 的后台整图任务（如一句话游戏卡自动运行）。
+ */
+export function settleSessionMcpTasks(
+  sessionId?: string,
+  reason: 'SESSION_ENDED' | 'GRAPH_CANCELLED' = 'SESSION_ENDED'
+): number {
+  const sid = typeof sessionId === 'string' ? sessionId.trim() : ''
+  if (!sid) return 0
+  const taskStore = useGraphTaskStore()
+  let settledCount = 0
+  for (const entry of [...activeSessionMcpRuns.values()]) {
+    if (entry.sessionId !== sid) continue
+    if (reason === 'SESSION_ENDED' && entry.keepAliveAfterSessionEnd) continue
+    activeSessionMcpRuns.delete(entry.mcpTaskId)
+    entry.aborted = true
+    if (entry.timer !== undefined) {
+      window.clearInterval(entry.timer)
+    }
+    settledCount += 1
+    if (entry.graphTaskId) {
+      const settled = taskStore.settleOrphanedSessionTask(entry.graphTaskId, reason)
+      if (settled.settled && settled.unfinishedNodeIds.length > 0) {
+        reconcileSettledNodeRunStates(
+          settled.hostId ?? entry.hostId,
+          settled.assetId ?? entry.assetId,
+          settled.unfinishedNodeIds
+        )
+      }
+    }
+    report(entry.mcpTaskId, 'finished', {
+      ...(entry.graphTaskId ? { taskId: entry.graphTaskId } : {}),
+      status: 'stopped',
+      error: reason,
+      ...(entry.streamedPaths.length ? { relativePaths: [...entry.streamedPaths] } : {})
+    })
+  }
+  return settledCount
+}
+
 /**
  * AI 会话点击停止或中断时同步中止所有画布后台任务与前台运行态：
  * 1. 递增 mcpTaskAbortEpoch，拦截仍在等待编辑器打开的在途 task_run；
@@ -49,6 +316,13 @@ let mcpTaskAbortEpoch = 0
  */
 export function abortPendingMcpTasks(): void {
   mcpTaskAbortEpoch += 1
+  for (const entry of activeSessionMcpRuns.values()) {
+    entry.aborted = true
+    if (entry.timer !== undefined) {
+      window.clearInterval(entry.timer)
+    }
+  }
+  activeSessionMcpRuns.clear()
   useGraphTaskStore().stopAllActiveTasks()
   graphRunHosts.stopAllRunning()
 }
@@ -149,7 +423,7 @@ async function collectFinishedTaskMediaPaths(
   })
 }
 
-async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
+export async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
   if (payload.mcpTaskId && handledMcpTaskIds.has(payload.mcpTaskId)) {
     return
   }
@@ -165,6 +439,23 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
     rawAssetId && rawAssetId !== 'current' && rawAssetId !== 'active'
       ? rawAssetId
       : activeTargets.defaultGraphAssetId || lastEditedAssetId || activeTargets.defaultAssetId
+  const ownerSessionId = typeof payload.sessionId === 'string' ? payload.sessionId.trim() : ''
+  const streamedPaths: string[] = []
+  const sessionEntry: ActiveSessionMcpRunEntry | null =
+    ownerSessionId && payload.mcpTaskId
+      ? {
+          mcpTaskId: payload.mcpTaskId,
+          sessionId: ownerSessionId,
+          assetId: effectiveAssetId,
+          hostId: `asset:${effectiveAssetId}`,
+          keepAliveAfterSessionEnd: payload.keepAliveAfterSessionEnd === true,
+          aborted: false,
+          streamedPaths
+        }
+      : null
+  if (sessionEntry) {
+    activeSessionMcpRuns.set(payload.mcpTaskId, sessionEntry)
+  }
 
   const asset = findProjectOrDraftAsset(effectiveAssetId)
   if (asset) {
@@ -174,11 +465,16 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
     }
   }
 
-  if (mcpTaskAbortEpoch !== startAbortEpoch) {
-    report(payload.mcpTaskId, 'finished', {
-      status: 'stopped',
-      error: 'GRAPH_CANCELLED'
-    })
+  if (mcpTaskAbortEpoch !== startAbortEpoch || sessionEntry?.aborted) {
+    if (sessionEntry) {
+      activeSessionMcpRuns.delete(payload.mcpTaskId)
+    }
+    if (!sessionEntry?.aborted) {
+      report(payload.mcpTaskId, 'finished', {
+        status: 'stopped',
+        error: 'GRAPH_CANCELLED'
+      })
+    }
     return
   }
 
@@ -188,6 +484,9 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
   const graphJson = liveGraph ?? storedGraph
 
   if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
+    if (sessionEntry) {
+      activeSessionMcpRuns.delete(payload.mcpTaskId)
+    }
     report(payload.mcpTaskId, 'failed', {
       error: '资产不存在或不含图文档（task_run 需要画布或含子图的宿主资产）'
     })
@@ -253,10 +552,16 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
       : enqueued
 
   if (!result.ok) {
+    if (sessionEntry) {
+      activeSessionMcpRuns.delete(payload.mcpTaskId)
+    }
     report(payload.mcpTaskId, 'failed', { error: '该图已有进行中的同目标任务' })
     return
   }
 
+  if (sessionEntry) {
+    sessionEntry.graphTaskId = result.id
+  }
   report(payload.mcpTaskId, 'accepted', { taskId: result.id })
 
   const executedNodeIds = new Set<string>(
@@ -266,7 +571,6 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
         ? invalidatedNodeIds
         : graphJson.nodes.map((n) => n.id)
   )
-  const streamedPaths: string[] = []
 
   const collectAndStreamProgress = (): void => {
     const snapshot = taskStore.getTaskRunSnapshot(result.id)
@@ -305,6 +609,7 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
     const task = activeTask ?? completedTask
     if (!task) {
       window.clearInterval(timer)
+      activeSessionMcpRuns.delete(payload.mcpTaskId)
       report(payload.mcpTaskId, 'finished', {
         taskId: result.id,
         status: 'stopped',
@@ -330,6 +635,7 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
           : 'done'
       const error = status === 'error' ? task.message || undefined : undefined
       window.clearInterval(timer)
+      activeSessionMcpRuns.delete(payload.mcpTaskId)
       void (async () => {
         // 产物相对路径要等写回落盘后才齐全，收集完再回报终态
         const preferredIds = executedNodeIds.size
@@ -352,6 +658,9 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
       })()
     }
   }, 300)
+  if (sessionEntry) {
+    sessionEntry.timer = timer
+  }
 }
 
 const STAGE_OP_KINDS = new Set([
@@ -831,7 +1140,7 @@ function normalizeNodeUpdateAliases(
 }
 
 /** 图编辑操作批：读取落盘图 → 应用 ops → 持久化 + 同步界面（同时兼容 3D 导演台与检查器操作） */
-async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
+export async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
   if (payload.requestId && handledGraphEditRequestIds.has(payload.requestId)) {
     return
   }
@@ -1328,26 +1637,51 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
         liveResult.selectNodeIds?.length &&
         liveResult.applied.every((item) => item === '自动布局' || item.startsWith('选中节点'))
       let syncedHostInterface: ReturnType<typeof inferHostInterfaceFromGraph> | undefined
+      let directDoneStates = new Map<string, GraphNodeRunState>()
       if (!onlySelect && liveResult.applied.length > 0) {
         const synced = syncSubgraphBoundaryAfterEdit(liveResult.graph, didAutoLayout)
         syncedHostInterface = synced.hostInterface
+        const directScan = collectSupersededAndDirectDoneNodes(
+          live,
+          synced.graph,
+          liveResult.touchedNodeIds ?? [],
+          graphOps
+        )
+        directDoneStates = directScan.directDoneStates
+        if (directScan.supersededNodeIds.length > 0) {
+          useGraphTaskStore().cancelSupersededNodeTasks(hostId, directScan.supersededNodeIds)
+        }
         if (liveResult.touchedNodeIds?.length) {
           const { invalidatedNodeIds } = collectDownstreamAndTargetIds(
             synced.graph,
             liveResult.touchedNodeIds
           )
+          const clearedIds = invalidatedNodeIds.filter((invId) => !directDoneStates.has(invId))
           if (synced.graph.runStates) {
-            for (const invId of invalidatedNodeIds) {
+            for (const invId of clearedIds) {
               delete synced.graph.runStates[invId]
             }
           }
-          clearLiveCanvasRunStates(hostId, invalidatedNodeIds)
+          if (clearedIds.length > 0) {
+            clearLiveCanvasRunStates(hostId, clearedIds)
+          }
+        }
+        if (directDoneStates.size > 0) {
+          synced.graph.runStates = { ...(synced.graph.runStates ?? {}) }
+          for (const [nodeId, doneState] of directDoneStates) {
+            synced.graph.runStates[nodeId] = doneState
+          }
         }
         graphEditorHosts.applyExternalGraph(
           hostId,
           synced.graph,
           didAutoLayout || addedNewNode ? { fitView: true } : undefined
         )
+        if (directDoneStates.size > 0) {
+          for (const [nodeId, doneState] of directDoneStates) {
+            syncLiveCanvasRunState(hostId, nodeId, doneState)
+          }
+        }
         emitGraphDiffVfx(hostId, live, synced.graph, {
           source: 'ai',
           rawOps: graphOps,
@@ -1400,7 +1734,12 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       }
       lastEditedAssetId = effectiveAssetId
       if (liveResult.touchedNodeIds?.length) {
-        lastEditedNodeIdsByAsset.set(effectiveAssetId, liveResult.touchedNodeIds)
+        const pendingExecIds = liveResult.touchedNodeIds.filter((id) => !directDoneStates.has(id))
+        if (pendingExecIds.length > 0) {
+          lastEditedNodeIdsByAsset.set(effectiveAssetId, pendingExecIds)
+        } else {
+          lastEditedNodeIdsByAsset.delete(effectiveAssetId)
+        }
       }
       reply(true, {
         assetId: effectiveAssetId,
@@ -1431,6 +1770,43 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
     const synced = onlySelect
       ? { graph: result.graph, hostInterface: undefined }
       : syncSubgraphBoundaryAfterEdit(result.graph, didAutoLayout)
+    const persistedDirectScan = onlySelect
+      ? {
+          supersededNodeIds: [] as string[],
+          directDoneStates: new Map<string, GraphNodeRunState>()
+        }
+      : collectSupersededAndDirectDoneNodes(
+          graphJson,
+          synced.graph,
+          result.touchedNodeIds ?? [],
+          graphOps
+        )
+    if (persistedDirectScan.supersededNodeIds.length > 0) {
+      useGraphTaskStore().cancelSupersededNodeTasks(
+        `asset:${effectiveAssetId}`,
+        persistedDirectScan.supersededNodeIds
+      )
+    }
+    if (!onlySelect && result.touchedNodeIds?.length) {
+      const { invalidatedNodeIds } = collectDownstreamAndTargetIds(
+        synced.graph,
+        result.touchedNodeIds
+      )
+      const clearedIds = invalidatedNodeIds.filter(
+        (invId) => !persistedDirectScan.directDoneStates.has(invId)
+      )
+      if (synced.graph.runStates) {
+        for (const invId of clearedIds) {
+          delete synced.graph.runStates[invId]
+        }
+      }
+      if (persistedDirectScan.directDoneStates.size > 0) {
+        synced.graph.runStates = { ...(synced.graph.runStates ?? {}) }
+        for (const [nodeId, doneState] of persistedDirectScan.directDoneStates) {
+          synced.graph.runStates[nodeId] = doneState
+        }
+      }
+    }
     const updated = await persistAssetRecord(effectiveAssetId, {
       genParams: {
         ...(asset.genParams as Record<string, unknown>),
@@ -1449,7 +1825,14 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
     }
     lastEditedAssetId = effectiveAssetId
     if (result.touchedNodeIds?.length) {
-      lastEditedNodeIdsByAsset.set(effectiveAssetId, result.touchedNodeIds)
+      const pendingExecIds = result.touchedNodeIds.filter(
+        (id) => !persistedDirectScan.directDoneStates.has(id)
+      )
+      if (pendingExecIds.length > 0) {
+        lastEditedNodeIdsByAsset.set(effectiveAssetId, pendingExecIds)
+      } else {
+        lastEditedNodeIdsByAsset.delete(effectiveAssetId)
+      }
     }
     reply(true, {
       assetId: effectiveAssetId,

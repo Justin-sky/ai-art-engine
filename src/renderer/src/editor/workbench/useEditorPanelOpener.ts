@@ -60,13 +60,14 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
     const existing = api.getPanel(panelId)
     if (existing) {
       existing.api.setActive()
+      workspace.setActiveDiveRootKey(panelId)
       // 已打开面板再次切入：重新注入外层输入到宿主编辑器
       if (kind !== 'file') {
         workspace.requestHostInputSlotSync(assetId)
       }
       return
     }
-    api.addPanel({
+    const added = api.addPanel({
       id: panelId,
       component: definition.component,
       title: options.title(kind, assetId),
@@ -77,6 +78,8 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
         direction: 'within'
       }
     })
+    added?.api?.setActive?.()
+    workspace.setActiveDiveRootKey(panelId)
   }
 
   function openPending(): void {

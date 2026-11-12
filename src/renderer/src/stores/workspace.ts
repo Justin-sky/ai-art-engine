@@ -23,6 +23,7 @@ import {
   type EditorDiveKind,
   type EditorDiveViewMeta
 } from '../features/graph/model/editorDive'
+import { rememberLastCanvasForWorkspace } from '../features/graph/model/lastWorkspaceCanvas'
 import { draftToAssetInfo, useDraftStore } from './drafts'
 import { useProjectStore } from './project'
 
@@ -371,7 +372,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   function openCanvasEditor(canvasAssetId: string): void {
     openCanvasEditorIds.value = bumpOpenId(openCanvasEditorIds.value, canvasAssetId)
+    rememberLastCanvasForWorkspace(useProjectStore().rootPath, canvasAssetId)
     focusEditorGlobalsForAsset(canvasAssetId)
+  }
+
+  function noteActiveCanvas(canvasAssetId: string): void {
+    rememberLastCanvasForWorkspace(useProjectStore().rootPath, canvasAssetId)
   }
 
   function openWorldEditor(worldAssetId: string): void {
@@ -666,6 +672,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     canOpenEditorForAssetId,
     openScreenplayEditor,
     openCanvasEditor,
+    noteActiveCanvas,
     openWorldEditor,
     openBeatEditor,
     openDirectorEditor,

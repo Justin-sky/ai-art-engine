@@ -65,7 +65,7 @@ import {
   resolveDroppedChatAssetPaths
 } from '../features/chat/chatAssetDrop'
 import { buildActiveWorkspaceContext } from '../features/mcp/buildActiveWorkspaceContext'
-import { abortPendingMcpTasks } from '../features/mcp/mcpTaskRunner'
+import { abortPendingMcpTasks, settleSessionMcpTasks } from '../features/mcp/mcpTaskRunner'
 import { setChatSidebarExpanded } from '../editor/workbench/sidePanelCollapse'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
@@ -2282,6 +2282,9 @@ function endSessionCanvasEffects(
   outcome: 'success' | 'error' | 'aborted'
 ): void {
   const sid = (sessionId ?? activeId.value).trim()
+  if (sid) {
+    settleSessionMcpTasks(sid, outcome === 'aborted' ? 'GRAPH_CANCELLED' : 'SESSION_ENDED')
+  }
   const weatherKey = weatherSourceForSession(sid)
   activeSessionWeatherKeys.delete(weatherKey)
   notifyWeatherTaskComplete(weatherKey)
@@ -5262,8 +5265,10 @@ async function abortCurrentRun(): Promise<void> {
   const hasOwnRunningMcpCard = messages.value
     .slice(sessionStart)
     .some((m) => m?.kind === 'tool' && m.key.startsWith('mcp:') && m.state === 'start')
-  if (backgroundRunningCount.value === 0 || hasOwnRunningMcpCard) {
+  if (backgroundRunningCount.value === 0) {
     abortPendingMcpTasks()
+  } else if (targetSid && hasOwnRunningMcpCard) {
+    settleSessionMcpTasks(targetSid, 'GRAPH_CANCELLED')
   }
   for (let i = messages.value.length - 1; i >= sessionStart; i--) {
     const m = messages.value[i]
@@ -5274,8 +5279,10 @@ async function abortCurrentRun(): Promise<void> {
   try {
     await window.studio.abortHarnessTask(targetSid || undefined)
   } finally {
-    if (backgroundRunningCount.value === 0 || hasOwnRunningMcpCard) {
+    if (backgroundRunningCount.value === 0) {
       abortPendingMcpTasks()
+    } else if (targetSid && hasOwnRunningMcpCard) {
+      settleSessionMcpTasks(targetSid, 'GRAPH_CANCELLED')
     }
     rt.preparingTask = false
     rt.running = false

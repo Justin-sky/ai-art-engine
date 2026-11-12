@@ -2382,7 +2382,8 @@ const TOOL_DEFS: McpToolDef[] = [
       '在左侧画布上实时运行宿主画布或子图资产的节点（自动打开/聚焦画布，在画布节点上实时显示运行转圈、执行进度日志，生成完成后实时把预览画面/视频/音频/3D模型更新到节点上，同时在对话流弹出产物预览卡）。\n' +
       '- `assetId` 可选：省略或传 `"current"` 时自动使用最近一次 `graph_edit` 编辑的画布或工程内当前画布（若工程尚无画布会自动新建默认自由画布）；\n' +
       '- `nodeId` / `nodeIds` 可选：传入时只精准执行目标节点及其未就绪的上游依赖；省略时优先执行最近一次 `graph_edit` 创建/修改的节点（若无则执行整张图）；\n' +
-      '- `wait` 默认 `true`：阻塞等待画布节点执行完成，并直接返回生成的工程相对路径 `relativePaths`、视觉预览图 `mcpImages`，以及 `game.economy` 节点的仿真遥测与静态拓扑检查 `economyDiagnostics`（无需再调 `task_status` 轮询）；若 `economyDiagnostics` 中存在 `topologyWarnings`、扣血反加血、核心转化器饥饿阻塞（`>=75%`）或终局条件异常，必须调用 `graph_edit` 修正图结构并重新 `task_run` 自愈，严禁把错误节点改名为“草稿（仿真待修正）”或在 `prompt` 写免责声明敷衍交付！',
+      '- `wait` 默认 `true`：阻塞等待画布节点执行完成，并直接返回生成的工程相对路径 `relativePaths`、视觉预览图 `mcpImages`，以及 `game.economy` 节点的仿真遥测与静态拓扑检查 `economyDiagnostics`（无需再调 `task_status` 轮询）；若 `economyDiagnostics` 中存在 `topologyWarnings`、扣血反加血、核心转化器饥饿阻塞（`>=75%`）或终局条件异常，必须调用 `graph_edit` 修正图结构并重新 `task_run` 自愈，严禁把错误节点改名为“草稿（仿真待修正）”或在 `prompt` 写免责声明敷衍交付！\n' +
+      '- 对 `asset.gameSystem` / `asset.novel` / `novel.outline` / `asset.screenplay` 等文档节点：若已通过 `graph_edit` 将完整正文直接写入 `params.text`，节点会自动标记为完成并输出 `out` / `out-all`，**严禁**再对其调用 `task_run`（避免触发耗时的重复生成或让节点悬挂在运行中）；对话内调用 `task_run` 必须保持默认 `wait: true`，严禁传 `wait: false` 把未完成任务遗留到会话结束后。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -8242,17 +8243,26 @@ const pendingMcpTaskActivities = new Map<string, string>()
 const activeMcpTaskByAssetId = new Map<string, string>()
 /** mcpTaskId → 发起该画布运行的对话 sessionId（多会话并行时按会话定向中止） */
 const mcpTaskSessionByTaskId = new Map<string, string>()
+/** mcpTaskId → 允许在对话正常结束后继续后台运行的脱钩任务（如一句话游戏卡自动运行） */
+const detachedMcpTaskIds = new Set<string>()
 
 /**
  * 派发一次画布运行（task_run 与「一句话生成游戏」的自动运行 / 游戏卡「运行」按钮共用）：
  * 登记为界面可见的旁路活动——终点由渲染层回报本轮产物相对路径后收尾，
  * 任务列表 / 执行日志 / AI 对话流三处共用这一条记录出预览。返回 mcpTaskId。
  */
-function dispatchMcpCanvasRun(asset: { id: string; name: string }, nodeIds: string[] = []): string {
+function dispatchMcpCanvasRun(
+  asset: { id: string; name: string },
+  nodeIds: string[] = [],
+  options?: { keepAliveAfterSessionEnd?: boolean }
+): string {
   const existingTaskId = activeMcpTaskByAssetId.get(asset.id)
   if (existingTaskId && pendingMcpTaskActivities.has(existingTaskId)) {
     const existingReport = pendingMcpTaskReports.get(existingTaskId)
     if (!existingReport || existingReport.phase === 'accepted') {
+      if (options?.keepAliveAfterSessionEnd) {
+        detachedMcpTaskIds.add(existingTaskId)
+      }
       return existingTaskId
     }
   }
@@ -8262,6 +8272,9 @@ function dispatchMcpCanvasRun(asset: { id: string; name: string }, nodeIds: stri
   activeMcpTaskByAssetId.set(asset.id, mcpTaskId)
   if (ownerSessionId) {
     mcpTaskSessionByTaskId.set(mcpTaskId, ownerSessionId)
+  }
+  if (options?.keepAliveAfterSessionEnd) {
+    detachedMcpTaskIds.add(mcpTaskId)
   }
   pendingMcpTaskActivities.set(
     mcpTaskId,
@@ -8278,7 +8291,9 @@ function dispatchMcpCanvasRun(asset: { id: string; name: string }, nodeIds: stri
   broadcastToAllWindows(IpcChannels.MCP_TASK_RUN, {
     mcpTaskId,
     assetId: asset.id,
-    ...(nodeIds.length ? { nodeIds } : {})
+    ...(nodeIds.length ? { nodeIds } : {}),
+    ...(ownerSessionId ? { sessionId: ownerSessionId } : {}),
+    ...(options?.keepAliveAfterSessionEnd ? { keepAliveAfterSessionEnd: true } : {})
   })
   return mcpTaskId
 }
@@ -8287,7 +8302,7 @@ function dispatchMcpCanvasRun(asset: { id: string; name: string }, nodeIds: stri
 function dispatchOneSentenceGameRun(assetId: string): string {
   const asset = projectService.listAssets().find((item) => item.id === assetId)
   if (!asset) throw new Error(`asset not found: ${assetId}`)
-  return dispatchMcpCanvasRun(asset)
+  return dispatchMcpCanvasRun(asset, [], { keepAliveAfterSessionEnd: true })
 }
 
 function createOneSentenceGameDeps(): CreateOneSentenceGameDeps {
@@ -8433,6 +8448,7 @@ export function setHarnessScheduleHandlers(handlers: HarnessScheduleHandlers | n
 function settleMcpTaskActivity(report: McpTaskReportPayload): void {
   const ownerSessionId = mcpTaskSessionByTaskId.get(report.mcpTaskId)
   mcpTaskSessionByTaskId.delete(report.mcpTaskId)
+  detachedMcpTaskIds.delete(report.mcpTaskId)
   for (const [assetId, activeTaskId] of activeMcpTaskByAssetId.entries()) {
     if (activeTaskId === report.mcpTaskId) {
       activeMcpTaskByAssetId.delete(assetId)
@@ -8468,7 +8484,11 @@ function settleMcpTaskActivity(report: McpTaskReportPayload): void {
  * 避免 dsh 进程被强杀后 `activeMcpTaskByAssetId` 或 `pendingMcpTaskActivities` 残留。
  * 传入 `targetSessionId` 时仅结算该会话发起的画布运行任务，不影响其他并行会话。
  */
-export function abortActiveMcpCanvasRuns(reason = '已中止', targetSessionId?: string): void {
+export function abortActiveMcpCanvasRuns(
+  reason = '已中止', // cjk-ok
+  targetSessionId?: string,
+  options?: { skipDetached?: boolean }
+): void {
   const normalizedTarget = typeof targetSessionId === 'string' ? targetSessionId.trim() : ''
   const activeIds = new Set<string>([
     ...pendingMcpTaskActivities.keys(),
@@ -8479,6 +8499,9 @@ export function abortActiveMcpCanvasRuns(reason = '已中止', targetSessionId?:
   }
   for (const mcpTaskId of activeIds) {
     if (normalizedTarget && mcpTaskSessionByTaskId.get(mcpTaskId) !== normalizedTarget) {
+      continue
+    }
+    if (options?.skipDetached && detachedMcpTaskIds.has(mcpTaskId)) {
       continue
     }
     const existing = pendingMcpTaskReports.get(mcpTaskId)
@@ -8493,9 +8516,10 @@ export function abortActiveMcpCanvasRuns(reason = '已中止', targetSessionId?:
     settleMcpTaskActivity(stoppedReport)
     scheduleTaskReportCleanup(mcpTaskId)
   }
-  if (!normalizedTarget) {
+  if (!normalizedTarget && !options?.skipDetached) {
     activeMcpTaskByAssetId.clear()
     mcpTaskSessionByTaskId.clear()
+    detachedMcpTaskIds.clear()
   }
 }
 

@@ -30,6 +30,7 @@ import { persistAssetRecord } from '../composables/useAssetRecord'
 import { getActiveChatProjectScopeSnapshot } from '../composables/useChatHistory'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import {
+  clearLiveCanvasRunStates,
   seedLiveCanvasRunStates,
   syncLiveCanvasEpisodeReviewFromNode,
   syncLiveCanvasNodeParams,
@@ -386,8 +387,8 @@ function readPersistedGraphForTarget(target: GraphTaskTarget): GraphDocument | n
   return null
 }
 
-/** 把子集任务跑过的节点合并进最新底图，避免并行写回互相覆盖 */
-function mergeSubsetGraphIntoBase(
+/** 把子集任务跑过的节点合并进最新底图，避免并行写回互相覆盖；已取消节点保留底图最新参数，不回退到入队旧快照 */
+export function mergeSubsetGraphIntoBase(
   base: GraphDocument,
   subset: GraphDocument,
   nodeIds: Iterable<string>,
@@ -398,6 +399,10 @@ function mergeSubsetGraphIntoBase(
   const merged = cloneGraphDocument(base)
   merged.nodes = merged.nodes.map((node) => {
     if (!ids.has(node.id)) return node
+    const state = subsetRunStates[node.id]
+    if (state?.status === 'error' && state.error === 'GRAPH_CANCELLED') {
+      return node
+    }
     const patched = fromSubset.get(node.id)
     return patched ? (toPlain(patched) as GraphNode) : node
   })
@@ -497,6 +502,114 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       void stopAndRemove(task.id)
     }
     return true
+  }
+
+  /**
+   * 当 graph_edit 直接向节点写入成稿正文/配置时，立即终止并丢弃同画布上针对这些节点的在途生成任务，
+   * 避免慢速后台 LLM 结束后写回覆盖新内容，并立即消除节点 running 边框与许愿池注入态。
+   */
+  function cancelSupersededNodeTasks(hostId: string, nodeIds: ReadonlyArray<string>): string[] {
+    const supersededSet = new Set(nodeIds.map((id) => id.trim()).filter(Boolean))
+    if (!hostId || !supersededSet.size) return []
+    const cancelledTaskIds: string[] = []
+    const matching = activeTasks.value.filter((task) => {
+      if (!isActiveStatus(task.status) || task.target.hostId !== hostId) return false
+      const inOrder = task.order.some((id) => supersededSet.has(id))
+      const inNodes = task.nodes.some(
+        (n) => supersededSet.has(n.nodeId) && (n.status === 'pending' || n.status === 'running')
+      )
+      return inOrder || inNodes
+    })
+    for (const task of matching) {
+      const unfinishedIds: string[] = []
+      const otherUnfinishedIds: string[] = []
+      for (const n of task.nodes) {
+        if (n.status !== 'done' && n.status !== 'skipped') {
+          unfinishedIds.push(n.nodeId)
+          if (!supersededSet.has(n.nodeId)) {
+            otherUnfinishedIds.push(n.nodeId)
+          }
+          n.status = supersededSet.has(n.nodeId) ? 'done' : 'skipped'
+        }
+      }
+      for (const [id, st] of Object.entries(task.runStates)) {
+        if (st?.status === 'pending' || st?.status === 'running') {
+          if (!unfinishedIds.includes(id)) unfinishedIds.push(id)
+          if (supersededSet.has(id)) {
+            task.runStates[id] = { ...(st.outputs ? { outputs: st.outputs } : {}), status: 'done' }
+          } else {
+            if (!otherUnfinishedIds.includes(id)) otherUnfinishedIds.push(id)
+            delete task.runStates[id]
+          }
+        }
+      }
+      task.discardWriteBack = true
+      task.liveCanvasSync = false
+      task.status = 'done'
+      task.message = 'SUPERSEDED_BY_GRAPH_EDIT'
+      task.settlePromise = Promise.resolve()
+      task.abort.abort()
+      if (unfinishedIds.length) {
+        cancelBoundVideoJobs(taskHostAssetId(task.target), unfinishedIds)
+      }
+      if (otherUnfinishedIds.length) {
+        clearLiveCanvasRunStates(hostId, otherUnfinishedIds)
+      }
+      moveToCompleted(task)
+      cancelledTaskIds.push(task.id)
+    }
+    return cancelledTaskIds
+  }
+
+  /**
+   * AI 会话结束或中止时定向收尾该会话遗留的在途图任务（不影响其他并行会话或手动运行）：
+   * 立即停止后台执行、禁止旧快照写回覆盖实时画布，并返回未完成节点供调用方收敛运行态。
+   */
+  function settleOrphanedSessionTask(
+    taskId: string,
+    reason = 'SESSION_ENDED'
+  ): {
+    settled: boolean
+    hostId?: string
+    assetId?: string
+    unfinishedNodeIds: string[]
+  } {
+    const task = activeTasks.value.find((t) => t.id === taskId)
+    if (!task || !isActiveStatus(task.status)) {
+      return { settled: false, unfinishedNodeIds: [] }
+    }
+    const unfinishedSet = new Set<string>()
+    for (const n of task.nodes) {
+      if (n.status !== 'done' && n.status !== 'skipped') {
+        unfinishedSet.add(n.nodeId)
+        n.status = 'error'
+        n.error = reason
+      }
+    }
+    for (const [id, st] of Object.entries(task.runStates)) {
+      if (st?.status === 'pending' || st?.status === 'running') {
+        unfinishedSet.add(id)
+        task.runStates[id] = {
+          ...(st.outputs ? { outputs: st.outputs } : {}),
+          status: 'error',
+          error: reason
+        }
+      }
+    }
+    const unfinishedNodeIds = [...unfinishedSet]
+    const hostId = task.target.hostId
+    const assetId = taskHostAssetId(task.target)
+    task.discardWriteBack = true
+    task.liveCanvasSync = false
+    task.status = 'stopped'
+    task.message = reason
+    task.settlePromise = Promise.resolve()
+    task.abort.abort()
+    if (unfinishedNodeIds.length) {
+      cancelBoundVideoJobs(assetId, unfinishedNodeIds)
+    }
+    moveToCompleted(task)
+    return { settled: true, hostId, assetId, unfinishedNodeIds }
   }
 
   function cancelBoundVideoJobs(assetId: string, nodeIds: Iterable<string>): void {
@@ -1965,6 +2078,12 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         clearCheckpointTimer()
       }
 
+      if (task.discardWriteBack && !isActiveStatus(task.status)) {
+        logBridge.endFromResult(result, { aborted: true })
+        bump()
+        return
+      }
+
       if (task.abort.signal.aborted || result.error === 'GRAPH_CANCELLED') {
         task.status = 'stopped'
         task.message = 'GRAPH_CANCELLED'
@@ -2027,6 +2146,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       bump()
       await settleTask(task)
     } catch (error) {
+      if (task.discardWriteBack && !isActiveStatus(task.status)) {
+        logBridge.endFromResult(null, { aborted: true })
+        bump()
+        return
+      }
       if (task.abort.signal.aborted) {
         task.status = 'stopped'
         task.message = 'GRAPH_CANCELLED'
@@ -2068,6 +2192,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     getActiveTaskRunStatesForTarget,
     stopActiveTasksForTarget,
     stopAllActiveTasks,
+    cancelSupersededNodeTasks,
+    settleOrphanedSessionTask,
     openDialog,
     closeDialog,
     enqueueWorkflow,

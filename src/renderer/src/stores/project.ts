@@ -7,6 +7,10 @@ import { useDraftStore } from './drafts'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import {
+  clearRememberedCanvasForWorkspace,
+  resolveDefaultCanvasForWorkspace
+} from '../features/graph/model/lastWorkspaceCanvas'
 import { useWorkspaceStore } from './workspace'
 import { useGraphTaskStore } from './graphTasks'
 import { useGraphRunLogsStore } from './graphRunLogs'
@@ -51,6 +55,10 @@ export const useProjectStore = defineStore('project', () => {
     folders.value = normalizeFolders(result.folders ?? [])
     dirty.value = false
     genProgress.value = null
+    const defaultCanvasId = resolveDefaultCanvasForWorkspace(result.rootPath, result.assets)
+    if (defaultCanvasId) {
+      useWorkspaceStore().openCanvasEditor(defaultCanvasId)
+    }
   }
 
   function reset(): void {
@@ -74,6 +82,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   function removeAssetLocal(assetId: string): void {
+    clearRememberedCanvasForWorkspace(rootPath.value, assetId)
     assets.value = assets.value.filter((asset) => asset.id !== assetId)
   }
 
