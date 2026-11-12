@@ -69,7 +69,9 @@
     "dist:mac": "npm run build && npm run bundle:dsh && npm run fetch:yolo-models && npm run check:pack && electron-builder --mac --x64 --arm64",
     "dist:linux": "npm run build && npm run bundle:dsh && npm run fetch:yolo-models && npm run check:pack && electron-builder --linux",
     "site": "npx --yes serve website -p 5174",
-    "site:deploy": "node scripts/deploy-website-oss.mjs",
+    "dev:playground": "vite --config vite.playground.config.ts",
+    "build:playground": "vite build --config vite.playground.config.ts",
+    "site:deploy": "npm run build:playground && node scripts/deploy-website-oss.mjs",
     "prepare": "husky"
   },
   "dependencies": {

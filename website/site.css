@@ -611,6 +611,104 @@ pre:hover .copy-btn,
   font-size: 12.5px;
 }
 
+/* ---------- 在线试玩 Playground 入口胶囊与文档卡片 ---------- */
+.nav a.nav-playground {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 185, 129, 0.42);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(59, 130, 246, 0.14));
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.nav a.nav-playground:hover {
+  border-color: var(--blue);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(59, 130, 246, 0.22));
+  text-decoration: none;
+}
+
+.btn-playground {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(16, 185, 129, 0.48) !important;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(99, 102, 241, 0.16)) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+}
+
+.btn-playground:hover {
+  border-color: var(--blue) !important;
+  transform: translateY(-1px);
+}
+
+.playground-callout {
+  margin: 14px 0 18px;
+  padding: 14px 16px;
+  border-radius: 13px;
+  border: 1px solid rgba(16, 185, 129, 0.38);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(59, 130, 246, 0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.playground-callout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.playground-callout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #10b981, #3b82f6);
+  color: #fff !important;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.playground-preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.playground-preset-chips a {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-hi);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.playground-preset-chips a:hover {
+  border-color: var(--blue);
+  text-decoration: none;
+}
+
+.bento-link-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: auto;
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 720px) {
   .sr-root {

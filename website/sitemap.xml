@@ -271,4 +271,13 @@
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/playground/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/playground/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/playground/?lang=en" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/playground/" />
+    <lastmod>2026-11-12</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>
 </urlset>

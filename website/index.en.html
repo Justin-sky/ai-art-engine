@@ -65,7 +65,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css?v=20261111a" />
-    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <link rel="stylesheet" href="site.css?v=20261112a" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -226,6 +226,7 @@
       <nav class="nav" aria-label="Main navigation">
         <a href="#features">Highlights</a>
         <a href="#studios">Studios</a>
+        <a class="nav-playground" href="playground/index.html?lang=en">🎮 Playground</a>
         <a href="#recipes">PNG Recipes</a>
         <a href="#agent">MCP</a>
         <a href="quickstart.en.html">Quickstart</a>
@@ -256,6 +257,7 @@
       <details class="mobile-menu">
         <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
         <nav class="mobile-nav" aria-label="Mobile navigation">
+          <a href="playground/index.html?lang=en">🎮 Live Mechanics Playground</a>
           <a href="#features">Highlights</a>
           <a href="#studios">Studios</a>
           <a href="#why">Comparison</a>
@@ -305,6 +307,7 @@
           </p>
           <div class="cta reveal" style="--d: 0.12s">
             <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>Download Free</a>
+            <a class="btn btn-line btn-playground" href="playground/index.html?lang=en">🎮 Try Online Playground</a>
             <a class="btn btn-line" href="quickstart.en.html">3-Minute Zero-Key Start</a>
             <a class="btn btn-ghost" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">
               <svg aria-hidden="true"><use href="#i-github" /></svg>Star on GitHub
@@ -472,12 +475,15 @@
 
             <article class="bento-card reveal" style="--d: 0.05s">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-scale" /></svg></span>
-              <span class="bento-tag">Machinations v2 · 120fps Goal-Seek</span>
+              <span class="bento-tag">Machinations v2 · 120fps Goal-Seek · Live Demo</span>
               <h3>Game economy &amp; systems studio</h3>
               <p>
                 100% Machinations-aligned simulator with <strong>59 verified blocks</strong>, lossless Simple ↔ Pro toggle, <strong>120fps Bezier slope diamond &amp; curve-drag inverse Goal-Seek solver</strong>, Monte Carlo P10/P50/P90 bands, 2D sensitivity heatmaps, playable HUD cards, and <strong>Unity C# / Godot GDScript</strong> export.
               </p>
-              <a class="bento-link" href="manual-workflow.en.html#game-economy">Economy Studio Manual</a>
+              <div class="bento-link-row">
+                <a class="bento-link" href="playground/index.html?lang=en">🎮 Launch Live Sandbox</a>
+                <a class="bento-link" href="manual-workflow.en.html#game-economy">Economy Manual</a>
+              </div>
             </article>
 
             <article class="bento-card reveal" style="--d: 0.1s">
@@ -1107,6 +1113,7 @@
           <div class="foot-col">
             <h4>Product</h4>
             <ul>
+              <li><a href="playground/index.html?lang=en">🎮 Live Playground</a></li>
               <li><a href="#features">Highlights</a></li>
               <li><a href="#studios">Dive Studios</a></li>
               <li><a href="#why">Comparison</a></li>

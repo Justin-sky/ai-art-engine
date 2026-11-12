@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          var isLight =
+            pref === 'light' ||
+            (pref === 'auto' && !window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.dataset.theme = isLight ? 'light' : 'dark'
+        } catch (e) {}
+      })()
+    </script>
+    <title>AI Art Engine 在线试玩沙盘 — 游戏机制与经济数值仿真 (Machinations v2)</title>
+    <meta
+      name="description"
+      content="免安装在线试玩 AI Art Engine 内置 Machinations v2 游戏机制与经济数值沙盘：59 个验证数值积木、杀戮尖塔/小丑牌/抽卡软硬保底预设、120fps 折线拖拽逆向公式求解（Goal-Seek）、蒙特卡洛 P10/P50/P90、可玩卡牌 HUD 原型，一键导出 Unity C# 与 Godot GDScript。"
+    />
+    <meta
+      name="keywords"
+      content="游戏数值在线试玩, Machinations在线沙盘, 游戏经济仿真, 120fps曲线反推, Goal-Seek, 抽卡保底模拟, 杀戮尖塔DBG数值, 小丑牌Balatro乘区, Unity C#经济导出, Godot GDScript导出, AI Art Engine Playground"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/playground/" />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://justin-sky.github.io/ai-art-engine/playground/"
+    />
+    <link
+      rel="alternate"
+      hreflang="en"
+      href="https://justin-sky.github.io/ai-art-engine/playground/?lang=en"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://justin-sky.github.io/ai-art-engine/playground/"
+    />
+    <meta property="og:site_name" content="AI Art Engine" />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:title"
+      content="AI Art Engine 在线试玩 — 游戏机制与经济数值沙盘 (Machinations v2)"
+    />
+    <meta
+      property="og:description"
+      content="零安装浏览器直跑：59 个数值积木、120fps 拖线反推公式、蒙特卡洛仿真、可玩卡牌 HUD 原型，直出 Unity C# / Godot GDScript。"
+    />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/playground/" />
+    <meta
+      property="og:image"
+      content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="AI Art Engine Online Playground — Machinations v2 Game Economy Sandbox"
+    />
+    <meta
+      name="twitter:description"
+      content="Zero-install live sandbox: 59 verified Machinations blocks, 120fps curve-drag Goal-Seek solver, Monte Carlo bands, playable RPG card HUD, and Unity C# / Godot GDScript export."
+    />
+    <meta
+      name="twitter:image"
+      content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp"
+    />
+    <link rel="icon" href="../assets/logo-mark.png" type="image/png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "AI Art Engine — Machinations v2 Game Economy Playground",
+        "url": "https://justin-sky.github.io/ai-art-engine/playground/",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Web Browser, Windows, macOS, Linux",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "description": "Zero-install browser sandbox for game mechanics and Machinations v2 economy simulation with 59 building blocks, 120fps curve-drag inverse Goal-Seek, Monte Carlo forecasting, playable card HUD, and Unity C# / Godot GDScript export."
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/index-G1opCEEO.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/vendor-B17Efw1B.js">
+    <link rel="modulepreload" crossorigin href="./assets/mx-engine-DeRWu14p.js">
+    <link rel="modulepreload" crossorigin href="./assets/mx-canvas-CJhFC5wA.js">
+    <link rel="modulepreload" crossorigin href="./assets/mx-panels-Csdp8LWl.js">
+    <link rel="modulepreload" crossorigin href="./assets/mx-results-DTrf9kKG.js">
+    <link rel="stylesheet" crossorigin href="./assets/mx-canvas-C5J_0O0H.css">
+    <link rel="stylesheet" crossorigin href="./assets/mx-panels-Cbto0LlB.css">
+    <link rel="stylesheet" crossorigin href="./assets/mx-results-CpjofHkE.css">
+    <link rel="stylesheet" crossorigin href="./assets/index-BzTNAA7c.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>

@@ -65,7 +65,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css?v=20261111a" />
-    <link rel="stylesheet" href="site.css?v=20261111a" />
+    <link rel="stylesheet" href="site.css?v=20261112a" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -226,6 +226,7 @@
       <nav class="nav" aria-label="主导航">
         <a href="#features">核心亮点</a>
         <a href="#studios">工作台</a>
+        <a class="nav-playground" href="playground/index.html">🎮 在线试玩</a>
         <a href="#recipes">PNG 配方</a>
         <a href="#agent">MCP</a>
         <a href="quickstart.html">快速上手</a>
@@ -256,6 +257,7 @@
       <details class="mobile-menu">
         <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
         <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="playground/index.html">🎮 在线试玩沙盘（免安装）</a>
           <a href="#features">核心亮点</a>
           <a href="#studios">工作台巡礼</a>
           <a href="#why">对比优势</a>
@@ -305,6 +307,7 @@
           </p>
           <div class="cta reveal" style="--d: 0.12s">
             <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>免费下载桌面端</a>
+            <a class="btn btn-line btn-playground" href="playground/index.html">🎮 在线试玩机制沙盘</a>
             <a class="btn btn-line" href="quickstart.html">3 分钟零 Key 上手</a>
             <a class="btn btn-ghost" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">
               <svg aria-hidden="true"><use href="#i-github" /></svg>Star on GitHub
@@ -472,12 +475,15 @@
 
             <article class="bento-card reveal" style="--d: 0.05s">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-scale" /></svg></span>
-              <span class="bento-tag">Machinations v2 · 120fps 反推</span>
+              <span class="bento-tag">Machinations v2 · 120fps 反推 · 在线可玩</span>
               <h3>游戏经济与数值动力学沙盘</h3>
               <p>
                 100% 对齐 Machinations 语义，内置 <strong>59 个验证积木</strong>与精简/完整蓝图无损切换；支持 <strong>120fps 贝塞尔斜率控制点与曲线拖拽反推公式（Goal-Seek）</strong>、蒙特卡洛 P10/P50/P90、二维灵敏度热力图、可玩卡牌 HUD 试玩，直出 <strong>Unity C# / Godot GDScript</strong>。
               </p>
-              <a class="bento-link" href="manual-workflow.html#game-economy">数值仿真沙盘手册</a>
+              <div class="bento-link-row">
+                <a class="bento-link" href="playground/index.html">🎮 立即免安装试玩</a>
+                <a class="bento-link" href="manual-workflow.html#game-economy">数值沙盘手册</a>
+              </div>
             </article>
 
             <article class="bento-card reveal" style="--d: 0.1s">
@@ -1107,6 +1113,7 @@
           <div class="foot-col">
             <h4>产品</h4>
             <ul>
+              <li><a href="playground/index.html">🎮 在线试玩沙盘 (Playground)</a></li>
               <li><a href="#features">核心亮点</a></li>
               <li><a href="#studios">工作台巡礼</a></li>
               <li><a href="#why">对比矩阵</a></li>
