@@ -2,6 +2,15 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.9.5] — 2026-11-12
+
+8.9.5 在线试玩与 Agent 稳定性升级版：**官网（`website/playground` + `src/playground`）** 全新上线免安装 **Machinations v2 游戏机制与经济在线试玩沙盘**；**AI 对话与执行内核（`aiartHeadlessRunner` + `deepseekHarnessService`）** 彻底修复 **同会话跨服务商切换模型写锁冲突** 与 **多路 MCP 超 128 项工具上限报错**；并打通 **浏览 `.md` 文档或无工程状态下自动新建画布聚焦渲染** 与 **超长工具 JSON 语法自愈**。
+
+- **新增 · 官网免安装游戏机制与经济试玩沙盘（`website/playground.html` + `src/playground` + `vite.playground.config.ts`）**：提取完整纯前端 Machinations v2 仿真引擎上线网页端即点即玩，内置经典数值模板、59 款验证机制积木、极简创造/专业蓝图无损互转、120fps 折线拖拽逆向反推公式（Goal-Seek）、蒙特卡洛置信带、零代码可玩卡牌 HUD 与 Unity C# / Godot GDScript / JSON 导出；在触发 AI 自然语言建图、跨工作台多模态连线与 102 工具 MCP 接入时，支持一键导出当前 JSON 无缝衔接到桌面全量版。
+- **修复 · AI 对话同会话切换模型写锁冲突与超 128 项工具上限报错（`aiartHeadlessRunner` + `deepseekHarnessService`）**：单轮对话收束后自动释放会话跨进程内核写锁，同会话跨服务商切换模型强制亲和原并发槽位并支持原地热切模型与写锁退避重试，彻底消除 `is already owned by an active write handle`；新增 `/chat/completions` 128 项工具上限智能优先级压缩与 `aiart_call_overflow_tool` 流式透明解包网关（兼容 64 上限自定义网关自适应重试），挂载多路外部 MCP 后切换 OpenAI / DeepSeek 等模型不再报 `400: Invalid 'tools': array too long`。
+- **修复 · 浏览 `.md` 文档或无工程状态下创建画布节点无响应及超长工具 JSON 自愈（`mcpServerService` + `surfaceRegistry` + `mcpTaskRunner` + `buildActiveWorkspaceContext` + `aiartHeadlessRunner`）**：左侧打开工程 Markdown 文档预览或处于临时草稿工作区时，Agent 调用 `graph_edit`（如创建 `asset.gameSystem` 系统策划案节点）会自动新建/激活自由画布、自动切换左侧工作区标签聚焦到画布并支持 `task_run` 实时驱动渲染；同时新增超长工具参数未转义引号/裸换行确定性修复（`repairMalformedToolJson`）与 `max_tokens` 输出截断自动续跑恢复。
+- **说明（发版提示）**：8.9.5 涉及主进程常驻 runner、本地 MCP 服务与渲染进程工作区联动升级，升级后请**重启应用**。
+
 ## [8.9.4] — 2026-11-11
 
 8.9.4 功能与生态升级版：**AI 对话（`ChatPanel` + `deepseekHarnessService` + `mcpServerService`）** 全面支持 **多会话跨工程并行执行（最高 6 路并发槽位独立隔离）** 与 **会话列表实时行内状态指示灯**；**画布祈福仙子与动态天气（`ChatWishShrine` + `wishShrineBridge`）** 升级 **多仙子伴飞护法与错峰谢幕庆典编排**；并新增零依赖标准桥接包 **`ai-art-engine-mcp`** 及官方 MCP Registry / Glama 认证清单。

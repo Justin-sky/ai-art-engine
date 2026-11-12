@@ -1,6 +1,6 @@
 {
   "name": "ai-art-engine-mcp",
-  "version": "8.9.4",
+  "version": "8.9.5",
   "description": "Zero-dependency MCP stdio bridge for AI Art Engine — 102 local tools for editable Photoshop PSD (TySh), Unity/Godot UI, Spine 2D rigging, Machinations game economy solver, short-drama CapCut timeline, Blender 3D, offline ONNX vision & playable HTML5",
   "type": "module",
   "bin": {

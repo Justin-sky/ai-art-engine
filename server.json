@@ -7,13 +7,13 @@
     "source": "github",
     "subfolder": "packages/ai-art-engine-mcp"
   },
-  "version": "8.9.4",
+  "version": "8.9.5",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "ai-art-engine-mcp",
-      "version": "8.9.4",
+      "version": "8.9.5",
       "transport": {
         "type": "stdio"
       }

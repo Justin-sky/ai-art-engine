@@ -53,7 +53,7 @@ export default {
     importedErr: 'Import failed: please select a valid Machinations JSON file'
   },
   modal: {
-    eyebrow: 'AI ART ENGINE · DESKTOP FULL EDITION (v8.9.4)',
+    eyebrow: 'AI ART ENGINE · DESKTOP FULL EDITION (v8.9.5)',
     closeAria: 'Close dialog',
     freeTag: 'GPL-3.0 Free & Open Source · 100% Local Projects · Built-in Zero-Key Demo',
     reasons: {

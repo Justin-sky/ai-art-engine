@@ -1,9 +1,10 @@
 # AI Art Engine (AIArtEngine)
 
-> Open-source (GPL-3.0), local-first, agent-native multimodal AI production studio & game/film asset engine for Windows, macOS, and Linux (v8.9.4). Unlike chat-only or flat-image AIGC tools, AI Art Engine combines a typed multimodal DAG node graph, 10+ full-screen Dive workbenches, an embedded full-workspace AI Agent, and a 102-tool local MCP server (`127.0.0.1`) to ship editable engineering deliverables: layered `.psd` files with native `TySh` editable text layers, Unity UGUI/UXML & Godot 4 `.tscn` UI code, Spine 2D (`skeleton.json` + `.atlas`) bone rigs, Machinations game economy & systems balance simulations (with C#/GDScript export), 5-stage 21-genre AI Comic Drama (漫剧) episodes, JianyingPro/CapCut multi-track NLE drafts, `.glb` 3D assets, and headless-Chromium smoke-tested playable HTML5 games.
+> Open-source (GPL-3.0), local-first, agent-native multimodal AI production studio & game/film asset engine for Windows, macOS, and Linux (v8.9.5). Unlike chat-only or flat-image AIGC tools, AI Art Engine combines a typed multimodal DAG node graph, 10+ full-screen Dive workbenches, an embedded full-workspace AI Agent, and a 102-tool local MCP server (`127.0.0.1`) to ship editable engineering deliverables: layered `.psd` files with native `TySh` editable text layers, Unity UGUI/UXML & Godot 4 `.tscn` UI code, Spine 2D (`skeleton.json` + `.atlas`) bone rigs, Machinations game economy & systems balance simulations (with C#/GDScript export), 5-stage 21-genre AI Comic Drama (漫剧) episodes, JianyingPro/CapCut multi-track NLE drafts, `.glb` 3D assets, and headless-Chromium smoke-tested playable HTML5 games.
 
 - Official Website (ZH): https://justin-sky.github.io/ai-art-engine/
 - Official Website (EN): https://justin-sky.github.io/ai-art-engine/index.en.html
+- Live Online Mechanics Playground: https://justin-sky.github.io/ai-art-engine/playground/index.html
 - GitHub Repository: https://github.com/Justin-sky/ai-art-engine
 - Gitee Mirror: https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine
 - Releases (Windows `.exe`, macOS `.dmg`, Linux `.AppImage`): https://github.com/Justin-sky/ai-art-engine/releases
