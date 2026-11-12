@@ -325,11 +325,307 @@ function unwrapJsonArrayErrorBody(rawText) {
   return rawText
 }
 
+const OPENAI_MAX_TOOLS = 128
+const OVERFLOW_MUX_TOOL_NAME = 'aiart_call_overflow_tool'
+const OVERFLOW_CATALOG_MARKER = '[Overflow Tools Catalog — Call via aiart_call_overflow_tool'
+
+const CORE_DSH_TOOLS_PRIORITY = new Set([
+  'read',
+  'write',
+  'edit',
+  'str_replace_editor',
+  'glob',
+  'grep',
+  'pwsh',
+  'bash',
+  'todo_write',
+  'goal',
+  'present',
+  'schedule',
+  'ask_user_question',
+  'subagent',
+  'subagent_fork',
+  'send_message',
+  'skill',
+  'web_fetch',
+  'web_search',
+  'jobs'
+])
+
+const CORE_STUDIO_TOOLS_PRIORITY = new Set([
+  'mcp__studio__graph_read',
+  'mcp__studio__graph_edit',
+  'mcp__studio__graph_node_types',
+  'mcp__studio__task_run',
+  'mcp__studio__task_status',
+  'mcp__studio__asset_create',
+  'mcp__studio__asset_list',
+  'mcp__studio__asset_import',
+  'mcp__studio__asset_read_file',
+  'mcp__studio__asset_write_text',
+  'mcp__studio__project_list',
+  'mcp__studio__project_open',
+  'mcp__studio__app_status',
+  'mcp__studio__models_list',
+  'mcp__studio__director_stage_read',
+  'mcp__studio__director_stage_edit',
+  'mcp__studio__timeline_read',
+  'mcp__studio__timeline_edit',
+  'mcp__studio__timeline_rough_cut',
+  'mcp__studio__timeline_preview',
+  'mcp__studio__timeline_export',
+  'mcp__studio__render_svg',
+  'mcp__studio__web_extract_article',
+  'mcp__studio__web_fetch_video',
+  'mcp__studio__game_one_sentence_create',
+  'mcp__studio__gameplay_prepare_project',
+  'mcp__studio__gameplay_build',
+  'mcp__studio__gameplay_job_status',
+  'mcp__studio__game_ui_suite_create',
+  'mcp__studio__skill_search',
+  'mcp__studio__skill_install',
+  'mcp__studio__skill_list',
+  'mcp__studio__skill_inspect_github',
+  'mcp__studio__transcribe_audio',
+  'mcp__studio__detect_video_keyframes',
+  'mcp__studio__grab_video_frames',
+  'mcp__studio__analyze_video_beats',
+  'mcp__studio__semantic_analyze_video'
+])
+
+const GENERIC_TOOL_TOKENS = new Set([
+  'list',
+  'read',
+  'edit',
+  'create',
+  'delete',
+  'update',
+  'status',
+  'file',
+  'files',
+  'get',
+  'set',
+  'run',
+  'open',
+  'move',
+  'tool',
+  'asset',
+  'project',
+  'game',
+  'node',
+  'graph',
+  'studio'
+])
+
+function extractToolEntryName(entry) {
+  if (!entry || typeof entry !== 'object') return ''
+  if (typeof entry.function?.name === 'string') return entry.function.name.trim()
+  if (typeof entry.name === 'string') return entry.name.trim()
+  return ''
+}
+
+function extractMessageTextForToolRank(msg) {
+  if (!msg || typeof msg !== 'object') return ''
+  if (typeof msg.content === 'string') return msg.content
+  if (Array.isArray(msg.content)) {
+    return msg.content
+      .map((part) => (part && typeof part.text === 'string' ? part.text : ''))
+      .filter(Boolean)
+      .join('\n')
+  }
+  return ''
+}
+
+function matchesUserIntentForTool(toolName, recentLower) {
+  if (!toolName || !recentLower) return false
+  const lowerName = toolName.toLowerCase()
+  if (recentLower.includes(lowerName)) return true
+  const mcpMatch = /^mcp__([^_]+(?:_[^_]+)*?)__(.+)$/i.exec(toolName)
+  const serverName = mcpMatch ? mcpMatch[1].toLowerCase() : ''
+  const shortName = mcpMatch ? mcpMatch[2].toLowerCase() : lowerName
+  if (recentLower.includes(shortName) && shortName.length >= 4) return true
+  if (
+    serverName &&
+    serverName !== 'studio' &&
+    serverName.length >= 3 &&
+    recentLower.includes(serverName)
+  ) {
+    return true
+  }
+  const tokens = shortName
+    .split(/[_-]+/)
+    .filter((t) => t.length >= 4 && !GENERIC_TOOL_TOKENS.has(t))
+  return tokens.some((tok) => recentLower.includes(tok))
+}
+
+function summarizeOverflowToolLine(name, entry) {
+  const fn = entry?.function && typeof entry.function === 'object' ? entry.function : entry || {}
+  const props =
+    fn.parameters?.properties && typeof fn.parameters.properties === 'object'
+      ? Object.keys(fn.parameters.properties)
+      : []
+  const reqSet = new Set(Array.isArray(fn.parameters?.required) ? fn.parameters.required : [])
+  const paramSig = props
+    .slice(0, 8)
+    .map((k) => (reqSet.has(k) ? k + '*' : k))
+    .join(', ')
+  const more = props.length > 8 ? ', …' : ''
+  const rawDesc =
+    typeof fn.description === 'string' ? fn.description.replace(/\s+/g, ' ').trim() : ''
+  const shortDesc = rawDesc.length > 90 ? rawDesc.slice(0, 87) + '...' : rawDesc
+  return `- ${name}(${paramSig}${more})${shortDesc ? ': ' + shortDesc : ''}`
+}
+
+/**
+ * OpenAI, DeepSeek, Gemini OpenAI-compat, DashScope, Azure, and vLLM enforce a hard limit of 128
+ * entries in `body.tools` (`400: Invalid 'tools': array too long. Expected an array with maximum length 128`).
+ * When studio MCP + built-in dsh tools + external MCP servers exceed `maxTools`, keep the top
+ * `maxTools - 1` priority tools in native slots (preserving original order for KV-cache stability)
+ * and multiplex all remaining tools losslessly through `aiart_call_overflow_tool`, which
+ * `wrapDsmlStream` unwraps back into the real tool call before `dsh-agent-loop` executes it.
+ */
+function compactOpenAiToolsForMaxLimit(parsed, maxTools = OPENAI_MAX_TOOLS) {
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.tools)) return false
+  const rawTools = parsed.tools.filter((t) => extractToolEntryName(t) !== OVERFLOW_MUX_TOOL_NAME)
+  if (rawTools.length <= maxTools) return false
+  const safeMax = Math.max(2, Math.floor(maxTools))
+  const directLimit = safeMax - 1
+
+  const usedToolNames = new Set()
+  const recentUserTexts = []
+  if (Array.isArray(parsed.messages)) {
+    for (const msg of parsed.messages) {
+      if (!msg || typeof msg !== 'object') continue
+      if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+        for (const tc of msg.tool_calls) {
+          const n = tc?.function?.name || tc?.name
+          if (typeof n === 'string' && n) usedToolNames.add(n)
+        }
+      } else if (msg.role === 'tool' && typeof msg.name === 'string' && msg.name) {
+        usedToolNames.add(msg.name)
+      } else if (msg.role === 'user') {
+        const txt = extractMessageTextForToolRank(msg)
+        if (txt) recentUserTexts.push(txt)
+      }
+    }
+  }
+  const recentLower = recentUserTexts.slice(-3).join('\n').slice(-4000).toLowerCase()
+
+  const externalServerOrdinals = new Map()
+  const ranked = rawTools.map((entry, index) => {
+    const name = extractToolEntryName(entry)
+    let score = 0
+    if (usedToolNames.has(name)) score += 10000
+    if (matchesUserIntentForTool(name, recentLower)) score += 5000
+    if (CORE_DSH_TOOLS_PRIORITY.has(name)) {
+      score += 3000
+    } else if (CORE_STUDIO_TOOLS_PRIORITY.has(name)) {
+      score += 2000
+    } else if (/^mcp__(?!studio__)/i.test(name)) {
+      const m = /^mcp__([^_]+(?:_[^_]+)*?)__/i.exec(name)
+      const srv = m ? m[1].toLowerCase() : 'ext'
+      const ord = externalServerOrdinals.get(srv) || 0
+      externalServerOrdinals.set(srv, ord + 1)
+      // Round-robin fairness across multiple external MCP servers while staying above niche studio tools
+      score += Math.max(800, 1500 - ord * 2)
+    } else {
+      score += 500
+    }
+    return { entry, name, index, score }
+  })
+
+  ranked.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.index - b.index))
+  const kept = ranked.slice(0, directLimit)
+  const overflow = ranked.slice(directLimit)
+  // Restore original declaration order so prompt KV-cache hits stay stable across turns
+  kept.sort((a, b) => a.index - b.index)
+  overflow.sort((a, b) => a.index - b.index)
+
+  const overflowNames = overflow.map((item) => item.name).filter(Boolean)
+  const muxTool = {
+    type: 'function',
+    function: {
+      name: OVERFLOW_MUX_TOOL_NAME,
+      description: `Invoke one of ${overflowNames.length} additional registered MCP/studio tools beyond the direct tool limit (see [Overflow Tools Catalog] for parameter details). Pass exact \`tool_name\` and its JSON \`arguments\` object.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          tool_name: {
+            type: 'string',
+            enum: overflowNames,
+            description: 'Exact registered tool name to call.'
+          },
+          arguments: {
+            type: 'object',
+            description: 'JSON arguments object for the selected tool.',
+            additionalProperties: true
+          }
+        },
+        required: ['tool_name', 'arguments']
+      }
+    }
+  }
+
+  parsed.tools = [...kept.map((item) => item.entry), muxTool]
+
+  if (Array.isArray(parsed.messages) && overflow.length > 0) {
+    const catalogBlock =
+      `${OVERFLOW_CATALOG_MARKER}({ "tool_name": "<name>", "arguments": { ... } })]\n` +
+      overflow.map((item) => summarizeOverflowToolLine(item.name, item.entry)).join('\n')
+
+    const stripOldCatalog = (txt) => {
+      const idx = txt.indexOf('\n\n' + OVERFLOW_CATALOG_MARKER)
+      if (idx >= 0) return txt.slice(0, idx)
+      const idx0 = txt.indexOf(OVERFLOW_CATALOG_MARKER)
+      if (idx0 >= 0) return txt.slice(0, idx0).trimEnd()
+      return txt
+    }
+
+    const sysIdx = parsed.messages.findIndex(
+      (m) => m && typeof m === 'object' && (m.role === 'system' || m.role === 'developer')
+    )
+    if (sysIdx >= 0) {
+      const target = { ...parsed.messages[sysIdx] }
+      if (typeof target.content === 'string') {
+        const cleanBase = stripOldCatalog(target.content)
+        target.content = cleanBase ? cleanBase + '\n\n' + catalogBlock : catalogBlock
+      } else if (Array.isArray(target.content)) {
+        const filtered = target.content.filter(
+          (p) => !(p && typeof p.text === 'string' && p.text.includes(OVERFLOW_CATALOG_MARKER))
+        )
+        target.content = [...filtered, { type: 'text', text: '\n\n' + catalogBlock }]
+      }
+      parsed.messages = parsed.messages.map((m, idx) => (idx === sysIdx ? target : m))
+    } else {
+      parsed.messages = [{ role: 'system', content: catalogBlock }, ...parsed.messages]
+    }
+  }
+
+  return true
+}
+
 function sanitizeOpenAiChatPayload(rawBody, urlStr, sigCache = thoughtSignatureCache) {
   if (typeof rawBody !== 'string' || !rawBody.trim().startsWith('{')) {
     return { body: rawBody, isGemini: false, parsed: null }
   }
   if (isDeepSeekOfficialUrl(urlStr)) {
+    if (rawBody.includes('"tools"')) {
+      try {
+        const dsParsed = JSON.parse(rawBody)
+        if (
+          dsParsed &&
+          typeof dsParsed === 'object' &&
+          !Array.isArray(dsParsed) &&
+          Array.isArray(dsParsed.tools) &&
+          dsParsed.tools.length > OPENAI_MAX_TOOLS
+        ) {
+          compactOpenAiToolsForMaxLimit(dsParsed, OPENAI_MAX_TOOLS)
+          return { body: JSON.stringify(dsParsed), isGemini: false, parsed: dsParsed }
+        }
+      } catch {
+        /* keep original rawBody */
+      }
+    }
     return { body: rawBody, isGemini: false, parsed: null }
   }
   let parsed
@@ -464,6 +760,8 @@ function sanitizeOpenAiChatPayload(rawBody, urlStr, sigCache = thoughtSignatureC
       return copy
     })
   }
+
+  compactOpenAiToolsForMaxLimit(parsed, OPENAI_MAX_TOOLS)
 
   return {
     body: JSON.stringify(parsed),
@@ -681,12 +979,50 @@ function installOpenAiCompatFetchBridge() {
       typeof init?.body === 'string' &&
       /\/chat\/completions(?:\?.*)?$/i.test(urlStr)
     ) {
-      const { body, isGemini, parsed } = sanitizeOpenAiChatPayload(
+      let { body, isGemini, parsed } = sanitizeOpenAiChatPayload(
         init.body,
         urlStr,
         thoughtSignatureCache
       )
       let response = await originalFetch(input, { ...init, body })
+
+      // Auto-adapt if a stricter custom OpenAI-compatible gateway enforces a smaller max tools limit (e.g. 64 or 100)
+      if (!response.ok && response.status === 400) {
+        const probeErrText = await response.text()
+        const maxToolsMatch =
+          /Invalid\s+['"]?tools['"]?[^]*?maximum length\s+(\d+)/i.exec(probeErrText) ||
+          /tools[^]*?Expected an array with maximum length\s+(\d+)/i.exec(probeErrText)
+        const stricterMax = maxToolsMatch ? Number(maxToolsMatch[1]) : 0
+        if (stricterMax >= 2 && Array.isArray(parsed?.tools) && stricterMax < parsed.tools.length) {
+          const fresh = sanitizeOpenAiChatPayload(init.body, urlStr, thoughtSignatureCache)
+          const retryObj =
+            fresh.parsed ||
+            (() => {
+              try {
+                return JSON.parse(init.body)
+              } catch {
+                return null
+              }
+            })()
+          if (retryObj && compactOpenAiToolsForMaxLimit(retryObj, stricterMax)) {
+            parsed = retryObj
+            body = JSON.stringify(retryObj)
+            response = await originalFetch(input, { ...init, body })
+          } else {
+            response = new Response(probeErrText, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers
+            })
+          }
+        } else {
+          response = new Response(probeErrText, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers
+          })
+        }
+      }
 
       if (isGemini && !response.ok && parsed && typeof parsed.model === 'string') {
         const firstErrText = await response.text()
@@ -1125,13 +1461,82 @@ function parseDsmlToolCalls(dsmlText, availableTools) {
       }
     }
 
+    const unwrapped = unwrapOverflowToolCall(resolvedName, JSON.stringify(argsObj), availableTools)
     calls.push({
       id: 'call_dsml_' + Date.now().toString(36) + '_' + ++dsmlCallSeq,
-      name: resolvedName,
-      arguments: JSON.stringify(argsObj)
+      name: unwrapped.name,
+      arguments: unwrapped.arguments
     })
   }
   return calls
+}
+
+/**
+ * Unwrap `aiart_call_overflow_tool({ tool_name, arguments })` back into a native tool call
+ * for the underlying registered MCP / studio / dsh tool so `dsh-agent-loop` executes it directly.
+ */
+function unwrapOverflowToolCall(callName, rawArgsStr, availableTools) {
+  if (callName !== OVERFLOW_MUX_TOOL_NAME) {
+    return { name: callName, arguments: rawArgsStr, unwrapped: false }
+  }
+  const repairedOuter =
+    typeof rawArgsStr === 'string' && rawArgsStr.trim() ? repairMalformedToolJson(rawArgsStr) : '{}'
+  let parsedOuter
+  try {
+    parsedOuter = JSON.parse(repairedOuter)
+  } catch {
+    return { name: callName, arguments: repairedOuter, unwrapped: false }
+  }
+  if (!parsedOuter || typeof parsedOuter !== 'object' || Array.isArray(parsedOuter)) {
+    return { name: callName, arguments: repairedOuter, unwrapped: false }
+  }
+  const rawTarget =
+    typeof parsedOuter.tool_name === 'string'
+      ? parsedOuter.tool_name.trim()
+      : typeof parsedOuter.toolName === 'string'
+        ? parsedOuter.toolName.trim()
+        : typeof parsedOuter.name === 'string'
+          ? parsedOuter.name.trim()
+          : typeof parsedOuter.tool === 'string'
+            ? parsedOuter.tool.trim()
+            : ''
+  if (!rawTarget) {
+    return { name: callName, arguments: repairedOuter, unwrapped: false }
+  }
+  let resolvedName = rawTarget
+  if (Array.isArray(availableTools) && availableTools.length > 0) {
+    const known = new Set(availableTools.map((t) => t?.name).filter(Boolean))
+    if (!known.has(resolvedName) && !resolvedName.startsWith('mcp__studio__')) {
+      const studioCandidate = 'mcp__studio__' + resolvedName
+      if (known.has(studioCandidate)) {
+        resolvedName = studioCandidate
+      }
+    }
+  }
+  let innerArgs =
+    parsedOuter.arguments !== undefined
+      ? parsedOuter.arguments
+      : parsedOuter.args !== undefined
+        ? parsedOuter.args
+        : parsedOuter.params !== undefined
+          ? parsedOuter.params
+          : undefined
+  if (innerArgs === undefined) {
+    const rest = { ...parsedOuter }
+    delete rest.tool_name
+    delete rest.toolName
+    delete rest.name
+    delete rest.tool
+    innerArgs = rest
+  }
+  let innerArgsStr = '{}'
+  if (typeof innerArgs === 'string') {
+    const trimmed = innerArgs.trim()
+    innerArgsStr = trimmed ? repairMalformedToolJson(trimmed) : '{}'
+  } else if (innerArgs && typeof innerArgs === 'object' && !Array.isArray(innerArgs)) {
+    innerArgsStr = JSON.stringify(innerArgs)
+  }
+  return { name: resolvedName, arguments: innerArgsStr, unwrapped: true }
 }
 
 async function* wrapDsmlStream(source, options, getMode) {
@@ -1326,21 +1731,56 @@ async function* wrapDsmlStream(source, options, getMode) {
     if (chunk.type === 'tool-call-delta') {
       let tc = partialToolCalls.get(chunk.index)
       if (!tc) {
-        tc = { id: chunk.id, name: chunk.name || '', args: '' }
+        tc = {
+          id: chunk.id,
+          name: chunk.name || '',
+          args: '',
+          bufferedMux: chunk.name === OVERFLOW_MUX_TOOL_NAME
+        }
         partialToolCalls.set(chunk.index, tc)
       } else {
         if (chunk.id) tc.id = chunk.id
-        if (chunk.name) tc.name = chunk.name
+        if (chunk.name) {
+          tc.name = chunk.name
+          if (chunk.name === OVERFLOW_MUX_TOOL_NAME) tc.bufferedMux = true
+        }
       }
       tc.args += chunk.argumentsDelta ?? ''
+      if (tc.bufferedMux) {
+        continue
+      }
       yield chunk
       continue
     }
 
     if (chunk.type === 'block-end' && chunk.block?.type === 'tool-call') {
+      const tc = partialToolCalls.get(chunk.index)
       partialToolCalls.delete(chunk.index)
-      const rawArgs = typeof chunk.block.arguments === 'string' ? chunk.block.arguments : ''
+      const rawName = chunk.block.name || tc?.name || ''
+      const rawArgs =
+        typeof chunk.block.arguments === 'string' ? chunk.block.arguments : tc?.args || ''
       const repairedArgs = rawArgs ? repairMalformedToolJson(rawArgs) : rawArgs
+      const unwrapped = unwrapOverflowToolCall(rawName, repairedArgs, options?.tools)
+      const finalId = chunk.block.id || tc?.id || 'call-' + chunk.index
+      if (tc?.bufferedMux || unwrapped.unwrapped) {
+        yield {
+          type: 'tool-call-delta',
+          index: chunk.index,
+          id: finalId,
+          name: unwrapped.name,
+          argumentsDelta: unwrapped.arguments
+        }
+        yield {
+          ...chunk,
+          block: {
+            ...chunk.block,
+            id: finalId,
+            name: unwrapped.name,
+            arguments: unwrapped.arguments
+          }
+        }
+        continue
+      }
       yield repairedArgs !== rawArgs
         ? {
             ...chunk,
@@ -1367,7 +1807,28 @@ async function* wrapDsmlStream(source, options, getMode) {
         chunk.reason?.kind !== 'max-tokens'
       ) {
         for (const [idx, tc] of partialToolCalls.entries()) {
-          if (tc.args) {
+          if (tc.bufferedMux || tc.name === OVERFLOW_MUX_TOOL_NAME) {
+            const repaired = tc.args ? repairMalformedToolJson(tc.args) : '{}'
+            const unwrapped = unwrapOverflowToolCall(tc.name, repaired, options?.tools)
+            const finalId = tc.id || 'call-' + idx
+            yield {
+              type: 'tool-call-delta',
+              index: idx,
+              id: finalId,
+              name: unwrapped.name,
+              argumentsDelta: unwrapped.arguments
+            }
+            yield {
+              type: 'block-end',
+              index: idx,
+              block: {
+                type: 'tool-call',
+                id: finalId,
+                name: unwrapped.name,
+                arguments: unwrapped.arguments
+              }
+            }
+          } else if (tc.args) {
             const repaired = repairMalformedToolJson(tc.args)
             if (repaired !== tc.args) {
               yield {
@@ -3329,10 +3790,13 @@ function apply(ctx, config) {
 
 export {
   Config,
+  OPENAI_MAX_TOOLS,
+  OVERFLOW_MUX_TOOL_NAME,
   RESUME_WRITE_HANDLE_RETRY_DELAYS_MS,
   apply,
   applyLiveModelSelection,
   applySessionSandboxMode,
+  compactOpenAiToolsForMaxLimit,
   createDelegationTracker,
   detectSandboxBlockedResult,
   inject,
@@ -3351,6 +3815,7 @@ export {
   stripDsmlFromText,
   transformGeminiSsePayload,
   unwrapJsonArrayErrorBody,
+  unwrapOverflowToolCall,
   wrapDsmlStream,
   wrapGeminiSseResponse
 }
