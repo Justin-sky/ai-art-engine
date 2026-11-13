@@ -7,6 +7,7 @@ import {
   type RuntimeAgentTool,
   type RuntimeToolResult
 } from './piModelResolver'
+import { guardToolResultBlocks } from './piPayloadGuard'
 
 /**
  * 单次请求激活工具总上限（含原生工具 + studio_core + 动态懒加载工具集）。
@@ -282,7 +283,7 @@ function serializeToolOutcomeContent(outcome: McpToolCallOutcome): (TextContent 
   const blocks: (TextContent | ImageContent)[] = []
   if (outcome.error) {
     blocks.push({ type: 'text', text: outcome.error })
-    return blocks
+    return guardToolResultBlocks(blocks)
   }
   const text =
     typeof outcome.result === 'string'
@@ -300,7 +301,7 @@ function serializeToolOutcomeContent(outcome: McpToolCallOutcome): (TextContent 
       }
     }
   }
-  return blocks
+  return guardToolResultBlocks(blocks)
 }
 
 export interface ToolsetDirectorySummary {
@@ -359,6 +360,7 @@ export class McpLazyToolsetManager {
 
   private readonly mounted = new Map<string, MountedToolsetRecord>()
   private readonly externalToolCache = new Map<string, LazyMcpToolDescriptor[]>()
+  private readonly externalFailureCooldownUntil = new Map<string, number>()
   private readonly agentToolCache = new Map<string, RuntimeAgentTool>()
   private useSeq = 0
   private nativeToolsProvider: () => RuntimeAgentTool[] = () => []
@@ -503,6 +505,9 @@ export class McpLazyToolsetManager {
           allExtTools = await this.backend.listExternalTools(serverId)
           if (allExtTools.length > 0) {
             this.externalToolCache.set(serverId, allExtTools)
+            this.externalFailureCooldownUntil.delete(serverId)
+          } else {
+            this.externalFailureCooldownUntil.set(serverId, Date.now() + 60_000)
           }
         }
         const { selected, omittedNames } = selectRelevantExternalTools(
@@ -574,11 +579,23 @@ export class McpLazyToolsetManager {
       /\b(reverse[-\s]?engineer|decompile|disassembl|apk|xapk|dex|macho|elf|pe\b|frida|gdb|rizin|objdump|ghidra|ida|il2cpp)\b|(逆向|反编译|解包|脱壳|二进制分析|汇编|符号表)/i.test(
         text
       )
+    const matchesWholeServerToken = (haystack: string, token: string): boolean => {
+      const clean = token.trim().toLowerCase()
+      if (!clean) return false
+      if (/^[a-z0-9_-]+$/.test(clean)) {
+        const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        return new RegExp(`(?:^|[^a-z0-9_-])${escaped}(?:$|[^a-z0-9_-])`, 'i').test(haystack)
+      }
+      return haystack.includes(clean)
+    }
+    const now = Date.now()
     for (const ext of this.backend.listExternalServers()) {
+      const cooldownUntil = this.externalFailureCooldownUntil.get(ext.id) ?? 0
+      if (cooldownUntil > now) continue
       const extId = `ext:${ext.id}`
       const mentionsServer =
-        lower.includes(ext.id.toLowerCase()) ||
-        (ext.name && lower.includes(ext.name.toLowerCase())) ||
+        matchesWholeServerToken(lower, ext.id) ||
+        Boolean(ext.name && matchesWholeServerToken(lower, ext.name)) ||
         (ext.id.toLowerCase() === 'rea' && reverseEngIntent)
       if (mentionsServer) {
         candidates.push(extId)

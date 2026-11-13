@@ -2118,8 +2118,14 @@ export function pickActiveProvider(
   })
   if (!candidates.length) return null
 
+  const cleanPreferredModel = preferredModelId?.trim()
   const provider =
     (preferredInstanceId ? findProviderById(candidates, preferredInstanceId) : undefined) ??
+    (cleanPreferredModel
+      ? candidates.find((p) =>
+          modalityConfig(p, modality).selectedModelIds.includes(cleanPreferredModel)
+        )
+      : undefined) ??
     candidates[0]
 
   const selected = modalityConfig(provider, modality).selectedModelIds

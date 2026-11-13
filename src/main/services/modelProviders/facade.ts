@@ -72,12 +72,13 @@ import {
   appendImageTransparentBgPrompt,
   supportsNativeTransparentImageModel
 } from '@shared/graph/userPromptSchemes'
+import { supportsGifOutput, supportsSvgOutput } from '@shared/graph/imageGenerateParams'
 import { pickSpatialWorldJobs } from '@shared/videoJob'
 import { buildDecisionsRequest } from './decisions'
 import { meshOpSupported } from '@shared/meshOps'
 import { createProviderHttpClient, sleep } from './http'
 import { PROVIDER_ERRORS } from './catalog'
-import { fail, defErrSimple, isAppError } from '@shared/errors/appError'
+import { fail, defErrSimple, formatBi, isAppError } from '@shared/errors/appError'
 import {
   buildProviderSnapshot,
   resolveActiveMusicProvider,
@@ -128,6 +129,37 @@ import { defErr } from '@shared/errors/appError'
 import { soundEffectPromptNeedsEnglish } from '@shared/modelProviders/elevenlabs/voice'
 
 // ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_IMAGE_PROVIDER_FALLBACK = defErr<{
+  fromProvider: string
+  fromModel: string
+  toProvider: string
+  toModel: string
+}>(
+  'provider.facade.image-provider-fallback',
+  ({ fromProvider, fromModel, toProvider, toModel }) =>
+    `首选图片通道 ${fromProvider}（${fromModel}）不可达或异常，已自动切换至备用通道 ${toProvider}（${toModel}）完成生成`,
+  ({ fromProvider, fromModel, toProvider, toModel }) =>
+    `Primary image channel ${fromProvider} (${fromModel}) was unreachable or failed; automatically switched to fallback ${toProvider} (${toModel})`
+)
+
+function isImageFailoverEligibleError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '')
+  if (!msg) return false
+  if (/Request was aborted|AbortError|ERR_CANCELED|\u8bf7\u6c42\u88ab\u4e2d\u65ad/i.test(msg)) {
+    return false
+  }
+  if (
+    /content[_\s-]?policy|policy violation|moderation|safety|sensitive|\u5185\u5bb9\u8fdd\u89c4|\u5185\u5bb9\u7b56\u7565|\u654f\u611f|\u4ec5\u652f\u6301\u7eaf\u6587\u672c\u751f\u6210|\u4e0d\u652f\u6301\u53c2\u8003\u56fe/i.test(
+      msg
+    )
+  ) {
+    return false
+  }
+  return /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EPIPE|ERR_PROXY_TUNNEL|UND_ERR_SOCKET|socket disconnected|socket hang up|Network Error|fetch failed|401|402|403|404|429|500|502|503|504|quota|rate limit|insufficient|unauthorized|invalid api key|model_not_found|does not exist|no available channel|\u7f51\u5173\u8d85\u65f6|\u5185\u90e8\u9519\u8bef|\u65e0\u53ef\u7528\u6e20\u9053/i.test(
+    msg
+  )
+}
+
 const E_NO_PROJECT = defErrSimple(
   'provider.facade.project-not-open',
   '未打开工程',
@@ -615,32 +647,100 @@ class ModelProviderFacade {
   }
 
   async generateImage(input: GenerateImageInput): Promise<GenerateImageResult> {
-    const { provider, modelId } = resolveActiveProvider(
-      'image',
-      input.providerInstanceId,
-      input.model
-    )
+    const primary = resolveActiveProvider('image', input.providerInstanceId, input.model)
     // 参考图统一在这里落地为 API 可用形态，并顺手压掉超限的大图（相机原图动辄 20MB，
     // 会被上游按「文件不符合要求」拒掉）；压缩说明与适配器自己的说明（如某模型只收 1 张
     // 参考图、其余未发送）合并后回传给运行日志，两者不能互相覆盖。
     const { urls: inputReferences, notes: shrinkNotes } = ensureApiImageUrlsWithNotes(
       input.inputReferences
     )
-    const prompt =
-      input.transparentBackground && supportsNativeTransparentImageModel(modelId)
-        ? appendImageTransparentBgPrompt(input.prompt, undefined, { nativeTransparentModel: true })
-        : input.prompt
-    const result = await getProviderAdapter(provider.providerKind).generateImage(
-      provider,
-      modelId,
-      {
-        ...input,
-        prompt,
-        inputReferences
+
+    const providers = settingsService.get()?.models?.providers ?? []
+    const requestedFormat = (input.outputFormat || '').trim().toLowerCase()
+    const hasReferences = Boolean(inputReferences && inputReferences.length > 0)
+
+    const attemptChain: Array<{ provider: ModelProviderInstance; modelId: string }> = [primary]
+    const seen = new Set<string>([`${primary.provider.id}::${primary.modelId}`])
+    const isCompatibleCandidate = (p: ModelProviderInstance, candidateModel: string): boolean => {
+      const clean = candidateModel.trim()
+      if (!clean) return false
+      if (!p.enabled) return false
+      if (!p.apiKey.trim() && !allowsEmptyApiKey(p)) return false
+      if (hasReferences && p.providerKind === 'zhipu') return false
+      const caps = modalityConfig(p, 'image').catalog?.[clean]?.capabilities
+      if (requestedFormat === 'gif' && !supportsGifOutput(clean, caps)) return false
+      if (requestedFormat === 'svg' && !supportsSvgOutput(clean, caps)) return false
+      return true
+    }
+    const pushCandidate = (p: ModelProviderInstance, candidateModel: string): void => {
+      const clean = candidateModel.trim()
+      if (!isCompatibleCandidate(p, clean)) return
+      const key = `${p.id}::${clean}`
+      if (seen.has(key)) return
+      seen.add(key)
+      attemptChain.push({ provider: p, modelId: clean })
+    }
+
+    // 优先级 1：其余已启用提供商中勾选了完全相同模型 ID 的实例（如 OpenAI 官方不可达时自动切同名中转网关）
+    for (const p of providers) {
+      if (modalityConfig(p, 'image').selectedModelIds.includes(primary.modelId)) {
+        pushCandidate(p, primary.modelId)
       }
-    )
-    const referenceNotes = [...shrinkNotes, ...(result.referenceNotes ?? [])]
-    return referenceNotes.length ? { ...result, referenceNotes } : result
+    }
+    // 优先级 2：其余已启用且兼容输出格式/参考图能力的图片提供商默认模型
+    for (const p of providers) {
+      const cfg = modalityConfig(p, 'image')
+      if (!cfg.selectedModelIds.length) continue
+      const preferred =
+        cfg.defaultModelId && cfg.selectedModelIds.includes(cfg.defaultModelId)
+          ? cfg.defaultModelId
+          : cfg.selectedModelIds[0]
+      if (preferred) pushCandidate(p, preferred)
+    }
+
+    let firstError: unknown
+    let lastError: unknown
+    for (let i = 0; i < attemptChain.length; i += 1) {
+      const target = attemptChain[i]!
+      const prompt =
+        input.transparentBackground && supportsNativeTransparentImageModel(target.modelId)
+          ? appendImageTransparentBgPrompt(input.prompt, undefined, {
+              nativeTransparentModel: true
+            })
+          : input.prompt
+      try {
+        const result = await getProviderAdapter(target.provider.providerKind).generateImage(
+          target.provider,
+          target.modelId,
+          {
+            ...input,
+            prompt,
+            inputReferences
+          }
+        )
+        const fallbackNotes =
+          i > 0
+            ? [
+                formatBi(E_IMAGE_PROVIDER_FALLBACK, {
+                  fromProvider: primary.provider.label,
+                  fromModel: primary.modelId,
+                  toProvider: target.provider.label,
+                  toModel: target.modelId
+                })
+              ]
+            : []
+        const referenceNotes = [...shrinkNotes, ...fallbackNotes, ...(result.referenceNotes ?? [])]
+        return referenceNotes.length ? { ...result, referenceNotes } : result
+      } catch (err) {
+        if (firstError === undefined) firstError = err
+        lastError = err
+        if (!isImageFailoverEligibleError(err)) {
+          throw err
+        }
+      }
+    }
+
+    throw firstError ?? lastError
   }
 
   async submitVideo(input: GenerateVideoInput): Promise<GenerateVideoJob> {

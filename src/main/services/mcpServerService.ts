@@ -239,6 +239,13 @@ import { extractWebArticleWithHeadlessBrowser } from './webArticleExtractService
 import { fetchWebVideoClipsToImports } from './webVideoFetchService'
 import { broadcastToAllWindows } from '../broadcast'
 import {
+  compactImageBufferForAgentVision,
+  hasBinarySignatureOrNullBytes,
+  isSafePlainTextFilePath,
+  sanitizeStructuredToolValue,
+  VISION_HARD_MAX_RAW_BYTES
+} from '../agent/piPayloadGuard'
+import {
   fetchSkillCatalog,
   installSkillFromMarket,
   listInstalledWorkflowDetails,
@@ -2488,8 +2495,12 @@ const TOOL_DEFS: McpToolDef[] = [
         }
       }
 
-      // 默认等待画布节点执行完成（单次阻塞窗口 240s，低于 Node undici 300s headersTimeout，避免触发 fetch failed）
-      const maxWaitMs = 4 * 60 * 1000
+      // 进程内 Pi Agent 直连调用（pi-slot-*）不受 HTTP undici 300s headersTimeout 限制，允许长耗时视频/多节点批量作业完整等待（30 分钟）；
+      // 外部 HTTP MCP 客户端仍保持 240s 单次阻塞窗口，低于 300s headersTimeout 以避免触发 fetch failed。
+      const isInProcessPi = Boolean(
+        mcpCallContextStorage.getStore()?.workerSlot?.startsWith('pi-slot-')
+      )
+      const maxWaitMs = isInProcessPi ? 30 * 60 * 1000 : 4 * 60 * 1000
       const startedWaitAt = Date.now()
       let acceptedSeen = false
       let lastTaskId: string | null = null
@@ -2558,6 +2569,7 @@ const TOOL_DEFS: McpToolDef[] = [
           }
         }
       }
+      detachedMcpTaskIds.add(mcpTaskId)
       return {
         mcpTaskId,
         taskId: lastTaskId,
@@ -2574,16 +2586,37 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'task_status',
     title: '任务状态',
     description:
-      '查询 task_run 返回的 mcpTaskId 当前执行状态（running / done / error / stopped）。',
+      '查询 task_run 返回的 mcpTaskId 当前执行状态（running / done / error / stopped）。若仍在 running，可自动短轮询等待状态更新。',
     inputSchema: {
       type: 'object',
-      properties: { mcpTaskId: { type: 'string' } },
+      properties: {
+        mcpTaskId: { type: 'string' },
+        waitMs: {
+          type: 'integer',
+          description: '可选：当任务仍在 running 时最多阻塞等待的毫秒数（0~60000）'
+        }
+      },
       required: ['mcpTaskId']
     },
-    handler: (args) => {
+    handler: async (args, ctx) => {
       const mcpTaskId = readString(args, 'mcpTaskId')
-      const report = pendingMcpTaskReports.get(mcpTaskId)
+      let report = pendingMcpTaskReports.get(mcpTaskId)
       if (!report) throw new Error('未知任务 id（或尚未受理）')
+      const isInProcessPi = Boolean(
+        mcpCallContextStorage.getStore()?.workerSlot?.startsWith('pi-slot-')
+      )
+      const defaultWaitMs = isInProcessPi ? 12_000 : 0
+      const rawWait = args.waitMs !== undefined ? Number(args.waitMs) : defaultWaitMs
+      const maxPollMs = Number.isFinite(rawWait)
+        ? Math.min(60_000, Math.max(0, Math.trunc(rawWait)))
+        : defaultWaitMs
+      const startedAt = Date.now()
+      while (report && report.phase === 'accepted' && Date.now() - startedAt < maxPollMs) {
+        if (ctx?.signal?.aborted) break
+        await sleep(300)
+        report = pendingMcpTaskReports.get(mcpTaskId)
+      }
+      if (!report) throw new Error('未知任务 id（或已清理）')
       if (
         report.phase === 'finished' &&
         Array.isArray(report.relativePaths) &&
@@ -2722,7 +2755,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_read',
     title: '读取节点图',
     description:
-      '读取一个已落盘的宿主资产图的结构：节点（id / 类型 / 标题）与连线清单，供 graph_edit 前确认节点 id，或 task_run 前了解图内容。只读操作，图在编辑器中打开时也可调用。省略 assetId 时自动读取当前画布资产。',
+      '读取一个已落盘的宿主资产图的结构：节点（id / 类型 / 标题）与连线清单，供 graph_edit 前确认节点 id，或 task_run 前了解图内容。只读操作，图在编辑器中打开时也可调用。省略 assetId 时自动读取当前画布资产；支持传 nodeId / nodeIds 仅读取指定节点参数。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2732,7 +2765,16 @@ const TOOL_DEFS: McpToolDef[] = [
         },
         includeParams: {
           type: 'boolean',
-          description: 'true 时附带每个节点的完整参数（默认只返回结构摘要）'
+          description: 'true 时附带每个节点的参数（默认只返回结构摘要）'
+        },
+        nodeId: {
+          type: 'string',
+          description: '可选：仅读取单个指定节点 ID'
+        },
+        nodeIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选：仅读取指定节点 ID 列表'
         }
       },
       required: []
@@ -2764,56 +2806,81 @@ const TOOL_DEFS: McpToolDef[] = [
         throw new Error('资产不存在或不含图文档（仅支持宿主资产子图）')
       }
       const includeParams = args.includeParams === true
+      const filterIds = new Set<string>()
+      const singleNodeId = optionalString(args, 'nodeId')?.trim()
+      if (singleNodeId) filterIds.add(singleNodeId)
+      if (Array.isArray(args.nodeIds)) {
+        for (const item of args.nodeIds) {
+          if (typeof item === 'string' && item.trim()) filterIds.add(item.trim())
+        }
+      }
+      const targetNodes =
+        filterIds.size > 0
+          ? graphJson.nodes.filter((node) => filterIds.has(node.id))
+          : graphJson.nodes
+      const maxParamFieldChars = targetNodes.length <= 1 ? 64_000 : 20_000
+
       const hydrateNodeParams = (
         params: Record<string, unknown> | undefined
       ): Record<string, unknown> | undefined => {
-        if (!params || !projectService.isOpen()) return params
-        let root = ''
-        try {
-          root = projectService.getRoot()
-        } catch {
-          return params
-        }
-        const readOffloadedText = (relPath: unknown): string => {
-          if (typeof relPath !== 'string' || !relPath.trim()) return ''
-          const norm = normalizeProjectRelativePath(relPath)
-          if (!norm) return ''
-          try {
-            const abs = join(root, norm)
-            if (existsSync(abs) && statSync(abs).isFile()) {
-              return readFileSync(abs, 'utf8')
-            }
-          } catch {
-            /* ignore */
-          }
-          return ''
-        }
+        if (!params) return params
         const copy: Record<string, unknown> = { ...params }
-        const inlineText = typeof copy.text === 'string' ? copy.text.trim() : ''
-        if (!inlineText && typeof copy.previewRelativePath === 'string') {
-          const loaded = readOffloadedText(copy.previewRelativePath)
-          if (loaded) copy.text = loaded
-        }
-        if (Array.isArray(copy.generatedTexts)) {
-          copy.generatedTexts = copy.generatedTexts.map((item) => {
-            if (!item || typeof item !== 'object') return item
-            const entry = item as Record<string, unknown>
-            const entryText = typeof entry.text === 'string' ? entry.text.trim() : ''
-            if (!entryText && typeof entry.relativePath === 'string') {
-              const loaded = readOffloadedText(entry.relativePath)
-              if (loaded) return { ...entry, text: loaded }
+        if (projectService.isOpen()) {
+          let root = ''
+          try {
+            root = projectService.getRoot()
+          } catch {
+            root = ''
+          }
+          if (root) {
+            const readOffloadedText = (relPath: unknown): string => {
+              if (typeof relPath !== 'string' || !relPath.trim()) return ''
+              const norm = normalizeProjectRelativePath(relPath)
+              if (!norm || !isSafePlainTextFilePath(norm)) return ''
+              try {
+                const abs = join(root, norm)
+                if (!existsSync(abs)) return ''
+                const st = statSync(abs)
+                if (!st.isFile() || st.size <= 0 || st.size > 1_048_576) return ''
+                const buf = readFileSync(abs)
+                if (hasBinarySignatureOrNullBytes(buf)) return ''
+                const decoded = buf.toString('utf8')
+                if (decoded.length <= maxParamFieldChars) return decoded
+                const head = Math.floor(maxParamFieldChars * 0.65)
+                const tail = Math.floor(maxParamFieldChars * 0.25)
+                return `${decoded.slice(0, head)}\n...[外置文本共 ${decoded.length} 字符，已省略中间 ${decoded.length - head - tail} 字符]...\n${decoded.slice(-tail)}`
+              } catch {
+                /* ignore */
+              }
+              return ''
             }
-            return entry
-          })
+            const inlineText = typeof copy.text === 'string' ? copy.text.trim() : ''
+            if (!inlineText && typeof copy.previewRelativePath === 'string') {
+              const loaded = readOffloadedText(copy.previewRelativePath)
+              if (loaded) copy.text = loaded
+            }
+            if (Array.isArray(copy.generatedTexts)) {
+              copy.generatedTexts = copy.generatedTexts.map((item) => {
+                if (!item || typeof item !== 'object') return item
+                const entry = item as Record<string, unknown>
+                const entryText = typeof entry.text === 'string' ? entry.text.trim() : ''
+                if (!entryText && typeof entry.relativePath === 'string') {
+                  const loaded = readOffloadedText(entry.relativePath)
+                  if (loaded) return { ...entry, text: loaded }
+                }
+                return entry
+              })
+            }
+          }
         }
-        return copy
+        return sanitizeStructuredToolValue(copy, maxParamFieldChars) as Record<string, unknown>
       }
       return {
         assetId: asset.id,
         assetName: asset.name,
         nodeCount: graphJson.nodes.length,
         edgeCount: graphJson.edges.length,
-        nodes: graphJson.nodes.map((node) => ({
+        nodes: targetNodes.map((node) => ({
           id: node.id,
           typeId: node.typeId ?? '',
           title: node.title ?? '',
@@ -8402,7 +8469,10 @@ export function readVisualCheckImagesForRelativePaths(
       if (!stat.isFile() || stat.size <= 0 || stat.size > VISUAL_SELF_CRITIQUE_MAX_BYTES) continue
       const buf = readFileSync(abs)
       const mime = sniffImageMimeFromBytes(buf) ?? extMime
-      out.push(`data:${mime};base64,${buf.toString('base64')}`)
+      const compacted = compactImageBufferForAgentVision(buf, mime)
+      if (compacted.buffer.byteLength <= VISION_HARD_MAX_RAW_BYTES) {
+        out.push(`data:${compacted.mimeType};base64,${compacted.buffer.toString('base64')}`)
+      }
     } catch {
       /* 单张读取失败忽略，不影响主工具返回 */
     }
@@ -9729,7 +9799,8 @@ export async function listInProcessExternalMcpTools(
     })
   } catch (err) {
     dropExternalMcpSession(server.id)
-    console.warn(`[mcp] listInProcessExternalMcpTools("${serverId}") failed:`, err)
+    const msg = err instanceof Error ? err.message : String(err)
+    console.warn(`[mcp] listInProcessExternalMcpTools("${serverId}") skipped: ${msg}`)
     return []
   }
 }

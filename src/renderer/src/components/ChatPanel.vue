@@ -3422,8 +3422,11 @@ function onHarnessEvent(event: HarnessEvent): void {
       const errMsg = (event.message ?? '').trim()
       if (errMsg) {
         const agentCard = findToolByKey('tool:pi-agent') ?? findToolByKey('tool:dsh-agent')
-        if (agentCard && !agentCard.detail) {
-          agentCard.detail = errMsg
+        if (agentCard) {
+          agentCard.state = 'error'
+          if (!agentCard.detail) {
+            agentCard.detail = errMsg
+          }
           commitMessages([...messages.value])
           scheduleHistoryPersist()
         }

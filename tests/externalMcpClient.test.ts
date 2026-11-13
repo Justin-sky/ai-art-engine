@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { createServer, type Server } from 'node:http'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDefaultExternalMcpServer, type ExternalMcpServer } from '../src/shared/externalMcp'
@@ -8,6 +8,7 @@ import {
   buildStdioEnv,
   dropExternalMcpSession,
   probeExternalMcpServer,
+  resolveEffectiveStdioServerCommand,
   resolveStdioSpawnSpec
 } from '../src/main/services/externalMcpClient'
 
@@ -359,6 +360,51 @@ describe('外部 MCP 客户端：stdio 子进程', () => {
       expect(spec.args[3]).toContain('rea.cmd')
     } finally {
       rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('resolveEffectiveStdioServerCommand 在存在 ~/.local/bin/rea(.cmd) 时优先切换独立启动器并避开系统低版本 Node npx', () => {
+    const fakeHome = mkdtempSync(join(tmpdir(), 'aae-rea-home-'))
+    const localBin = join(fakeHome, '.local', 'bin')
+    mkdirSync(localBin, { recursive: true })
+    try {
+      const reaNpxServer = {
+        id: 'rea',
+        command: 'npx',
+        args: ['-y', 'rea-agents@latest', 'mcp']
+      }
+      // 尚未安装独立 rea.cmd 时保持默认 npx 不变
+      const fallback = resolveEffectiveStdioServerCommand(
+        reaNpxServer,
+        { USERPROFILE: fakeHome },
+        'win32'
+      )
+      expect(fallback).toEqual({
+        command: 'npx',
+        args: ['-y', 'rea-agents@latest', 'mcp']
+      })
+
+      // 安装了 ~/.local/bin/rea.cmd 后：buildStdioEnv 自动补齐 PATH，且命令切换至独立启动器
+      const reaCmd = join(localBin, 'rea.cmd')
+      writeFileSync(reaCmd, '@echo off\r\n', 'utf8')
+      const env = buildStdioEnv(
+        {},
+        {
+          PATH: 'C:\\Windows\\System32',
+          USERPROFILE: fakeHome,
+          SystemRoot: 'C:\\Windows'
+        },
+        'win32'
+      )
+      expect(env.PATH).toContain(localBin)
+
+      const resolved = resolveEffectiveStdioServerCommand(reaNpxServer, env, 'win32')
+      expect(resolved).toEqual({
+        command: reaCmd,
+        args: ['mcp']
+      })
+    } finally {
+      rmSync(fakeHome, { recursive: true, force: true })
     }
   })
 })

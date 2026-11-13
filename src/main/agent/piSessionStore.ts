@@ -11,6 +11,7 @@ import {
 import { join } from 'node:path'
 import JSZip from 'jszip'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
+import { capSingleToolText, SINGLE_TOOL_TEXT_MAX_CHARS } from './piPayloadGuard'
 import type {
   HarnessGoalView,
   HarnessSessionSearchHit,
@@ -88,12 +89,25 @@ function deriveSessionTitle(messages: ReadonlyArray<AgentMessage>): string | und
   return undefined
 }
 
+function isEmptyFailedAssistantMessage(msg: AgentMessage): boolean {
+  if (!msg || msg.role !== 'assistant') return false
+  if (msg.stopReason !== 'error' && msg.stopReason !== 'aborted') return false
+  if (!Array.isArray(msg.content) || msg.content.length === 0) return true
+  const hasToolCall = msg.content.some((b) => b.type === 'toolCall')
+  if (hasToolCall) return false
+  const hasText = msg.content.some(
+    (b) => b.type === 'text' && typeof b.text === 'string' && b.text.trim().length > 0
+  )
+  return !hasText
+}
+
 /**
- * 过滤掉 `role === 'system'` 的运行时快照消息，只保留真实对话序列（user / assistant / toolResult）。
+ * 过滤掉 `role === 'system'` 的运行时快照消息，以及因上游瞬时报错/中止残留的空壳 `assistant` 错误帧，
+ * 只保留有效对话序列（user / assistant / toolResult）。
  * 下次唤醒会话时由新运行轮次按最新模式、最新模型与最新激活工具集重新生成干净的前导 SystemMessage。
  */
 export function stripRuntimeSystemMessages(messages: ReadonlyArray<AgentMessage>): AgentMessage[] {
-  return messages.filter((m) => m.role !== 'system')
+  return messages.filter((m) => m.role !== 'system' && !isEmptyFailedAssistantMessage(m))
 }
 
 export function loadPiSession(baseDir: string, sessionId: string): PersistedPiSession | null {
@@ -420,6 +434,86 @@ export async function buildPiSessionExportZip(
 
 const CHARS_PER_TOKEN_ESTIMATE = 3.5
 const IMAGE_BLOCK_CHARS_ESTIMATE = 4_800
+/** 单次发往网关的纯文本 UTF-8 字节安全上限（3.6 MB，远低于各大网关 8 MB 硬红线，为 systemPrompt 与工具定义预留充足余量） */
+export const DEFAULT_MAX_CONTEXT_TEXT_BYTES = 3_600_000
+/** 单次发往网关的总消息体（文本 + base64 图片）安全上限（5.2 MB） */
+export const DEFAULT_MAX_CONTEXT_PAYLOAD_BYTES = 5_200_000
+
+export interface PiPayloadByteEstimate {
+  textBytes: number
+  imageBytes: number
+  totalBytes: number
+}
+
+function estimateSingleMessagePayloadBytes(msg: AgentMessage): PiPayloadByteEstimate {
+  if (!msg || typeof msg !== 'object') return { textBytes: 0, imageBytes: 0, totalBytes: 0 }
+  let textBytes = 0
+  let imageBytes = 0
+
+  if (msg.role === 'system') {
+    const sys = msg as unknown as {
+      content?: unknown
+      toolsAdded?: unknown[]
+      toolsRemoved?: unknown[]
+    }
+    if (typeof sys.content === 'string') textBytes += Buffer.byteLength(sys.content, 'utf8')
+    if (Array.isArray(sys.toolsAdded)) {
+      textBytes += Buffer.byteLength(JSON.stringify(sys.toolsAdded), 'utf8')
+    }
+    if (Array.isArray(sys.toolsRemoved)) {
+      textBytes += Buffer.byteLength(JSON.stringify(sys.toolsRemoved), 'utf8')
+    }
+    return { textBytes, imageBytes: 0, totalBytes: textBytes }
+  }
+
+  if (msg.role === 'user' || msg.role === 'toolResult') {
+    const content = msg.content
+    if (typeof content === 'string') {
+      textBytes += Buffer.byteLength(content, 'utf8')
+    } else if (Array.isArray(content)) {
+      for (const b of content) {
+        if (b.type === 'text') {
+          textBytes += Buffer.byteLength(b.text || '', 'utf8')
+        } else if (b.type === 'image') {
+          imageBytes += typeof b.data === 'string' ? b.data.length : 0
+        }
+      }
+    }
+    return { textBytes, imageBytes, totalBytes: textBytes + imageBytes }
+  }
+
+  if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+    for (const b of msg.content) {
+      if (b.type === 'text') textBytes += Buffer.byteLength(b.text || '', 'utf8')
+      else if (b.type === 'thinking') textBytes += Buffer.byteLength(b.thinking || '', 'utf8')
+      else if (b.type === 'toolCall') {
+        textBytes +=
+          Buffer.byteLength(b.name || '', 'utf8') +
+          Buffer.byteLength(JSON.stringify(b.arguments ?? {}), 'utf8')
+      }
+    }
+    return { textBytes, imageBytes: 0, totalBytes: textBytes }
+  }
+
+  return { textBytes: 0, imageBytes: 0, totalBytes: 0 }
+}
+
+/**
+ * 精确统计当前消息序列占用的 UTF-8 文本字节数与 base64 图片字节数，
+ * 直接防护 `The total text input size exceeds 8 MB` 与 HTTP 413 Request Entity Too Large。
+ */
+export function estimatePiMessagesPayloadBytes(
+  messages: ReadonlyArray<AgentMessage>
+): PiPayloadByteEstimate {
+  let textBytes = 0
+  let imageBytes = 0
+  for (const m of messages) {
+    const single = estimateSingleMessagePayloadBytes(m)
+    textBytes += single.textBytes
+    imageBytes += single.imageBytes
+  }
+  return { textBytes, imageBytes, totalBytes: textBytes + imageBytes }
+}
 
 function estimateSingleMessageChars(msg: AgentMessage): number {
   if (!msg || typeof msg !== 'object') return 0
@@ -441,7 +535,10 @@ function estimateSingleMessageChars(msg: AgentMessage): number {
     let chars = 0
     for (const b of content) {
       if (b.type === 'text') chars += b.text.length
-      else chars += IMAGE_BLOCK_CHARS_ESTIMATE
+      else {
+        const b64Len = typeof b.data === 'string' ? b.data.length : 0
+        chars += Math.max(IMAGE_BLOCK_CHARS_ESTIMATE, Math.ceil(b64Len / 64))
+      }
     }
     return chars
   }
@@ -513,15 +610,51 @@ export interface CompactPiContextOptions {
   keepRecentMessages?: number
   /** 强制压缩（用于用户主动执行 `/compact` 或上游返回上下文超限错误后的重试） */
   force?: boolean
+  /** 紧急降压等级（0=常规，1=首轮超限自愈，2=深度超限自愈，3=极限单轮自愈） */
+  emergencyLevel?: 0 | 1 | 2 | 3
+  /** 纯文本字节安全上限（默认 3.6 MB，防 8 MB text limit 400） */
+  maxTextBytes?: number
+  /** 总载荷字节安全上限（默认 5.2 MB，防多张高清 base64 图片撑爆请求体） */
+  maxTotalPayloadBytes?: number
+}
+
+function messageContainsOversizedOrBinaryToolText(msg: AgentMessage, capChars: number): boolean {
+  if (msg.role !== 'toolResult' || !Array.isArray(msg.content)) return false
+  for (const b of msg.content) {
+    if (b.type === 'text' && typeof b.text === 'string') {
+      if (
+        b.text.length > capChars ||
+        b.text.includes('\uFFFDPNG') ||
+        b.text.includes('\\u0000\\u0000')
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function countImageBearingMessages(messages: ReadonlyArray<AgentMessage>): number[] {
+  const indices: number[] = []
+  for (let i = 0; i < messages.length; i += 1) {
+    const m = messages[i]
+    if ((m.role === 'toolResult' || m.role === 'user') && Array.isArray(m.content)) {
+      if (m.content.some((b) => b.type === 'image')) {
+        indices.push(i)
+      }
+    }
+  }
+  return indices
 }
 
 /**
- * 结构化无损配对的上下文自动压缩器：
- * 1) 始终保留 `role === 'system'` 消息不动（维护 `pi-agent-core` 的 `declareToolChanges` 工具差集一致性）；
- * 2) 第一阶段（原位折叠）：保留最近 N 条消息完整不动，将更早历史中的超大 `toolResult`（如 `bash` / `graph_read` 数万字符输出）
- *    与未签名的长思维链原位折叠为摘要，保持全部 `toolCall <-> toolResult` ID 一一配对，绝不触发 400 孤立 tool 错误；
- * 3) 第二阶段（整轮裁剪）：若仍超水位或用户执行 `/compact`，严格按完整 `user` 轮次边界裁剪最早轮次；
- * 4) 自动推进被折叠前缀消息的 `timestamp`，使 `pi-ai` 的 `estimateContextTokens` 立即感知释放出的窗口空间。
+ * 结构化无损配对的上下文与字节双水位自动压缩器：
+ * 1) 始终保留 `role === 'system'` 消息不动（维护 `pi-agent-core` 的 `declareToolChanges` 工具差集一致性），并自动剔除空壳报错帧；
+ * 2) 零阶段（近期巨型载荷守卫）：即便在受保护的最近消息窗口内，若出现单条 >140K 字符或夹带 PNG 二进制乱码的 `toolResult`
+ *    （如旧版 `graph_read` 遗留的 13 MB JSON），也会原位清洗并限制长度，彻底治愈已损坏的持久化会话；
+ * 3) 第一阶段（原位折叠）：将较早历史中的超大 `toolResult`、历史视觉图片与未签名的长思维链原位折叠为摘要，保持全部 `toolCall <-> toolResult` ID 100% 配对；
+ * 4) 第二阶段（整轮裁剪 + 单轮内紧急瘦身）：若仍超 Token 水位或超字节安全上限（3.6 MB 文本 / 5.2 MB 总载荷），严格按完整 `user` 轮次边界淘汰早期轮次，必要时进一步压缩单轮内早期工具输出；
+ * 5) 自动推进被折叠前缀消息的 `timestamp`，使 `pi-ai` 的 `estimateContextTokens` 立即感知释放出的窗口空间。
  */
 export function compactPiContextMessages(
   messages: ReadonlyArray<AgentMessage>,
@@ -529,32 +662,113 @@ export function compactPiContextMessages(
 ): AgentMessage[] {
   const contextWindow = Math.max(8_192, opts.contextWindow || 131_072)
   const triggerRatio = opts.triggerRatio ?? 0.78
-  const force = Boolean(opts.force)
-  const estimated = estimatePiMessagesTokens(messages)
+  const emergencyLevel = opts.emergencyLevel ?? 0
+  const force = Boolean(opts.force) || emergencyLevel > 0
+  const maxTextBytes = Math.max(256_000, opts.maxTextBytes ?? DEFAULT_MAX_CONTEXT_TEXT_BYTES)
+  const maxTotalBytes = Math.max(
+    maxTextBytes,
+    opts.maxTotalPayloadBytes ?? DEFAULT_MAX_CONTEXT_PAYLOAD_BYTES
+  )
 
-  if (!force && estimated <= Math.floor(contextWindow * triggerRatio)) {
-    return [...messages]
+  const recentToolCapChars =
+    emergencyLevel >= 3
+      ? 2_400
+      : emergencyLevel === 2
+        ? 10_000
+        : force
+          ? 36_000
+          : SINGLE_TOOL_TEXT_MAX_CHARS
+
+  const hasDeadFailedFrame = messages.some((m) => isEmptyFailedAssistantMessage(m))
+  const baseMessages = hasDeadFailedFrame
+    ? messages.filter((m) => !isEmptyFailedAssistantMessage(m))
+    : messages
+
+  const estimated = estimatePiMessagesTokens(baseMessages)
+  const initialBytes = estimatePiMessagesPayloadBytes(baseMessages)
+  const hasCorruptOrOversizedRecent = baseMessages.some((m) =>
+    messageContainsOversizedOrBinaryToolText(m, recentToolCapChars)
+  )
+  const exceedsByteBudget =
+    initialBytes.textBytes > maxTextBytes || initialBytes.totalBytes > maxTotalBytes
+
+  if (
+    !force &&
+    !hasDeadFailedFrame &&
+    !hasCorruptOrOversizedRecent &&
+    !exceedsByteBudget &&
+    estimated <= Math.floor(contextWindow * triggerRatio)
+  ) {
+    return [...baseMessages]
   }
 
   let maxTs = Date.now()
-  for (const m of messages) {
+  for (const m of baseMessages) {
     const ts = typeof (m as { timestamp?: number }).timestamp === 'number' ? m.timestamp : 0
     if (ts > maxTs) maxTs = ts
   }
   const bumpTs = maxTs + 1
 
   const nonSystemIndices: number[] = []
-  for (let i = 0; i < messages.length; i += 1) {
-    if (messages[i].role !== 'system') nonSystemIndices.push(i)
+  for (let i = 0; i < baseMessages.length; i += 1) {
+    if (baseMessages[i].role !== 'system') nonSystemIndices.push(i)
   }
 
-  const keepRecent = force ? 6 : (opts.keepRecentMessages ?? 10)
+  const keepRecent =
+    emergencyLevel >= 3 ? 2 : emergencyLevel === 2 ? 4 : force ? 6 : (opts.keepRecentMessages ?? 10)
   const protectedStartRank = Math.max(0, nonSystemIndices.length - keepRecent)
   const protectedIndexSet = new Set(nonSystemIndices.slice(protectedStartRank))
 
-  let compactedAny = false
-  const working: AgentMessage[] = messages.map((msg, idx) => {
-    if (msg.role === 'system' || protectedIndexSet.has(idx)) return msg
+  // 计算允许保留原图的最近消息集合（常规超字节时最多保留最近 2 条含图消息；emergencyLevel>=2 保留最近 1 条；>=3 全部折叠）
+  const imgMsgIndices = countImageBearingMessages(baseMessages)
+  const maxKeepImageMsgs =
+    emergencyLevel >= 3
+      ? 0
+      : emergencyLevel === 2
+        ? 1
+        : exceedsByteBudget || force
+          ? 2
+          : imgMsgIndices.length
+  const allowedImageMsgSet = new Set(
+    maxKeepImageMsgs > 0 ? imgMsgIndices.slice(-maxKeepImageMsgs) : []
+  )
+
+  let compactedAny = hasDeadFailedFrame
+  const working: AgentMessage[] = baseMessages.map((msg, idx) => {
+    if (msg.role === 'system') return msg
+
+    if (protectedIndexSet.has(idx)) {
+      // 即便在近期保护窗口内，也必须清洗超长/乱码 toolResult 与超额历史图片，防止单轮大产物锁死 8 MB 上限
+      if ((msg.role === 'toolResult' || msg.role === 'user') && Array.isArray(msg.content)) {
+        let recentChanged = false
+        const nextContent = msg.content.map((block) => {
+          if (block.type === 'image' && !allowedImageMsgSet.has(idx)) {
+            recentChanged = true
+            return { type: 'text' as const, text: '[较早视觉自检图片已自动折叠以释放载荷空间]' }
+          }
+          if (
+            msg.role === 'toolResult' &&
+            block.type === 'text' &&
+            (block.text.length > recentToolCapChars ||
+              block.text.includes('\uFFFDPNG') ||
+              block.text.includes('\\u0000\\u0000') ||
+              block.text.includes(';base64,'))
+          ) {
+            const cleaned = capSingleToolText(block.text, recentToolCapChars)
+            if (cleaned !== block.text) {
+              recentChanged = true
+              return { type: 'text' as const, text: cleaned }
+            }
+          }
+          return block
+        })
+        if (recentChanged) {
+          compactedAny = true
+          return { ...msg, content: nextContent, timestamp: bumpTs }
+        }
+      }
+      return msg
+    }
 
     if (msg.role === 'toolResult' && Array.isArray(msg.content)) {
       let localChanged = false
@@ -563,12 +777,19 @@ export function compactPiContextMessages(
           localChanged = true
           return { type: 'text' as const, text: '[历史工具图片已自动折叠]' }
         }
-        if (block.type === 'text' && block.text.length > 1_200) {
-          localChanged = true
-          const omitted = block.text.length - 1_000
-          return {
-            type: 'text' as const,
-            text: `${block.text.slice(0, 600)}\n...[历史工具输出已自动折叠 ${omitted} 字符]...\n${block.text.slice(-400)}`
+        if (block.type === 'text') {
+          const cleaned = capSingleToolText(block.text, 1_200)
+          if (block.text.length > 1_200) {
+            localChanged = true
+            const omitted = Math.max(0, block.text.length - 1_000)
+            return {
+              type: 'text' as const,
+              text: `${cleaned.slice(0, 600)}\n...[历史工具输出已自动折叠 ${omitted} 字符]...\n${cleaned.slice(-400)}`
+            }
+          }
+          if (cleaned !== block.text) {
+            localChanged = true
+            return { type: 'text' as const, text: cleaned }
           }
         }
         return block
@@ -578,6 +799,21 @@ export function compactPiContextMessages(
         return { ...msg, content: nextContent, timestamp: bumpTs }
       }
       return msg
+    }
+
+    if (msg.role === 'user' && Array.isArray(msg.content) && !allowedImageMsgSet.has(idx)) {
+      let localChanged = false
+      const nextContent = msg.content.map((block) => {
+        if (block.type === 'image') {
+          localChanged = true
+          return { type: 'text' as const, text: '[早期用户附图已自动折叠]' }
+        }
+        return block
+      })
+      if (localChanged) {
+        compactedAny = true
+        return { ...msg, content: nextContent, timestamp: bumpTs }
+      }
     }
 
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -598,21 +834,27 @@ export function compactPiContextMessages(
     return msg
   })
 
-  // 若单轮包含极大量连续工具调用，做二次紧凑折叠（压缩至 220 字符摘要）
-  if (!force && estimateCharOnlyTokens(working) > Math.floor(contextWindow * 0.84)) {
+  const isStillOverBudget = (list: ReadonlyArray<AgentMessage>): boolean => {
+    const b = estimatePiMessagesPayloadBytes(list)
+    if (b.textBytes > maxTextBytes || b.totalBytes > maxTotalBytes) return true
+    return estimateCharOnlyTokens(list) > Math.floor(contextWindow * 0.84)
+  }
+
+  // 若单轮包含极大量连续工具调用或仍超字节预算，做二次紧凑折叠（压缩至 220 字符摘要）
+  if (isStillOverBudget(working)) {
     for (let i = 0; i < working.length; i += 1) {
-      if (protectedIndexSet.has(i)) continue
+      if (protectedIndexSet.has(i) && emergencyLevel < 2) continue
       const msg = working[i]
       if (msg.role === 'toolResult' && Array.isArray(msg.content)) {
         const combined = extractMessageText(msg)
-        if (combined.length > 260) {
+        if (combined.length > 260 || msg.content.some((b) => b.type === 'image')) {
           compactedAny = true
           working[i] = {
             ...msg,
             content: [
               {
                 type: 'text',
-                text: `[历史工具输出已深度折叠 (${combined.length} 字符)] ${combined.slice(0, 200)}...`
+                text: `[历史工具输出已深度折叠 (${combined.length} 字符)] ${capSingleToolText(combined, 1_000).slice(0, 200)}...`
               }
             ],
             timestamp: bumpTs
@@ -622,9 +864,19 @@ export function compactPiContextMessages(
     }
   }
 
-  // 若强制 /compact 或仍超硬水位，按完整 user 轮次边界整组淘汰最早对话（绝不拆散 assistant.toolCall 与 toolResult）
+  // 若强制 /compact 或仍超硬水位/字节上限，按完整 user 轮次边界整组淘汰最早对话（绝不拆散 assistant.toolCall 与 toolResult）
   const hardCeiling = Math.floor(contextWindow * 0.85)
-  if (force || estimateCharOnlyTokens(working) > hardCeiling) {
+  const overHardOrBytes = (): boolean => {
+    const b = estimatePiMessagesPayloadBytes(working)
+    return (
+      b.textBytes > maxTextBytes ||
+      b.totalBytes > maxTotalBytes ||
+      estimateCharOnlyTokens(working) > hardCeiling
+    )
+  }
+
+  let resultList = working
+  if (force || overHardOrBytes()) {
     const groups: number[][] = []
     let currentGroup: number[] = []
     for (let i = 0; i < working.length; i += 1) {
@@ -639,38 +891,87 @@ export function compactPiContextMessages(
     if (currentGroup.length > 0) groups.push(currentGroup)
 
     const droppedIndices = new Set<number>()
-    // 清理可能残留在首条 user 之前的孤立非 user 片段
     if (groups.length > 1 && working[groups[0][0]]?.role !== 'user') {
       for (const idx of groups.shift()!) droppedIndices.add(idx)
     }
 
-    const minKeepGroups = force ? 3 : 2
-    while (groups.length > minKeepGroups) {
-      const remainingChars = working.reduce(
-        (acc, m, idx) => (droppedIndices.has(idx) ? acc : acc + estimateSingleMessageChars(m)),
-        0
-      )
-      const remainingTokens = Math.ceil(remainingChars / CHARS_PER_TOKEN_ESTIMATE)
-      if (!force && remainingTokens <= Math.floor(contextWindow * 0.78)) break
+    const baseMinKeepGroups = emergencyLevel >= 2 ? 1 : emergencyLevel === 1 ? 2 : force ? 3 : 2
+    while (groups.length > baseMinKeepGroups) {
+      const remaining = working.filter((_, idx) => !droppedIndices.has(idx))
+      const remBytes = estimatePiMessagesPayloadBytes(remaining)
+      const remTokens = estimateCharOnlyTokens(remaining)
+      if (
+        !force &&
+        remTokens <= Math.floor(contextWindow * 0.78) &&
+        remBytes.textBytes <= maxTextBytes &&
+        remBytes.totalBytes <= maxTotalBytes
+      ) {
+        break
+      }
+      const oldest = groups.shift()!
+      for (const idx of oldest) droppedIndices.add(idx)
+    }
+
+    // 若保留 2~3 组后依然超出字节或 Token 硬上限，继续降级淘汰到仅保留最后 1 个完整 user 轮次
+    while (groups.length > 1) {
+      const remaining = working.filter((_, idx) => !droppedIndices.has(idx))
+      const remBytes = estimatePiMessagesPayloadBytes(remaining)
+      const remTokens = estimateCharOnlyTokens(remaining)
+      if (
+        remBytes.textBytes <= maxTextBytes &&
+        remBytes.totalBytes <= maxTotalBytes &&
+        remTokens <= hardCeiling
+      ) {
+        break
+      }
       const oldest = groups.shift()!
       for (const idx of oldest) droppedIndices.add(idx)
     }
 
     if (droppedIndices.size > 0) {
       compactedAny = true
-      const pruned = working.filter((_, idx) => !droppedIndices.has(idx))
-      if (pruned.length > 0) {
-        pruned[0] = { ...pruned[0], timestamp: bumpTs }
+      resultList = working.filter((_, idx) => !droppedIndices.has(idx))
+    }
+  }
+
+  // 终极兜底：若最后一个单独 user 轮次内部因超多连续图片或超大 user 提示词仍超字节上限，逐条收缩最早的图片/工具文本
+  let finalBytes = estimatePiMessagesPayloadBytes(resultList)
+  if (finalBytes.textBytes > maxTextBytes || finalBytes.totalBytes > maxTotalBytes) {
+    resultList = [...resultList]
+    for (let i = 0; i < resultList.length; i += 1) {
+      if (finalBytes.textBytes <= maxTextBytes && finalBytes.totalBytes <= maxTotalBytes) break
+      const msg = resultList[i]
+      if (msg.role === 'toolResult' && Array.isArray(msg.content)) {
+        const preview = capSingleToolText(extractMessageText(msg), 600).slice(0, 240)
+        resultList[i] = {
+          ...msg,
+          content: [{ type: 'text', text: `[紧急载荷瘦身：${preview}]` }],
+          timestamp: bumpTs
+        }
+        compactedAny = true
+        finalBytes = estimatePiMessagesPayloadBytes(resultList)
+      } else if (msg.role === 'user' && Array.isArray(msg.content)) {
+        const hasImg = msg.content.some((b) => b.type === 'image')
+        if (hasImg) {
+          resultList[i] = {
+            ...msg,
+            content: msg.content.map((b) =>
+              b.type === 'image' ? { type: 'text' as const, text: '[附图已紧急折叠]' } : b
+            ),
+            timestamp: bumpTs
+          }
+          compactedAny = true
+          finalBytes = estimatePiMessagesPayloadBytes(resultList)
+        }
       }
-      return pruned
     }
   }
 
   // 一旦发生任何前缀压缩，必须推进队列首条消息（index 0）的 timestamp，
   // 使 pi-ai 的 getLastAssistantUsageInfo 从 i=0 起就识别到前缀已更新，避免沿用压缩前的旧 totalTokens
-  if (compactedAny && working.length > 0) {
-    working[0] = { ...working[0], timestamp: bumpTs }
+  if (compactedAny && resultList.length > 0) {
+    resultList[0] = { ...resultList[0], timestamp: bumpTs }
   }
 
-  return working
+  return resultList
 }

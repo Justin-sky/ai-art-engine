@@ -7,10 +7,15 @@ import {
   type RuntimeAgentTool,
   type RuntimeToolResult
 } from './piModelResolver'
+import {
+  compactImageBufferForAgentVision,
+  sanitizeInlineBinaryAndDataUrls,
+  VISION_HARD_MAX_RAW_BYTES
+} from './piPayloadGuard'
 
 const MAX_READ_LINES = 2000
 const DEFAULT_READ_LINES = 500
-const MAX_READ_BYTES = 512 * 1024
+const MAX_READ_BYTES = 140 * 1024
 const MAX_BASH_OUTPUT_CHARS = 64_000
 const DEFAULT_BASH_TIMEOUT_MS = 120_000
 const MAX_BASH_TIMEOUT_MS = 600_000
@@ -237,20 +242,32 @@ export function createPiWorkspaceTools(opts: WorkspaceToolsOptions): RuntimeAgen
       const ext = extname(absPath).toLowerCase()
       if (ext in IMAGE_EXTENSIONS && stat.size <= 15 * 1024 * 1024) {
         const bytes = readFileSync(absPath)
-        const mimeType = sniffImageMimeFromBytes(bytes) ?? IMAGE_EXTENSIONS[ext]
+        const rawMimeType = sniffImageMimeFromBytes(bytes) ?? IMAGE_EXTENSIONS[ext]
+        const compacted = compactImageBufferForAgentVision(bytes, rawMimeType)
+        if (compacted.buffer.byteLength > VISION_HARD_MAX_RAW_BYTES) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `图片文件体积较大（${stat.size} bytes）且当前运行环境无法完成像素缩放，已省略内联 base64 数据以防上下文超限：${absPath}`
+              }
+            ],
+            details: { path: absPath, mimeType: rawMimeType, bytes: stat.size }
+          }
+        }
         return {
           content: [
             {
               type: 'text',
-              text: `已读取图片文件：${absPath} (${mimeType}, ${stat.size} bytes)`
+              text: `已读取图片文件：${absPath} (${compacted.mimeType}, 原始 ${stat.size} bytes${compacted.compacted ? `，视觉压缩后 ${compacted.buffer.byteLength} bytes` : ''})`
             },
             {
               type: 'image',
-              data: bytes.toString('base64'),
-              mimeType
+              data: compacted.buffer.toString('base64'),
+              mimeType: compacted.mimeType
             }
           ],
-          details: { path: absPath, mimeType, bytes: stat.size }
+          details: { path: absPath, mimeType: compacted.mimeType, bytes: stat.size }
         }
       }
 
@@ -275,14 +292,16 @@ export function createPiWorkspaceTools(opts: WorkspaceToolsOptions): RuntimeAgen
         Math.max(1, Math.trunc(Number(params.limit ?? DEFAULT_READ_LINES) || DEFAULT_READ_LINES))
       )
       const endLine = Math.min(lines.length, startLine + limit - 1)
-      const slice = lines
-        .slice(startLine - 1, endLine)
-        .map((line, idx) => `${startLine + idx}: ${line}`)
-        .join('\n')
+      const slice = sanitizeInlineBinaryAndDataUrls(
+        lines
+          .slice(startLine - 1, endLine)
+          .map((line, idx) => `${startLine + idx}: ${line}`)
+          .join('\n')
+      )
 
       const capped =
         slice.length > MAX_READ_BYTES
-          ? `${slice.slice(0, MAX_READ_BYTES)}\n... [单次读取字节已截断]`
+          ? `${slice.slice(0, MAX_READ_BYTES)}\n... [单次读取字节已截断，可通过 offset 分段读取]`
           : slice
       const header = `文件 ${absPath}（显示第 ${startLine}-${endLine} 行，共 ${lines.length} 行）`
       return {

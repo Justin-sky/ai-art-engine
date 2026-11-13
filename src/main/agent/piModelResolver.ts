@@ -1,6 +1,8 @@
 import type { AgentState, AgentToolResult, StreamFn } from '@earendil-works/pi-agent-core'
 import {
   createAssistantMessageEventStream,
+  isContextOverflow,
+  isRetryableAssistantError,
   type Api,
   type AssistantMessage,
   type AssistantMessageEventStream,
@@ -301,6 +303,9 @@ export function resolvePiModelFromProviders(
 
     if (isAnthropicProtocol) {
       const baseUrl = normalizeAnthropicBaseUrl(rawBaseUrl)
+      const isOfficialAnthropic =
+        p.providerKind === 'anthropic' &&
+        (!rawBaseUrl || /\bapi\.anthropic\.com\b/i.test(rawBaseUrl))
       const contextWindow = resolveChatModelContextWindow(rawModelId, p, rawCapabilities)
       const maxTokens = resolveChatModelMaxTokens(rawModelId, contextWindow, rawCapabilities)
       const model: Model<'anthropic-messages'> = {
@@ -313,7 +318,19 @@ export function resolvePiModelFromProviders(
         reasoning: inferChatModelReasoning(rawModelId, rawCapabilities),
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow,
-        maxTokens
+        maxTokens,
+        ...(isOfficialAnthropic
+          ? {}
+          : {
+              compat: {
+                // 第三方 Anthropic 兼容代理常不支持 eager_input_streaming / 1h cache / 会话中段工具变更块
+                supportsEagerToolInputStreaming: false,
+                supportsLongCacheRetention: false,
+                supportsMidConvoSystemMessages: false,
+                supportsMidConvoToolChanges: false,
+                allowEmptySignature: true
+              }
+            })
       }
       return { model, apiKey, provider: p }
     }
@@ -611,6 +628,12 @@ export function wrapPiStreamWithDsmlRecovery(
 }
 
 export const piMultiApiStreamFn: StreamFn = (model, context, options) => {
+  const mergedOptions = {
+    ...options,
+    // pi-ai 默认 maxRetries=0；显式开启底层流建立前的瞬时重试（429/5xx/连接抖动）
+    maxRetries: options?.maxRetries ?? 3,
+    maxRetryDelayMs: options?.maxRetryDelayMs ?? 30_000
+  }
   const knownTools = new Set<string>()
   for (const msg of context.messages) {
     if (msg.role === 'system') {
@@ -623,13 +646,13 @@ export const piMultiApiStreamFn: StreamFn = (model, context, options) => {
     }
   }
   if (model.api === 'anthropic-messages') {
-    return anthropicStreamSimple(model as Model<'anthropic-messages'>, context, options)
+    return anthropicStreamSimple(model as Model<'anthropic-messages'>, context, mergedOptions)
   }
   if (model.api === 'google-generative-ai') {
-    return googleStreamSimple(model as Model<'google-generative-ai'>, context, options)
+    return googleStreamSimple(model as Model<'google-generative-ai'>, context, mergedOptions)
   }
   return wrapPiStreamWithDsmlRecovery(
-    openAiStreamSimple(model as Model<'openai-completions'>, context, options),
+    openAiStreamSimple(model as Model<'openai-completions'>, context, mergedOptions),
     knownTools
   )
 }
@@ -926,5 +949,105 @@ export function isPiQuotaError(message: string): boolean {
     text.includes('余额不足') ||
     text.includes('额度不足') ||
     text.includes('欠费')
+  )
+}
+
+const EXTRA_OVERFLOW_OR_PAYLOAD_PATTERNS: RegExp[] = [
+  /total text input size exceeds/i,
+  /input size exceeds/i,
+  /exceeds\s+\d+(?:\.\d+)?\s*(?:[kmgt]i?b|bytes|characters|chars|tokens)\b/i,
+  /payload too large/i,
+  /request entity too large/i,
+  /request body too large/i,
+  /request_too_large/i,
+  /content_too_large/i,
+  /body exceeded/i,
+  /\b413\b.*\b(?:large|payload|entity|size|limit)\b/i,
+  /^413\b/i,
+  /string too long/i,
+  /context_length_exceeded/i,
+  /maximum context length/i,
+  /prompt is too long/i,
+  /too many tokens/i,
+  /max_bytes/i,
+  /(?:上下文|输入|提示词|请求体)(?:长度|大小|字节)?(?:超限|过长|过大|超过)/
+]
+
+/**
+ * 识别上下文窗口溢出或 HTTP 请求体/总文本字节超限错误（包含 `400: {"message":"The total text input size exceeds 8 MB"}`）。
+ * 命中后可由外层 Agent 自愈循环原地压缩历史并 `agent.continue()` 无感续跑。
+ */
+export function isPiContextOrPayloadOverflowError(
+  messageOrText: AssistantMessage | string,
+  contextWindow?: number
+): boolean {
+  if (typeof messageOrText === 'object' && messageOrText !== null) {
+    if (isContextOverflow(messageOrText, contextWindow)) return true
+    if (messageOrText.stopReason !== 'error') return false
+    const errText = String(messageOrText.errorMessage ?? '')
+    return EXTRA_OVERFLOW_OR_PAYLOAD_PATTERNS.some((re) => re.test(errText))
+  }
+  const errText = String(messageOrText ?? '')
+  if (!errText) return false
+  return EXTRA_OVERFLOW_OR_PAYLOAD_PATTERNS.some((re) => re.test(errText))
+}
+
+/**
+ * 识别上游网关/模型实际不支持视觉图片块（`image_url` / `image`）导致的 400 报错。
+ * 命中后外层自愈器可自动将图片降级为文本占位并将当前模型切换为纯文本模式继续执行。
+ */
+export function isPiUnsupportedImageError(messageOrText: AssistantMessage | string): boolean {
+  const errText =
+    typeof messageOrText === 'object' && messageOrText !== null
+      ? messageOrText.stopReason === 'error'
+        ? String(messageOrText.errorMessage ?? '')
+        : ''
+      : String(messageOrText ?? '')
+  if (!errText) return false
+  return (
+    /(?:does not|doesn't|not)\s+support\s+(?:image|vision|multimodal)/i.test(errText) ||
+    /invalid[\s_-]+content[\s_-]+type.*image/i.test(errText) ||
+    /unsupported[\s_-]+(?:content|media|input)[\s_-]+type.*image/i.test(errText) ||
+    /unknown variant [`'"]?image_url/i.test(errText) ||
+    /image_url.*(?:not supported|is not allowed|invalid)/i.test(errText) ||
+    /(?:模型|当前模型|该模型)?不支持(?:图片|图像|视觉|多模态)/i.test(errText)
+  )
+}
+
+function isPiDeterministicAuthOrModelError(errText: string): boolean {
+  const lower = errText.toLowerCase()
+  return (
+    /\b(401|403)\b/.test(lower) ||
+    lower.includes('invalid api key') ||
+    lower.includes('incorrect api key') ||
+    lower.includes('authentication failed') ||
+    lower.includes('unauthorized') ||
+    lower.includes('model_not_found') ||
+    lower.includes('model not found')
+  )
+}
+
+/**
+ * 识别可在 Agent 轮次级别安全重连重试的瞬时上游/网络/流中断错误（429 限流、502/503/504 网关抖动、SSE 半途断流、socket hang up 等）。
+ * 显式排除余额耗尽（402）、鉴权失败（401/403）与上下文超限（走压缩分支）。
+ */
+export function isPiTransientUpstreamError(message: AssistantMessage): boolean {
+  if (!message || message.stopReason !== 'error') return false
+  const errText = String(message.errorMessage ?? '').trim()
+  if (!errText) return true
+  if (isPiQuotaError(errText) || isPiDeterministicAuthOrModelError(errText)) return false
+  if (isPiContextOrPayloadOverflowError(message) || isPiUnsupportedImageError(message)) return false
+  if (isRetryableAssistantError(message)) return true
+  return (
+    /\b(408|409|425|429|500|502|503|504|520|521|522|523|524|529)\b/.test(errText) ||
+    /rate[\s_-]?limit|too many requests|overloaded|service unavailable|bad gateway|gateway timeout/i.test(
+      errText
+    ) ||
+    /fetch failed|network error|socket hang up|econnreset|etimedout|econnrefused|epipe|und_err/i.test(
+      errText
+    ) ||
+    /premature close|terminated|stream.*(?:closed|interrupted|aborted|error)|unexpected end of json|incomplete chunked|connection reset|internal server error|temporarily unavailable|upstream error/i.test(
+      errText
+    )
   )
 }

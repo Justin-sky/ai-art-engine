@@ -108,6 +108,8 @@ import {
   buildPiSystemPrompt,
   listStudioDomainSubagents
 } from './piPersona'
+import { compactImageBufferForAgentVision, VISION_HARD_MAX_RAW_BYTES } from './piPayloadGuard'
+import { createPiFinishTurnController, runPiAgentWithSelfHealing } from './piSelfHealing'
 import {
   buildPiSessionExportZip,
   compactPiContextMessages,
@@ -124,10 +126,6 @@ export { listStudioDomainSubagents }
 
 const MAX_PARALLEL_SESSIONS = 6
 const DSH_SKILLS_TEMPLATE_FILE = 'my-skill.example'
-/** 单次运行内遇到 finish_reason="length" 且未发出工具调用时的最大自动续写轮数 */
-const MAX_LENGTH_CONTINUATIONS = 3
-const LENGTH_CONTINUATION_PROMPT =
-  '[System: Your previous response hit the output token limit before completing. Continue directly from where you stopped; keep internal reasoning brief and immediately emit the next tool call or final answer.]'
 
 interface QueuedRunItem {
   input: HarnessRunInput
@@ -274,12 +272,15 @@ function extractPromptReferencedImages(
       if (!st.isFile() || st.size > 12 * 1024 * 1024) continue
       const bytes = readFileSync(abs)
       const ext = extname(abs).toLowerCase()
-      const mimeType = sniffImageMimeFromBytes(bytes) ?? PROMPT_IMAGE_EXTS[ext] ?? 'image/png'
-      images.push({
-        type: 'image',
-        data: bytes.toString('base64'),
-        mimeType
-      })
+      const rawMimeType = sniffImageMimeFromBytes(bytes) ?? PROMPT_IMAGE_EXTS[ext] ?? 'image/png'
+      const compacted = compactImageBufferForAgentVision(bytes, rawMimeType)
+      if (compacted.buffer.byteLength <= VISION_HARD_MAX_RAW_BYTES) {
+        images.push({
+          type: 'image',
+          data: compacted.buffer.toString('base64'),
+          mimeType: compacted.mimeType
+        })
+      }
     } catch {
       /* ignore unreadable reference */
     }
@@ -550,8 +551,10 @@ function buildNativeCoordinationTools(opts: {
   resolvedModel: NonNullable<ReturnType<typeof resolvePiModelFromProviders>>
   projectMemory: string | null
   interactive: boolean
+  onTodosUpdated?: () => void
 }): RuntimeAgentTool[] {
-  const { runner, publicSessionId, resolvedModel, projectMemory, interactive } = opts
+  const { runner, publicSessionId, resolvedModel, projectMemory, interactive, onTodosUpdated } =
+    opts
 
   const todoWriteTool: RuntimeAgentTool = {
     name: 'todo_write',
@@ -610,6 +613,7 @@ function buildNativeCoordinationTools(opts: {
       }
 
       runner.todos = normalized
+      onTodosUpdated?.()
       emitHarnessEvent(publicSessionId, runner.runId, { type: 'todo', todos: normalized })
       return {
         content: [{ type: 'text', text: JSON.stringify({ ok: true, count: normalized.length }) }],
@@ -963,7 +967,11 @@ function buildNativeCoordinationTools(opts: {
           updatedAt: Date.now()
         }
 
-        let subLengthContinuations = 0
+        const subFinishController = createPiFinishTurnController({
+          getAgent: () => childAgentRef,
+          getMode: () => 'craft',
+          getTodos: () => []
+        })
         const childAgent = new Agent({
           initialState: {
             systemPrompt: subSystemPrompt,
@@ -977,27 +985,13 @@ function buildNativeCoordinationTools(opts: {
           prepareNextTurnWithContext: (turn) => ({
             context: {
               messages: compactPiContextMessages(turn.context.messages, {
-                contextWindow: resolvedModel.model.contextWindow
+                contextWindow: resolvedModel.model.contextWindow,
+                force: subFinishController.consumeForceCompactFlag()
               }),
               tools: subLazy.buildActiveTools()
             }
           }),
-          finishTurn: (turn) => {
-            if (turn.message.stopReason === 'length' && turn.toolResults.length === 0) {
-              if (subLengthContinuations < MAX_LENGTH_CONTINUATIONS) {
-                subLengthContinuations += 1
-                childAgent.steer({
-                  role: 'user',
-                  content: LENGTH_CONTINUATION_PROMPT,
-                  timestamp: Date.now()
-                })
-                return { action: 'continue' }
-              }
-            } else if (turn.message.stopReason !== 'length') {
-              subLengthContinuations = 0
-            }
-            return undefined
-          }
+          finishTurn: (turn) => subFinishController.finishTurn(turn)
         })
         childAgentRef = childAgent
 
@@ -1044,7 +1038,12 @@ function buildNativeCoordinationTools(opts: {
       if (signal) signal.addEventListener('abort', onParentAbort, { once: true })
 
       try {
-        await existing.agent.prompt(prompt)
+        await runPiAgentWithSelfHealing({
+          agent: existing.agent,
+          prompt,
+          signal,
+          isAborted: () => runner.abortRequested || Boolean(signal?.aborted)
+        })
         existing.view.status = existing.agent.state.errorMessage ? 'error' : 'completed'
         existing.view.updatedAt = Date.now()
         emitSubagentTree(runner, publicSessionId)
@@ -1374,6 +1373,28 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
   const interactive = !waiter
 
   let agentRef: Agent | null = null
+  const resumeHasIncompleteTodos =
+    runner.todos.some((t) => t.status === 'pending' || t.status === 'in_progress') &&
+    /^(?:继续|接着|继续执行|继续完成|把剩下的做完|continue|go on|resume)\b/i.test(
+      skillPreprocessed.taskText.trim()
+    )
+
+  const finishTurnController = createPiFinishTurnController({
+    getAgent: () => agentRef,
+    getMode: () => governance.getAccessView().mode ?? mode,
+    getTodos: () => runner.todos,
+    getGoal: () => runner.goal,
+    setGoal: (next) => {
+      runner.goal = next
+    },
+    onGoalUpdated: (goal) => {
+      emitHarnessEvent(publicSessionId, runId, { type: 'goal', goal })
+    },
+    onTurnCounted: () => {
+      runner.turnSeq += 1
+    },
+    initialTodosActivated: resumeHasIncompleteTodos
+  })
 
   const governance = new PiTurnGovernance({
     sessionId: publicSessionId,
@@ -1392,6 +1413,7 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
       }
     },
     onSandboxBlocked: (toolName, detail) => {
+      finishTurnController.markBlockingInteraction()
       emitHarnessEvent(publicSessionId, runId, {
         type: 'sandbox_blocked',
         toolName,
@@ -1429,7 +1451,8 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
     publicSessionId,
     resolvedModel,
     projectMemory,
-    interactive
+    interactive,
+    onTodosUpdated: () => finishTurnController.markTodosActivated()
   })
   const allNativeTools: RuntimeAgentTool[] = [
     ...workspaceTools,
@@ -1440,9 +1463,9 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
 
   lazyManager.setNativeToolsProvider(() => governance.filterNativeTools(allNativeTools))
 
-  // 首轮零延迟意图预热（自动挂载 Blender / 时间线 / 游戏 / 网页提取 / 外部逆向工具包）
+  // 首轮零延迟意图预热：仅根据用户原始任务文本匹配，避免被自动抓取的网页正文或画布上下文中的无关词汇误唤醒外部 MCP（如 rea）
   if (mode !== 'ask') {
-    await lazyManager.prewarmForPrompt(finalPromptText)
+    await lazyManager.prewarmForPrompt(skillPreprocessed.taskText)
   }
 
   const systemPrompt = buildPiSystemPrompt({
@@ -1458,8 +1481,6 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
         contextWindow: resolvedModel.model.contextWindow
       })
     : []
-
-  let lengthContinuationCount = 0
 
   const agent = new Agent({
     initialState: {
@@ -1486,52 +1507,13 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
     prepareNextTurnWithContext: (turn) => ({
       context: {
         messages: compactPiContextMessages(turn.context.messages, {
-          contextWindow: resolvedModel.model.contextWindow
+          contextWindow: resolvedModel.model.contextWindow,
+          force: finishTurnController.consumeForceCompactFlag()
         }),
         tools: lazyManager.buildActiveTools()
       }
     }),
-    finishTurn: (turn) => {
-      runner.turnSeq += 1
-      // 当输出因达到单次 max_tokens 截断且尚未发出工具调用（例如卡在思维链或长报告半途）时自动续写，防止会话无结果静默退出
-      if (turn.message.stopReason === 'length' && turn.toolResults.length === 0) {
-        if (lengthContinuationCount < MAX_LENGTH_CONTINUATIONS) {
-          lengthContinuationCount += 1
-          agent.steer({
-            role: 'user',
-            content: LENGTH_CONTINUATION_PROMPT,
-            timestamp: Date.now()
-          })
-          return { action: 'continue' }
-        }
-      } else if (turn.message.stopReason !== 'length') {
-        lengthContinuationCount = 0
-      }
-
-      // 多轮自主目标续跑（当 goal 仍处于 active 且本轮无待执行 toolCall 时自动推进下一轮）
-      if (
-        runner.goal &&
-        runner.goal.phase === 'active' &&
-        runner.goal.activation === 'armed' &&
-        turn.toolResults.length === 0
-      ) {
-        const currentRound = runner.goal.round ?? 1
-        const maxRounds = runner.goal.maxRounds ?? 8
-        if (currentRound < maxRounds) {
-          runner.goal = { ...runner.goal, round: currentRound + 1 }
-          emitHarnessEvent(publicSessionId, runId, { type: 'goal', goal: runner.goal })
-          agent.steer({
-            role: 'user',
-            content: `[Autonomous Goal Round ${currentRound + 1}/${maxRounds}] Continue executing objective "${runner.goal.objective}". Verify completed deliverables; once all criteria are satisfied, call goal_manage({ action: "complete", summary: "..." }).`,
-            timestamp: Date.now()
-          })
-          return { action: 'continue' }
-        }
-        runner.goal = { ...runner.goal, phase: 'ended', activation: 'disarmed' }
-        emitHarnessEvent(publicSessionId, runId, { type: 'goal', goal: runner.goal })
-      }
-      return undefined
-    }
+    finishTurn: (turn) => finishTurnController.finishTurn(turn)
   })
   agentRef = agent
   runner.agent = agent
@@ -1558,6 +1540,9 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
         break
       }
       case 'tool_execution_start': {
+        if (ev.toolName === 'ask_user') {
+          finishTurnController.markBlockingInteraction()
+        }
         const argsObj = prepareLooseToolArguments(ev.args)
         toolArgsByCallId.set(ev.toolCallId, argsObj)
         const bareName = stripMcpToolPrefix(ev.toolName)
@@ -1637,7 +1622,15 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
   )
 
   try {
-    await agent.prompt(finalPromptText, attachedImages.length > 0 ? attachedImages : undefined)
+    await runPiAgentWithSelfHealing({
+      agent,
+      prompt: finalPromptText,
+      images: attachedImages.length > 0 ? attachedImages : undefined,
+      isAborted: () => runner.abortRequested,
+      onStatus: (text, tone) => {
+        emitHarnessEvent(publicSessionId, runId, { type: 'status', text, tone })
+      }
+    })
 
     if (runner.activeSkill?.hooks) {
       runSkillLifecycleHooks(runner.activeSkill, 'Stop', {
@@ -1645,7 +1638,7 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
       })
     }
 
-    // 持久化无锁落盘
+    // 持久化无锁落盘（stripRuntimeSystemMessages 已自动剔除任何残余空壳报错帧）
     if (persistenceSessionId) {
       savePiSession(dshHome(), {
         sessionId: persistenceSessionId,
@@ -1666,25 +1659,37 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
       !accumulatedText.trim()
         ? '模型连续达到单次输出 Token 上限且未生成正文结果（可能因思维链或上下文过长）。请发送 /compact 压缩历史上下文，或发送“继续”接着执行。'
         : undefined)
-    emitHarnessEvent(publicSessionId, runId, { type: 'tool', name: 'pi-agent', state: 'done' })
 
     if (errMessage && !runner.abortRequested) {
       const formattedErr = isPiQuotaError(errMessage)
         ? `${errMessage}（模型账户余额或配额不足，请充值或在「设置 → 模型接入」中切换服务商）`
         : errMessage
+      emitHarnessEvent(publicSessionId, runId, {
+        type: 'tool',
+        name: 'pi-agent',
+        state: 'error',
+        detail: formattedErr
+      })
       emitHarnessEvent(publicSessionId, runId, { type: 'error', message: formattedErr })
       settleWaiter({ ok: false, error: formattedErr, finalText: accumulatedText })
     } else {
+      emitHarnessEvent(publicSessionId, runId, { type: 'tool', name: 'pi-agent', state: 'done' })
       emitHarnessEvent(publicSessionId, runId, { type: 'done', runId })
       emitHarnessEvent(publicSessionId, runId, { type: 'final', text: accumulatedText })
       settleWaiter({ ok: true, finalText: accumulatedText })
     }
   } catch (err) {
     const rawMsg = err instanceof Error ? err.message : String(err)
-    emitHarnessEvent(publicSessionId, runId, { type: 'tool', name: 'pi-agent', state: 'done' })
     if (!runner.abortRequested) {
+      emitHarnessEvent(publicSessionId, runId, {
+        type: 'tool',
+        name: 'pi-agent',
+        state: 'error',
+        detail: rawMsg
+      })
       emitHarnessEvent(publicSessionId, runId, { type: 'error', message: rawMsg })
     } else {
+      emitHarnessEvent(publicSessionId, runId, { type: 'tool', name: 'pi-agent', state: 'done' })
       emitHarnessEvent(publicSessionId, runId, { type: 'done', runId })
     }
     settleWaiter({ ok: false, error: rawMsg, finalText: accumulatedText })

@@ -16,6 +16,9 @@ import { setMainWindowRef } from './mainWindowRef'
 import { abortScreenRecording } from './services/screenRecordService'
 import { gpuShaderCacheSwitches } from './services/gpuShaderCachePolicy'
 import { installWindowOpenHandler } from './windowOpenPolicy'
+import { installMainProcessNetworkResilience } from './services/systemProxyTransport'
+
+installMainProcessNetworkResilience()
 
 // 必须在 app ready 之前追加，否则 Chromium 已经建完缓存（见 gpuShaderCachePolicy 注释）
 for (const gpuSwitch of gpuShaderCacheSwitches()) {

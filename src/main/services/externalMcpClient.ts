@@ -277,8 +277,10 @@ export function buildStdioEnv(
   }
 
   let pathValue = hostEnv.PATH ?? hostEnv.Path ?? ''
+  const homeDir = hostEnv.USERPROFILE || hostEnv.HOME || ''
   if (platform === 'win32') {
     const extraDirs: string[] = []
+    if (homeDir) extraDirs.push(join(homeDir, '.local', 'bin'))
     if (hostEnv.APPDATA) extraDirs.push(join(hostEnv.APPDATA, 'npm'))
     if (hostEnv.ProgramFiles) extraDirs.push(join(hostEnv.ProgramFiles, 'nodejs'))
     const existingLower = new Set(
@@ -302,6 +304,12 @@ export function buildStdioEnv(
       out.PATHEXT = hostEnv.PATHEXT || '.COM;.EXE;.BAT;.CMD'
     }
     delete out.Path
+  } else if (homeDir) {
+    const localBin = join(homeDir, '.local', 'bin')
+    const parts = pathValue.split(':').filter(Boolean)
+    if (!parts.includes(localBin) && isExistingDir(localBin)) {
+      pathValue = pathValue ? `${localBin}:${pathValue}` : localBin
+    }
   }
   out.PATH = pathValue
 
@@ -398,6 +406,46 @@ export function resolveStdioSpawnSpec(
 }
 
 /**
+ * 当内置 `rea` 服务使用默认 `npx -y rea-agents@latest mcp` 启动时，若用户本机已通过官方独立安装器
+ * 安装 `~/.local/bin/rea(.cmd)`（自带满足 `>=24.22.1` 要求的独立 Node 运行时），优先切换至该独立启动器，
+ * 避免系统全局 `npx` 命中低版本 Node（如 Node 24.14.x）导致启动报错退出。
+ */
+export function resolveEffectiveStdioServerCommand(
+  server: Pick<ExternalMcpServer, 'id' | 'command' | 'args'>,
+  env: Record<string, string>,
+  platform: NodeJS.Platform = process.platform
+): { command: string; args: string[] } {
+  const cmd = server.command.trim()
+  const isDefaultReaNpx =
+    server.id.toLowerCase() === 'rea' &&
+    /^npx(?:\.(?:cmd|exe|bat))?$/i.test(cmd) &&
+    server.args.some((arg) => /^rea-agents(?:@.+)?$/i.test(arg))
+
+  if (isDefaultReaNpx) {
+    const homeDir = env.USERPROFILE || env.HOME || ''
+    if (homeDir) {
+      const localBin = join(homeDir, '.local', 'bin')
+      const candidates =
+        platform === 'win32'
+          ? [join(localBin, 'rea.cmd'), join(localBin, 'rea.exe'), join(localBin, 'rea.bat')]
+          : [join(localBin, 'rea')]
+      for (const candidate of candidates) {
+        if (isExistingFile(candidate)) {
+          const pkgIdx = server.args.findIndex((arg) => /^rea-agents(?:@.+)?$/i.test(arg))
+          const subArgs = pkgIdx >= 0 ? server.args.slice(pkgIdx + 1) : []
+          return {
+            command: candidate,
+            args: subArgs.length > 0 ? subArgs : ['mcp']
+          }
+        }
+      }
+    }
+  }
+
+  return { command: server.command, args: [...server.args] }
+}
+
+/**
  * stdio 子进程会话。
  *
  * 用 readline 按行切而不是手写缓冲：**最后一行可能跨 chunk**，手写缓冲是这类实现
@@ -405,7 +453,8 @@ export function resolveStdioSpawnSpec(
  */
 function openStdioSession(server: ExternalMcpServer): ExternalMcpSession {
   const childEnv = buildStdioEnv(server.env)
-  const spawnSpec = resolveStdioSpawnSpec(server.command, server.args, childEnv)
+  const effective = resolveEffectiveStdioServerCommand(server, childEnv)
+  const spawnSpec = resolveStdioSpawnSpec(effective.command, effective.args, childEnv)
   const child: ChildProcessWithoutNullStreams = spawn(spawnSpec.command, spawnSpec.args, {
     env: childEnv,
     stdio: ['pipe', 'pipe', 'pipe'],

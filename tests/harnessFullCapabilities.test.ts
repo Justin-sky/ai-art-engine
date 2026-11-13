@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const SERVICE_SRC = readFileSync(resolve('src/main/agent/piHarnessService.ts'), 'utf8')
+const SELF_HEALING_SRC = readFileSync(resolve('src/main/agent/piSelfHealing.ts'), 'utf8')
 const PERSONA_SRC = readFileSync(resolve('src/main/agent/piPersona.ts'), 'utf8')
 const SESSION_SRC = readFileSync(resolve('src/main/agent/piSessionStore.ts'), 'utf8')
 const WORKSPACE_TOOLS_SRC = readFileSync(resolve('src/main/agent/piWorkspaceTools.ts'), 'utf8')
@@ -26,7 +27,8 @@ describe('Pi Agent Core (@earendil-works/pi-agent-core) 全能力接入校验', 
     expect(SERVICE_SRC).toContain("name: 'goal_manage'")
     expect(SERVICE_SRC).toContain("type: 'todo'")
     expect(SERVICE_SRC).toContain("type: 'goal'")
-    expect(SERVICE_SRC).toContain("return { action: 'continue' }")
+    expect(SERVICE_SRC).toContain('createPiFinishTurnController')
+    expect(SELF_HEALING_SRC).toContain("return { action: 'continue' }")
     expect(CHAT_PANEL_SRC).toContain('class="harness-goal-bar"')
     expect(CHAT_PANEL_SRC).toContain('class="harness-todo-board"')
   })
