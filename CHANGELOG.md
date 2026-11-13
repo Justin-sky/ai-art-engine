@@ -2,6 +2,15 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [9.0.2] — 2026-11-13
+
+9.0.2 智能体持续自愈与网络/生图容灾升级版：针对 **内置 Pi Agent 运行时（`piPayloadGuard` + `piSelfHealing` + `piHarnessService`）** 新增 **8 MB 请求字节水位硬防线与历史大载荷落盘卸载**、**未收尾承诺意图检测与瞬态断连/载荷超限自动自愈续跑**；针对 **外部 MCP（`externalMcpClient` + `mcpServerService`）** 新增 **外部高版本系统 Node.js 运行时自动探测（修复 `rea` 等 Node 版本限制）**；并打通 **主进程系统代理隧道（`127.0.0.1:7890` / PAC / WinINET）、TLS 握手闪断重试与生图跨渠道自动容灾回退（`systemProxyTransport` + `modelProviders`）**。
+
+- **新增 · Pi Agent 8 MB 字节硬防线、大载荷落盘与会话自愈续跑（`src/main/agent/piPayloadGuard` + `piSelfHealing` + `piHarnessService` + `ChatPanel`）**：工具结果与 `transformContext` / `onPayload` 三层字节预算守卫（安全红线 `5.5 MB`，彻底拦截上游网关 `400: The total text input size exceeds 8 MB`），超长工具输出自动无损落盘至 `<userData>/dsh-harness/pi-tool-offload/` 并保留头尾摘要与 `read_file` 按行回读指针；`finishTurn` 智能识别模型“承诺下一步检查/重试却未挂工具调用”的半途停顿、瞬态流断连与字节超限错误，自动裁剪瘦身并指数退避续跑，前端对话流同步展示 `🔄 正在自动恢复` 状态胶囊。
+- **修复 · 外部 MCP 服务独立 Node.js 运行时自动解析与降级保护（`src/main/services/mcpServerService` + `externalMcpClient` + `mcpLazyToolsets`）**：当内置 Electron 的 `ELECTRON_RUN_AS_NODE` 版本不满足外部 MCP 服务（如 `rea` 要求 Node `22.23.4+` / `24.22.1+` / `26.12.1+`）时，自动扫描并切换至本机兼容的独立 `node`（nvm / fnm / Volta / 系统 PATH）拉起，并在不可用时平滑降级而不阻塞对话启动。
+- **新增 · 主进程系统代理自动隧道、死代理直连回退与生图跨渠道容灾（`src/main/services/systemProxyTransport` + `modelProviders/http` + `modelProviders/facade`）**：主进程 `axios` 与 `globalThis.fetch` 自动感知环境变量、Chromium/Electron PAC（`session.resolveProxy`）与 Windows WinINET 注册表代理，支持 HTTP `CONNECT` / SOCKS5 隧道、本地死代理毫秒级直连回退及 TLS 握手前 `ECONNRESET` 换连接自动重试（修复直连 `api.openai.com` 等海外端点握手重置）；`generateImage` 在主渠道发生网络断连、超时、429 限流或 5xx 故障时自动按优先级容灾切换至其他可用图像服务商（或内置零 Key 兜底）。
+- **说明（发版提示）**：9.0.2 涉及主进程网络传输层、MCP 客户端与内置 Pi Agent 运行时升级，升级后请**重启应用**。
+
 ## [9.0.1] — 2026-11-13
 
 9.0.1 长上下文与多轮推理稳定性热修复版：修复内置 **Pi Agent 运行时（`piModelResolver` + `piSessionStore` + `piHarnessService`）** 在大上下文模型（如 OpenRouter 1M 窗口 `deepseek/deepseek-v4.1-flash`）连续多轮工具调用超过 128K Tokens 后，因窗口低估导致输出预算被钳制为 `1` Token 并静默退出的问题。
