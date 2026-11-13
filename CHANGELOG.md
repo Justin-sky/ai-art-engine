@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [9.0.1] — 2026-11-13
+
+9.0.1 长上下文与多轮推理稳定性热修复版：修复内置 **Pi Agent 运行时（`piModelResolver` + `piSessionStore` + `piHarnessService`）** 在大上下文模型（如 OpenRouter 1M 窗口 `deepseek/deepseek-v4.1-flash`）连续多轮工具调用超过 128K Tokens 后，因窗口低估导致输出预算被钳制为 `1` Token 并静默退出的问题。
+
+- **修复 · 模型真实上下文窗口读取与底层输出 Token 保底（`src/main/agent/piModelResolver`）**：新增 `resolveChatModelContextWindow` 与 `resolveChatModelMaxTokens`，优先读取模型目录缓存中的 `capabilities.context_length` / `max_completion_tokens`，并内置 1M / 400K / 256K / 200K / 128K 主流模型家族兜底映射（与前端用量圆环完全一致）；同时在 `onPayload` 请求拦截器中增加 `MIN_SAFE_OUTPUT_TOKENS = 4096` 保护，防止 `pi-ai` 估算偏高时将 `max_completion_tokens` 压至 `1`。
+- **新增 · 结构化无损自动上下文压缩与 `stopReason="length"` 自动续写（`src/main/agent/piSessionStore` + `piHarnessService`）**：当会话历史超过模型窗口 `78%` 水位时，保留近期消息与全部 `toolCall <-> toolResult` 配对关系，自动将早期超大工具输出（如 `bash` / `graph_read` 数万字符返回值）原位折叠为摘要并同步刷新前缀时间戳；当回复在思维链或长报告阶段触发 `stopReason="length"` 且尚未发出工具调用时自动无缝续写（最多 3 轮），彻底杜绝无结果静默退出。
+
 ## [9.0.0] — 2026-11-13
 
 9.0.0 里程碑大版本（Agent 架构换代）：**内置智能体运行时（`src/main/agent/*`）** 全面重构为基于 `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai` 的 **主进程原生进程内 Pi Agent 运行时**，彻底移除旧版 `@deepseek-ai/dsh` 外部子进程、stdout marker 文本协议与跨进程 `.jsonl.zstd` 文件锁；全新落地 **`load_toolset` 按需懒加载 MCP 工具包引擎（永久根治 `<= 128` 工具路数上限）**、**原生双层 `Craft / Plan / Ask` 门禁与盘中实时沙箱切换**、**无锁原子 JSON 会话存储与跨厂商无感热切模型**，以及 **会话结束画布运行态自动收束与工程上次打开画布自动恢复**。

@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-const PKG_VERSION = '9.0.0'
+const PKG_VERSION = '9.0.1'
 const REQUEST_TIMEOUT_MS = 180_000
 
 const argv = process.argv.slice(2)

@@ -1,6 +1,6 @@
 {
   "name": "aiartengine",
-  "version": "9.0.0",
+  "version": "9.0.1",
   "description": "AI Art Engine — Open-source agent-native AI production engine for game UI (layered PSD TySh + Unity/Godot), Spine 2D rigging, Machinations economy simulation, AI short drama (CapCut draft), 3D/Blender MCP & playable HTML5",
   "keywords": [
     "ai-art-engine",

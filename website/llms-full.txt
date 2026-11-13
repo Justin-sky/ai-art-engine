@@ -1,4 +1,4 @@
-# AI Art Engine (AIArtEngine) — Complete Technical & Product Reference (v9.0.0)
+# AI Art Engine (AIArtEngine) — Complete Technical & Product Reference (v9.0.1)
 
 > Canonical Origin: https://justin-sky.github.io/ai-art-engine/
 > Live Online Machinations v2 Playground: https://justin-sky.github.io/ai-art-engine/playground/
