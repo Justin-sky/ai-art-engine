@@ -33,8 +33,8 @@ function makeDummyTool(name: string): RuntimeAgentTool {
 }
 
 describe('Pi 原生门禁（Craft / Plan / Ask）、ask_user 问答卡、单次权限审批卡与受限沙箱', () => {
-  const WORKSPACE = resolve('F:/demo-studio-project')
-  const SKILLS_DIR = resolve('C:/Users/Test/.aiart/dsh-harness/skills')
+  const WORKSPACE = resolve('/demo-studio-project')
+  const SKILLS_DIR = resolve('/demo-user-home/.aiart/dsh-harness/skills')
 
   it('1. Ask 模式：暴露 0 个工具，且对模型幻觉发出的任何工具调用一律硬拦截', async () => {
     const askBroker = new PiAskUserBroker({ emitQuestion: () => undefined })
@@ -206,7 +206,7 @@ describe('Pi 原生门禁（Craft / Plan / Ask）、ask_user 问答卡、单次�
     expect(emittedApprovals).toHaveLength(0)
 
     // 2) 工作区外写入触发单次审批卡 -> 用户点「允许一次 (allow-once)」放行本次调用
-    const outPath = resolve('D:/external-reverse-output/report.md')
+    const outPath = resolve('/external-reverse-output/report.md')
     const firstOutPromise = gov.beforeToolCall({
       assistantMessage: STUB_ASSISTANT,
       toolCall: {
@@ -319,29 +319,31 @@ describe('Pi 原生门禁（Craft / Plan / Ask）、ask_user 问答卡、单次�
     })
 
     // 命中 allowed-tools 白名单的外部路径 python 命令自动放行
+    const outLogPath = resolve('/opt/outside/unpack.log')
     const allowedSkillCmd = await gov.beforeToolCall({
       assistantMessage: STUB_ASSISTANT,
       toolCall: {
         type: 'toolCall',
         id: 'py_1',
         name: 'bash',
-        arguments: { command: 'python D:/tools/unpack.py' }
+        arguments: { command: `python unpack.py > ${outLogPath}` }
       },
-      args: { command: 'python D:/tools/unpack.py' },
+      args: { command: `python unpack.py > ${outLogPath}` },
       context: { messages: [] }
     })
     expect(allowedSkillCmd).toBeUndefined()
 
     // 未在白名单内的越界写入立即触发 sandbox_blocked 并安全拦截
+    const secretOutPath = resolve('/outside/secret.txt')
     const blockedOutWrite = await gov.beforeToolCall({
       assistantMessage: STUB_ASSISTANT,
       toolCall: {
         type: 'toolCall',
         id: 'w_bg',
         name: 'write',
-        arguments: { path: 'D:/outside/secret.txt', content: '123' }
+        arguments: { path: secretOutPath, content: '123' }
       },
-      args: { path: 'D:/outside/secret.txt', content: '123' },
+      args: { path: secretOutPath, content: '123' },
       context: { messages: [] }
     })
     expect(blockedOutWrite?.block).toBe(true)
