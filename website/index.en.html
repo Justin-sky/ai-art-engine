@@ -22,7 +22,7 @@
     <title>AI Art Engine (AIArtEngine) — Open-Source Game UI to PSD/Unity, Machinations Economy, AI Short Drama &amp; MCP Asset Engine</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.5 — Open-source, agent-native multimodal AI production studio. Ship layered editable PSDs (native TySh text layers), Unity/Godot/HTML5 UI code, Machinations game economy simulations (C#/GDScript), Spine 2D bone rigs, 21-genre 5-stage AI short-drama episodes, 2-node forensic video remakes, CapCut multi-track NLE drafts, and playable HTML5 games. 102-tool local MCP server · GPL-3.0."
+      content="AI Art Engine (AIArtEngine) v9.0.0 — Open-source, agent-native multimodal AI production studio with an in-process Pi Agent runtime &amp; on-demand lazy MCP engine (&lt;128 tools). Ship layered editable PSDs (native TySh text layers), Unity/Godot/HTML5 UI code, Machinations game economy simulations (C#/GDScript), Spine 2D bone rigs, 21-genre 5-stage AI short-drama episodes, 2-node forensic video remakes, CapCut multi-track NLE drafts, and playable HTML5 games. 102-tool local MCP server (npx -y ai-art-engine-mcp) · GPL-3.0."
     />
     <meta
       name="keywords"
@@ -47,7 +47,7 @@
     <meta property="og:image:height" content="860" />
     <meta property="og:image:alt" content="AI Art Engine 3D exploded Game UI layer split and editable PSD / Unity / Godot export workbench" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="AI Art Engine — The Agent-Native Multimodal AI Production Engine (v8.9.5)" />
+    <meta name="twitter:title" content="AI Art Engine — The Agent-Native Multimodal AI Production Engine (v9.0.0)" />
     <meta
       name="twitter:description"
       content="Don't just generate flat images—ship editable PSDs (native TySh text layers), Unity/Godot UI code, Machinations economy simulations, Spine 2D packages, CapCut NLE drafts, and playable HTML5 games. Open source · GPL-3.0."
@@ -78,7 +78,7 @@
             "url": "https://justin-sky.github.io/ai-art-engine/index.en.html",
             "applicationCategory": ["DesignApplication", "MultimediaApplication", "DeveloperApplication"],
             "operatingSystem": "Windows 10+, macOS 12+, Linux",
-            "softwareVersion": "8.9.5",
+            "softwareVersion": "9.0.0",
             "license": "https://www.gnu.org/licenses/gpl-3.0.html",
             "isAccessibleForFree": true,
             "downloadUrl": "https://github.com/Justin-sky/ai-art-engine/releases",
@@ -98,7 +98,7 @@
               "CapCut-grade 6-tab Multi-Track NLE Timeline (120+ effects/transitions/LUTs, DOTween keyframes, TD-PSOLA singing synthesis) & JianyingPro/CapCut draft export",
               "2D Character Part Segmentation, AI Bone Alignment & Spine 2D (skeleton.json + .atlas) Export, plus 4-band Wavelet Portrait Studio",
               "56-Bone 3D Director Stage, World Labs 3D Gaussian Splatting Spatial Worlds & 9-Tool Blender MCP Bridge",
-              "Embedded Multi-Project AI Chat, 24h Scheduled Automations & 102-Tool Local Bi-Directional MCP Server (Claude Code / Cursor / Codex)",
+              "In-Process Pi Agent 9.0 Runtime (load_toolset on-demand lazy MCP engine <128 tools, dual-layer Craft/Plan/Ask governance, live sandbox switching, 6-session lock-free store), 24h Scheduled Automations & 102-Tool Local MCP Server (npx -y ai-art-engine-mcp for Claude Code / Cursor / Codex / Windsurf)",
               "Workflow-in-PNG (aiae:graph metadata chunk) & Local ONNX Vision + Cross-Platform Offline OCR"
             ]
           },
@@ -173,7 +173,7 @@
                 "name": "How do Claude Code, Cursor, or Codex connect via MCP?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "While running, AI Art Engine hosts an authenticated local MCP server on 127.0.0.1 exposing 102 tools (93 core tools on /mcp + 9 live modeling tools on /mcp/blender). Run claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs to let external agents build node graphs, run simulations, and export masters."
+                  "text": "While running, AI Art Engine hosts an authenticated local Streamable HTTP MCP server on 127.0.0.1:43110 exposing 102 tools (93 core tools on /mcp + 9 live modeling tools on /mcp/blender). Run claude mcp add aiartengine -- npx -y ai-art-engine-mcp (or node ./resources/mcp-bridge.mjs) to let Claude Code, Cursor, Codex, and Windsurf build node graphs, run simulations, and export masters."
                 }
               },
               {
@@ -221,7 +221,7 @@
       <a class="brand" href="#top">
         <img src="assets/logo-mark.png" alt="AI Art Engine logo" width="30" height="30" />
         <span>AI Art Engine</span>
-        <span class="brand-ver">v8.9.5</span>
+        <span class="brand-ver">v9.0.0</span>
       </a>
       <nav class="nav" aria-label="Main navigation">
         <a href="#features">Highlights</a>
@@ -297,7 +297,7 @@
             target="_blank"
             rel="noopener noreferrer"
           >
-            <b>v8.9.5</b><span>Live Online Mechanics Playground · Seamless Model Switch &amp; &gt;128-Tool Muxing · 6-Session Parallel Agent · 102-Tool MCP</span> →
+            <b>v9.0.0</b><span>In-Process Pi Agent Runtime · On-Demand Lazy MCP (&lt;128 Tools) · Live Sandbox &amp; 6-Session Lock-Free Store · Online Playground</span> →
           </a>
           <h1 class="reveal" style="--d: 0.04s">
             <span class="hero-lead">Don't just generate flat files —</span><span class="grad">ship editable game &amp; film assets</span>
@@ -434,10 +434,10 @@
           <div class="bento">
             <article class="bento-card span-4 reveal">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-chat" /></svg></span>
-              <span class="bento-tag">Multi-project workspaces · 24h automations · Zero-Key demo</span>
-              <h3>Embedded AI chat · Live canvas &amp; Dive workbench action</h3>
+              <span class="bento-tag">In-process Pi Agent · Lazy MCP toolsets · 6-session lock-free &amp; live sandbox</span>
+              <h3>Embedded Pi Agent chat · Zero-overhead canvas &amp; studio control</h3>
               <p>
-                <code>@</code>-reference project assets and the agent invokes 100+ tools to wire nodes, decompose game UIs, solve economy curves, pose 3D rigs, and cut timelines live — complete with instant multi-project switching and <code>00:00–23:59</code> scheduled daily runs.
+                Powered by the v9.0 in-process Pi Agent runtime: <code>@</code>-reference assets while <code>load_toolset</code> dynamically mounts 102 studio tools + external MCP servers (permanently eliminating the 128-tool limit while preserving prompt prefix caches) — with dual-layer Craft / Plan / Ask governance, live Restricted / Full Access sandbox switching, 6-session lock-free parallel runs, and <code>00:00–23:59</code> automations.
               </p>
               <div class="chat-mock" aria-hidden="true">
                 <div class="chat-row is-user">
@@ -458,7 +458,7 @@
               <span class="bento-tag">102-Tool Bi-Directional MCP</span>
               <h3>Claude Code &amp; Cursor ready</h3>
               <p>
-                Built-in <code>127.0.0.1</code> MCP server (<code>93</code> tools on <code>/mcp</code> + <code>9</code> Blender tools on <code>/mcp/blender</code>) with per-request <code>Agent / Plan / Ask</code> permission gating.
+                Built-in <code>127.0.0.1:43110</code> Streamable HTTP MCP server (<code>93</code> tools on <code>/mcp</code> + <code>9</code> Blender tools on <code>/mcp/blender</code>) plus zero-dependency <code>npx -y ai-art-engine-mcp</code> stdio bridge and per-request <code>Craft / Plan / Ask</code> permission gating.
               </p>
               <a class="bento-link" href="guide-mcp.en.html">102-Tool MCP Guide</a>
             </article>
@@ -736,7 +736,7 @@
                   <th scope="col">Dimension</th>
                   <th scope="col">Web AIGC Platforms</th>
                   <th scope="col">Raw Diffusion Node Graphs</th>
-                  <th scope="col" class="is-hi">AI Art Engine (v8.9.5)</th>
+                  <th scope="col" class="is-hi">AI Art Engine (v9.0.0)</th>
                 </tr>
               </thead>
               <tbody>
@@ -774,7 +774,7 @@
                   <th scope="row">Agent &amp; MCP Control</th>
                   <td>Closed web silo; unreachable from coding agents</td>
                   <td>Low-level JSON APIs without domain studio tools</td>
-                  <td class="is-hi">Multi-project AI chat + 24h schedules + <strong>102-tool local MCP server</strong> (Claude Code, Cursor, Codex, Blender)</td>
+                  <td class="is-hi">In-process <strong>Pi Agent 9.0</strong> (lazy toolsets + 6-session lock-free store) + 24h schedules + <strong>102-tool local MCP server</strong> (Claude Code, Cursor, Codex, Blender)</td>
                 </tr>
                 <tr>
                   <th scope="row">Pricing &amp; Ownership</th>
@@ -867,12 +867,12 @@
             <p class="section-label reveal">Agent Native · 102 MCP Tools</p>
             <h2 class="section-title reveal" id="agent-title">One command lets Claude Code / Cursor<br /><span class="grad">orchestrate 102 production tools</span></h2>
             <p class="section-lede reveal" style="--d: 0.06s">
-              While running, AI Art Engine serves an authenticated local MCP endpoint on <code class="code-inline">127.0.0.1</code> (<code>93</code> tools on <code>/mcp</code> + <code>9</code> live modeling tools on <code>/mcp/blender</code>), sharing the exact same tool engine as the in-app AI chat.
+              While running, AI Art Engine serves an authenticated Streamable HTTP MCP endpoint on <code class="code-inline">127.0.0.1:43110</code> (<code>93</code> tools on <code>/mcp</code> + <code>9</code> live modeling tools on <code>/mcp/blender</code>) — invoked in-process with zero HTTP overhead by the built-in Pi Agent, and connected in one command from external agents via <code>npx -y ai-art-engine-mcp</code>.
             </p>
             <ul class="check-list">
               <li class="reveal"><div><strong>Graph &amp; Skill Marketplace orchestration</strong> — <code>skill_install</code> workflows, instantiate via <code>workflow_use_installed</code>, wire nodes with <code>graph_edit</code>, and execute via <code>task_run</code></div></li>
               <li class="reveal" style="--d: 0.04s"><div><strong>Game, film &amp; 3D end-to-end</strong> — simulate economies with <code>machinations_studio</code>, run offline <code>vision_local_ocr</code>, dissect clips via <code>semantic_analyze_video</code>, and export via <code>timeline_export</code></div></li>
-              <li class="reveal" style="--d: 0.08s"><div><strong>Audited &amp; permission-gated</strong> — persistent Bearer token, concurrency gate, and per-request <code>Agent / Plan / Ask</code> read/write scoping</div></li>
+              <li class="reveal" style="--d: 0.08s"><div><strong>Audited &amp; permission-gated</strong> — persistent Bearer token, concurrency gate, and dual-layer <code>Craft / Plan / Ask</code> read/write scoping</div></li>
             </ul>
             <div class="cta reveal" style="justify-content: flex-start; margin-top: 0">
               <a class="btn btn-solid" href="guide-mcp.en.html"><svg aria-hidden="true"><use href="#i-terminal" /></svg>102-Tool MCP Setup Guide</a>
@@ -881,7 +881,7 @@
 
           <div class="term reveal reveal-stage" style="--d: 0.1s" role="img" aria-label="Terminal demo: Claude Code driving AI Art Engine's 102 MCP tools">
             <div class="term-bar"><i></i><i></i><i></i><span>claude — ~/projects/fantasy-production</span></div>
-            <pre><span class="t-dim">$</span> <span class="t-cmd">claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs</span>
+            <pre><span class="t-dim">$</span> <span class="t-cmd">claude mcp add aiartengine -- npx -y ai-art-engine-mcp</span>
 <span class="t-ok">✓</span> Connected <span class="t-ok">aiartengine</span> <span class="t-dim">(/mcp 93 tools + /mcp/blender 9 tools)</span>
 
 <span class="t-user">&gt;</span> Install short-drama skill, shoot Ep.1, verify gacha economy &amp; export CapCut draft
@@ -1017,13 +1017,13 @@
             <details class="faq-item reveal">
               <summary>What can the Machinations v2 Game Economy Studio simulate and export?</summary>
               <div class="faq-ans">
-                <p><code>game.economy</code> aligns 100% with Machinations semantics (59 verified blocks, Simple ↔ Pro lossless toggle). In v8.9.1 you can drag target curve points or the purple Bezier slope diamond (<code>◆</code>) at 120fps to inversely solve progression formulas (Goal-Seek), run Monte Carlo &amp; 2D sensitivity sweeps, playtest HUD cards, and export Unity C# / Godot GDScript.</p>
+                <p><code>game.economy</code> aligns 100% with Machinations semantics (59 verified blocks, Simple ↔ Pro lossless toggle). You can drag target curve points or the purple Bezier slope diamond (<code>◆</code>) at 120fps to inversely solve progression formulas (Goal-Seek), run Monte Carlo &amp; 2D sensitivity sweeps, playtest HUD cards, and export Unity C# / Godot GDScript.</p>
               </div>
             </details>
             <details class="faq-item reveal">
               <summary>How do Claude Code, Cursor, or Codex control AI Art Engine via MCP?</summary>
               <div class="faq-ans">
-                <p>The desktop app hosts an authenticated local MCP server on <code>127.0.0.1</code> exposing 102 tools (<code>93</code> on <code>/mcp</code> + <code>9</code> on <code>/mcp/blender</code>). Run <code>claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs</code> to connect. See the <a href="guide-mcp.en.html">MCP setup guide</a>.</p>
+                <p>The desktop app hosts an authenticated Streamable HTTP MCP server on <code>127.0.0.1:43110</code> exposing 102 tools (<code>93</code> on <code>/mcp</code> + <code>9</code> on <code>/mcp/blender</code>). Run <code>claude mcp add aiartengine -- npx -y ai-art-engine-mcp</code> (or <code>node ./resources/mcp-bridge.mjs</code>) to connect Claude Code, Cursor, Codex, and Windsurf. See the <a href="guide-mcp.en.html">MCP setup guide</a>.</p>
               </div>
             </details>
             <details class="faq-item reveal">
@@ -1095,7 +1095,7 @@
         <h2 class="reveal" id="cta-title">Ready to turn AI into your <span class="grad">local game &amp; film studio?</span></h2>
         <p class="reveal" style="--d: 0.05s">GPL-3.0 open source · 100% local project ownership · Editable engineering deliverables.</p>
         <div class="cta reveal" style="--d: 0.1s">
-          <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>Download Free v8.9.5</a>
+          <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>Download Free v9.0.0</a>
           <a class="btn btn-line" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">
             <svg aria-hidden="true"><use href="#i-github" /></svg>Star on GitHub
           </a>
@@ -1121,7 +1121,7 @@
               <li><a href="#agent">102-Tool MCP</a></li>
               <li><a href="#faq">FAQ</a></li>
               <li><a href="#download">Download</a></li>
-              <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog (v8.9.5)</a></li>
+              <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog (v9.0.0)</a></li>
             </ul>
           </div>
           <div class="foot-col">

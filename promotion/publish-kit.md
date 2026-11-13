@@ -161,7 +161,7 @@ Happy to answer questions about the node engine, MCP integration, or provider su
 
 如果自造一套 HTTP + JSON schema 协议，也能做，但代价是：Claude Code / Codex 这类 Agent 生态不会原生认识它，用户每次都要写自定义工具绑定。而 MCP 是 Agent 生态的事实标准：
 
-- 应用内 AI 助手（DeepSeek Harness 运行时）直接作为 MCP client 驱动同一套工具
+- 应用内 AI 助手（进程内 Pi Agent 运行时 + `load_toolset` 按需懒加载引擎）直接驱动同一套 MCP 工具
 - 外部 Agent（Claude Code / Codex）经 stdio 桥或 HTTP 直连，zero-custom-code
 - 工具即能力：generate_image / generate_video / generate_model3d / graph_* / workflow_* / asset_* 等
 

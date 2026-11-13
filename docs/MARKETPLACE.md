@@ -1,4 +1,4 @@
-# 技能市场开发者文档（v8.9.1）
+# 技能市场开发者文档（v9.0.0）
 
 > **本文同步发布在官网**：<https://justin-sky.github.io/ai-art-engine/developers.html>（源码 `website/developers.html` / `website/developers.en.html`，中英双语静态页，无构建转换步骤；修改客户端契约时请同步更新）。
 
@@ -61,7 +61,7 @@ Agent 当轮直接拿到 instructions（或下轮扫描注入 <available_skills>
 
 ### 2.0 桌面内核轻量化：内置种子预设 vs 独立技能仓库
 
-在 `v8.9.1` 架构中，应用彻底移除了早期硬编码在客户端里的十余条行业预设大表与旧同步脚本，确立了清晰的职责边界：
+在 `v9.0.0` 架构中，应用彻底移除了早期硬编码在客户端里的十余条行业预设大表与旧同步脚本，确立了清晰的职责边界：
 
 1. **桌面端内置仅保留双节点视频拆解复刻种子（`builtin.video-breakdown-remake`）**：
    - 定义于 `src/renderer/src/features/aiWorkflow/presets.ts`（`semantic.analyze` → `semantic.rebuild` 两节点直连拓扑），保证离线开箱即可运行核心视频逆向取证与复刻管线（另有免 Key 交互样板间位于 `src/shared/chatShowcaseStarters.ts`）。
@@ -109,7 +109,7 @@ workflows/<id>/skill/
 
 仓库校验器（`validate.mjs`）会扫描 `SKILL.md` 及 `references/*.md` 中所有**反引号包裹的 `x.y` 代码记号**：只要前缀 `x` 属于已知节点命名空间，该记号就必须是当前引擎真实注册的 `typeId`（或本工作流 `plan` 已声明的节点类型）。
 
-`v8.9.1` 覆盖的节点命名空间体系包括：
+`v9.0.0` 覆盖的节点命名空间体系包括：
 
 - **影视漫剧与叙事**：`film.*`（如 `film.workbench`、`film.breakdown`、`film.review`、`film.cast`、`film.shot`、`film.render`）、`novel.*`（`novel.outline`）、`comic.*`（`comic.page`）
 - **游戏工业与数值沙盘**：`game.*`（`game.economy`、`game.numerical`、`game.pbrTile`、`game.spriteProp`、`game.vfxAlpha`、`game.audioDsp`、`game.levelMap`）、`gameplay.*` / `play.*`
@@ -133,7 +133,7 @@ workflows/<id>/skill/
 
 ## 3. 客户端安装与卸载契约
 
-- **原子性与同生共死**：`marketPipeline.ts` 先拉取全量文件至临时 staging 目录并通过 `validateSkillEntryText` 校验 `SKILL.md` 合法性（防止 `dsh` 对非法 frontmatter 静默忽略导致「装上了却看不见」），全部通过后原子 rename 入位；任一环节失败立即回滚清理，绝不留半成品。
+- **原子性与同生共死**：`marketPipeline.ts` 先拉取全量文件至临时 staging 目录并通过 `validateSkillEntryText` 校验 `SKILL.md` 合法性（防止运行时对非法 frontmatter 静默忽略导致「装上了却看不见」），全部通过后原子 rename 入位；任一环节失败立即回滚清理，绝不留半成品。`$DSH_HOME/skills`（`<userData>/dsh-harness/skills`，见 `src/main/services/dshPaths.ts`）在 `v9.0.0` 进程内 Pi Agent 运行时中保持 100% 原位兼容。
 - **精准记账卸载**：卸载市场工作流时仅按 `installed.json` 记录的精确 `skillName`（`wf-<id>`）移除对应技能目录，绝不按前缀批量误删用户自建技能。
 - **分源独立缓存与离线兜底**：打开技能市场窗口即触发目录刷新；网络异常时保留本地上次成功缓存并给出轻提示，主源与镜像缓存按源隔离落盘。
 
@@ -144,7 +144,7 @@ workflows/<id>/skill/
 技能包中的 `scripts/` 属于 Agent 可在用户机器上调用的本地脚本，**默认一律跳过不落盘**：
 
 1. **安装期逐次明示同意**：无论是界面点击安装（弹出逐文件确认框）还是 MCP `skill_install`（默认 `allowScripts: false`，必须先经 `ask_user` 征得用户同意后再传 `allowScripts: true`），主进程仅认严格字面量布尔值 `true`，且每次重装/更新均重新询问，不设永久免问开关。拒绝脚本时仍正常安装 `SKILL.md` 与 `references/`，因此**技能设计必须将脚本作为可选项**。
-2. **运行期沙箱越界审批**：Agent 在 `dsh` 受限沙箱中执行脚本若触及越界操作，会触发对话内审批应答器卡片（仅提供 **「允许一次 / 拒绝」**，无「总是允许」；超时或异常一律按拒绝关闭）。
+2. **运行期沙箱越界审批**：内置 Pi Agent 在受限沙箱（`workspace-write`，`src/main/agent/piGovernance.ts`）中执行脚本若触及工作区外路径或高敏感终端操作，会触发对话内单次权限审批卡（仅提供 **「允许一次 / 拒绝」**，失败即关闭，超时或异常一律按拒绝拦截；详情见 [PI_AGENT.md](./PI_AGENT.md)）。
 
 ---
 

@@ -1,14 +1,15 @@
-# AI Art Engine MCP 服务与 102 工具完整规范（v8.9.1）
+# AI Art Engine MCP 服务与 102 工具完整规范（v9.0.0）
 
-> 线上图文接入教程见官网：[guide-mcp.html](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)（[English](https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html)）。本文档为 `v8.9.1` 服务端架构、安全门禁与 **全部 102 个实时工具（`/mcp` 93 个 + `/mcp/blender` 9 个）** 的权威技术规范。
+> 线上图文接入教程见官网：[guide-mcp.html](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)（[English](https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html)）。本文档为 `v9.0.0` 服务端架构、进程内按需懒加载机制、安全门禁与 **全部 102 个实时工具（`/mcp` 93 个 + `/mcp/blender` 9 个）** 的权威技术规范。
 
 ---
 
 ## 1. 概述与设计范式
 
-AI Art Engine 桌面端内置基于 **Model Context Protocol (MCP)** 的本机双向工具服务（核心实现位于 `src/main/services/mcpServerService.ts`、`src/shared/mcpProtocol.ts` 与 `src/main/services/blenderMcpService.ts`）：
+AI Art Engine 桌面端内置基于 **Model Context Protocol (MCP)** 的本机双向工具服务（核心实现位于 `src/main/services/mcpServerService.ts`、`src/shared/mcpProtocol.ts`、`src/main/services/blenderMcpService.ts` 与 `src/main/agent/mcpLazyToolsets.ts`）：
 
-- **内外同源架构**：外部编程 Agent（Claude Code、Cursor、Codex、Windsurf 等）与应用内 **◈ AI 对话面板**（DeepSeek Harness `dsh`）调用的是**完全同一套 MCP 端点与工具实现**。
+- **内外同源双轨架构**：外部编程 Agent（Claude Code、Cursor、Codex、Windsurf 等，通过 `npx -y ai-art-engine-mcp` 或 `127.0.0.1:43110` HTTP）与应用内 **◈ AI 对话面板**（进程内 Pi Agent 9.0 `src/main/agent/`，通过 `callInProcessMcpTool` 内存态零回环直调）调用的是**完全同一套 MCP 工具注册表与执行逻辑**（详见 [PI_AGENT.md](./PI_AGENT.md)）。
+- **按需懒加载根治 `128` 工具上限**：针对内置 Pi Agent，通过 `McpLazyToolsetManager`（`load_toolset`）维持每轮 `24` 个常驻工具（`12` 原生 + `12` `studio_core`）并按 `6` 大领域包与 `ext:<serverId>` 相关性打分动态挂载，严格封顶 `MAX_ACTIVE_TOOLS = 96 < 128`；针对外部 Agent，`/mcp` 与 `/mcp/blender` 双端点保持完整工具暴露。
 - **节点图为唯一生成底座**：所有图像、视频、语音、音乐、3D 模型与空间世界的生成及加工，统一通过 **强类型 DAG 节点图**（`graph_node_types` 自省 → `graph_edit` 编排或 `workflow_use_installed` 装载模板 → `task_run` 拓扑执行 → `task_status` 跟踪）完成，确保画布状态、资产血缘、缓存复用与 Undo/Redo 历史 100% 一致。`graph_*` 与 `director_stage_*` 均为一等公民核心工具。
 - **全工作区零配置直控**：配合运行时参数自省（`introspection.ts`）、深层点路径智能补丁（`smartPatch.ts`）与焦点上下文总线（`surfaceRegistry.ts`），任何画布节点、Dive 子工作台（UI 拆层、Machinations 数值沙盘、漫剧五阶段、2D 骨骼、3D 导演台、小波人像、6 栏时间线）均可由一句话精准操控。
 
@@ -28,53 +29,74 @@ AI Art Engine 桌面端内置基于 **Model Context Protocol (MCP)** 的本机�
 ## 2. 传输架构、鉴权与模式门禁
 
 ```text
-┌──────────────────────┐  MCP (stdio)  ┌──────────────────────────┐  HTTP POST  ┌───────────────────────────────┐
-│ Claude Code / Cursor │──────────────▶│ resources/mcp-bridge.mjs │────────────▶│ AI Art Engine 主进程          │
-│ Codex / Windsurf     │◀──────────────│ (或 scripts/mcp-bridge)  │◀────────────│ 127.0.0.1:43110 (/mcp &      │
-└──────────────────────┘               └──────────────────────────┘             │ /mcp/blender) + Token + 闸门  │
-                                                                                └───────────────────────────────┘
+┌──────────────────────┐  MCP (stdio)  ┌─────────────────────────────┐  HTTP POST  ┌──────────────────────────────────┐
+│ Claude Code / Cursor │──────────────▶│ npx -y ai-art-engine-mcp    │────────────▶│ AI Art Engine 主进程             │
+│ Codex / Windsurf     │◀──────────────│ (或 resources/mcp-bridge)   │◀────────────│ 127.0.0.1:43110 (/mcp 93 +       │
+└──────────────────────┘               └─────────────────────────────┘             │ /mcp/blender 9) + Token + 闸门   │
+                                                                                   ├─────────────────▲────────────────┤
+                                                                                   │ 进程内零回环直调 callInProcessMcpTool │
+                                                                                   │ 内置 Pi Agent 9.0 (src/main/agent) │
+                                                                                   │ + McpLazyToolsetManager (<= 96)  │
+                                                                                   └──────────────────────────────────┘
 ```
 
-### 2.1 Streamable HTTP 服务端与 stdio 隧道桥
+### 2.1 进程内零回环直调、Streamable HTTP 与零依赖 stdio 桥
 
-| 组件                    | 说明                                                                                                                                                                                                                        |
-| :---------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **监听地址与端口**      | 严格绑定本机回环 `127.0.0.1`（拒绝局域网/公网连入）。默认端口 `43110`，被占用时自动顺延探测 `43110–43119`；单次请求体上限 `8 MB`。                                                                                          |
-| **HTTP 路由**           | `GET /health`（无鉴权健康探针）、`POST /mcp`（93 个核心工具，JSON-RPC 请求回 `200`、通知回 `202`）、`POST /mcp/blender`（9 个 Blender 实时建模工具）、`POST /mcp/ext/<id>`（反向代理已注册的第三方 MCP 服务）。             |
-| **stdio 纯隧道桥**      | 源码位于 `scripts/mcp-bridge.mjs`，安装包内置于 `<安装目录>/resources/mcp-bridge.mjs`（见 `electron-builder.yml` `extraResources`）。桥脚本**只做字节流转发、不维护协议与工具定义**，确保升级应用后工具 Schema 永远零漂移。 |
-| **连接凭证 `mcp.json`** | 应用启动绑定端口后自动写入 `<userData>/mcp.json`（Windows 为 `%APPDATA%\aiartengine\mcp.json`），结构为 `{ port, token, pid, version }`。**Token 跨重启持久保留**；如需轮换密钥，删除该文件重启应用即可重新生成。           |
-| **反向外部 MCP 桥**     | 通过 `src/main/services/externalMcpClient.ts`，应用内 `dsh` 对话面板也可挂载用户自定义的任意外部 `stdio` 或 `http` MCP 服务（在「技能市场 → MCP」或「设置 → MCP 工具服务」配置）。                                          |
+| 组件                          | 说明                                                                                                                                                                                                                              |
+| :---------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **进程内零回环调用**          | 内置 Pi Agent（`src/main/agent/piHarnessService.ts`）直接调用 `callInProcessMcpTool`、`listInProcessStudioAndBlenderTools` 与 `listInProcessExternalMcpTools`，无本地 HTTP 序列化与回环网络开销。                                 |
+| **监听地址与端口**            | 外部接口严格绑定本机回环 `127.0.0.1`（拒绝局域网/公网连入）。默认端口 `43110`，被占用时自动顺延探测 `43110–43119`；单次请求体上限 `8 MB`。                                                                                        |
+| **HTTP 路由**                 | `GET /health`（无鉴权健康探针）、`POST /mcp`（93 个核心工具，JSON-RPC 请求回 `200`、通知回 `202`）、`POST /mcp/blender`（9 个 Blender 实时建模工具）、`POST /mcp/ext/<id>`（反向代理已注册的第三方 MCP 服务）。                   |
+| **零依赖 `npx` CLI 与内置桥** | 官方发布零依赖包 `packages/ai-art-engine-mcp`（执行 `npx -y ai-art-engine-mcp` 即用），安装包亦内置 `resources/mcp-bridge.mjs`（源码 `scripts/mcp-bridge.mjs`）。桥脚本**只做字节流转发、不维护协议与工具定义**，升级永远零漂移。 |
+| **连接凭证 `mcp.json`**       | 应用启动绑定端口后自动写入 `<userData>/mcp.json`（Windows 为 `%APPDATA%\aiartengine\mcp.json`），结构为 `{ port, token, pid, version }`。**Token 跨重启持久保留**；如需轮换密钥，删除该文件重启应用即可重新生成。                 |
+| **反向外部 MCP 懒加载挂载**   | 通过 `src/main/services/externalMcpClient.ts` 与 `src/main/agent/mcpLazyToolsets.ts`，内置 Pi Agent 可挂载任意外部 `stdio` / `http` MCP 服务（`ext:<serverId>`，按关键词相关性单次最多精选挂载 `32` 个工具，杜绝 Schema 溢出）。  |
 
 ### 2.2 并发闸门与审计日志
 
 - **同步长任务并发闸门（`AsyncSemaphore`）**：`task_run`、`decide`、`tutorial_compose` 三个重负载同步阻塞工具共享并发信号量（默认上限 `3`，可通过环境变量 `AIAE_MCP_GEN_LIMIT` 覆盖），防止多路并发压垮渲染进程或打爆云端配额。
 - **全量落盘审计（`mcp-audit.jsonl`）**：所有工具调用（含被权限门禁拦截的越权请求）均以时间安全比对鉴权后追加记录至 `<userData>/logs/mcp-audit.jsonl`（记录时间戳、工具名、200 字符截断参数摘要、耗时与结果，单文件满 `5 MB` 自动滚动为 `.1`，自动剔除图片 Base64 载荷）。
 
-### 2.3 `Agent (Craft) / Plan / Ask` 请求级模式门禁（`src/shared/mcpModeAccess.ts`）
+### 2.3 `Agent (Craft) / Plan / Ask` 双通道模式门禁（`src/shared/mcpModeAccess.ts` · `piGovernance.ts`）
 
-应用内 AI 对话面板顶部的三种工作模式并非单纯的提示词约束，而是随每次运行通过 HTTP 请求头 `X-AIArt-Mode`（线协议取值为 `craft` / `plan` / `ask`）与 `X-AIArt-Run-Id` 强制执行的**工具面硬门禁**（同时约束 `/mcp` 与 `/mcp/blender`）：
+应用内 AI 对话面板的三种工作模式由进程内治理器 `PiTurnGovernance`（双层过滤 `agent.state.tools` + `beforeToolCall`）与 HTTP 请求头 `X-AIArt-Mode`（线协议取值为 `craft` / `plan` / `ask`）+ `X-AIArt-Run-Id` 共同强制执行的**工具面硬门禁**（同时约束 `/mcp` 与 `/mcp/blender`）：
 
-| 面板模式（线协议值）         | `tools/list` 可见范围                         | `tools/call` 放行规则                                                                                                                                                  |
-| :--------------------------- | :-------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Agent / Craft**（`craft`） | 全部工具（`read` + `write` + `generate`）     | 全量放行（默认执行模式）。                                                                                                                                             |
-| **Plan**（`plan`）           | 确认前仅暴露只读工具（`read`，含 `ask_user`） | 用户通过 `ask_user` 确认分步方案前，任何 `write` / `generate` 调用均被直接拦截并返回引导文案；确认「继续」后，同一轮运行自动解锁写与生成权限（点击「取消」保持锁定）。 |
-| **Ask**（`ask`）             | 空列表（隐藏全部 MCP 工具）                   | 拒绝一切 MCP 工具调用，强制模型仅以纯文本解答问题。                                                                                                                    |
-| **外部客户端**（无模式头）   | 全部已启用工具                                | 不携带 `X-AIArt-Mode` 头时视为用户在外部宿主显式授权，不受面板模式开关影响。                                                                                           |
+| 面板模式（线协议值）         | `tools/list` / 模型可见范围                   | `tools/call` 放行规则                                                                                                                                          |
+| :--------------------------- | :-------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Agent / Craft**（`craft`） | 全部激活工具（`read` + `write` + `generate`） | 全量放行（默认执行模式）。                                                                                                                                     |
+| **Plan**（`plan`）           | 确认前仅暴露只读工具（`read`，含 `ask_user`） | 用户通过 `ask_user` 确认分步方案前，任何 `write` / `generate` 调用均被直接拦截并返回引导文案；确认后，同一轮运行自动解锁写与生成权限（点击「取消」保持锁定）。 |
+| **Ask**（`ask`）             | 空列表（隐藏全部工具）                        | 拒绝一切工具调用，强制模型仅以纯文本解答问题。                                                                                                                 |
+| **外部客户端**（无模式头）   | 全部已启用工具                                | 不携带 `X-AIArt-Mode` 头时视为用户在外部宿主显式授权，不受面板模式开关影响。                                                                                   |
 
 > 工具副作用分为三级：`read`（只读查询、抽帧预览、离线 OCR/YOLO、状态检查）、`write`（修改工程/画布/时间线/资产/安装技能；未显式登记为 `read` 或 `generate` 的工具默认按 `write` 安全兜底）、`generate`（直接消耗云端模型/ASR/TTS 额度或执行不可逆重型构建，包括 `decide`、`transcribe_audio`、`gameplay_build`、`tutorial_compose`、`semantic_analyze_video`、`game_one_sentence_create`、`game_ui_suite_create`）。
 
 ---
 
-## 3. 快速接入（Claude Code / Cursor / Codex）
+## 3. 快速接入（Claude Code / Cursor / Codex / Windsurf）
 
-### 方式 A：stdio 桥接（推荐，自动感知端口与持久 Token）
+### 方式 A：零依赖 `npx` CLI 或内置 stdio 桥接（推荐，自动发现端口与持久 Token）
 
 ```bash
-# 安装包用户（路径指向安装目录下的 resources/mcp-bridge.mjs）
+# 推荐：零依赖 npm CLI 一行接入（自动读取本机 mcp.json）
+claude mcp add aiartengine -- npx -y ai-art-engine-mcp
+
+# 离线安装包用户（直接指向安装目录下的 resources/mcp-bridge.mjs）
 claude mcp add aiartengine -- node "<安装目录>/resources/mcp-bridge.mjs"
 
 # 源码开发用户
 claude mcp add aiartengine -- node "<仓库绝对路径>/scripts/mcp-bridge.mjs"
+```
+
+Cursor / Windsurf 的 `mcp.json` 配置示例：
+
+```json
+{
+  "mcpServers": {
+    "aiartengine": {
+      "command": "npx",
+      "args": ["-y", "ai-art-engine-mcp"]
+    }
+  }
+}
 ```
 
 ### 方式 B：Streamable HTTP 直连（无需本机安装 Node.js）
@@ -91,7 +113,7 @@ claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender \
   --header "Authorization: Bearer <token>"
 ```
 
-> **环境变量覆盖**：桥脚本支持 `AIAE_MCP_CONFIG`（自定义 `mcp.json` 路径）或 `AIAE_MCP_PORT` + `AIAE_MCP_TOKEN`（最高优先级直连覆盖）。注意区分应用自动维护的 `%APPDATA%\aiartengine\mcp.json` 与团队项目根目录手写的 `.mcp.json`。
+> **环境变量覆盖**：`ai-art-engine-mcp` 与 `mcp-bridge.mjs` 均支持 `AIAE_MCP_CONFIG`（自定义 `mcp.json` 路径）或 `AIAE_MCP_PORT` + `AIAE_MCP_TOKEN`（最高优先级直连覆盖）。注意区分应用自动维护的 `%APPDATA%\aiartengine\mcp.json` 与团队项目根目录手写的 `.mcp.json`。
 
 ---
 
@@ -242,11 +264,11 @@ claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender \
 
 1. **工程路径沙箱隔离**：除 `asset_import` 允许按显式绝对路径将工程外部媒体拷入 `Cache/imports/`（及 `asset_package_export` / `asset_package_import` 的 `.aipackage` 绝对路径）外，所有文件读写与媒体工具严格限制在当前打开的工作区根目录内，任何含 `..` 的越界路径一律拒绝。
 2. **编辑器打开态保护**：`timeline_rough_cut` 与 `timeline_edit` 在 `apply: true` 写盘时，若对应剧本的时间线编辑器正在前台打开会拒绝覆盖（防止内存脏态回写冲掉 Agent 改动）；默认 `apply: false` 可随时安全预览方案。而 `graph_edit` 与 `director_stage_edit` 已通过内存宿主桥（`mcpGraphLiveCanvas.ts` / `directorStageHosts.ts`）支持对当前打开的画布与 3D 导演台实时热更新。
-3. **沙箱内视觉自检请用内置渲染工具**：应用内 `dsh` 的终端命令运行在受限安全沙箱中，不支持在命令沙箱内直接拉起外部 Chromium 进程。Agent 检视 SVG/矢量动画请调 `render_svg`，检视视频与成片请调 `grab_video_frames` / `timeline_preview`，抓取外部网页图文请调主进程托管的 `web_extract_article`，校验可玩 HTML5 请看 `gameplay_build` / `gameplay_job_status` 返回的 `smoke` 报告。
+3. **沙箱内视觉自检请用内置渲染工具**：应用内 Pi Agent（`src/main/agent/piGovernance.ts`）的 `bash` 终端命令受结构安全护栏保护，硬性禁止在终端直接拉起外部 Chromium/Edge 浏览器进程。Agent 检视 SVG/矢量动画请调 `render_svg`，检视视频与成片请调 `grab_video_frames` / `timeline_preview`，抓取外部网页图文请调主进程托管的 `web_extract_article`，校验可玩 HTML5 请看 `gameplay_build` / `gameplay_job_status` 返回的 `smoke` 报告。
 
-| 常见报错 / 现象                             | 原因定位                                                        | 解决办法                                                                                                          |
-| :------------------------------------------ | :-------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
-| `未找到 mcp.json` / `ECONNREFUSED`          | AI Art Engine 桌面端未启动，或端口顺延后直连写死了旧端口        | 启动桌面应用；优先改用 `mcp-bridge.mjs` 自动读取实际端口，或核对 `%APPDATA%\aiartengine\mcp.json` 中的 `port`。   |
-| HTTP `401 Unauthorized`                     | 请求头缺少 `Authorization: Bearer <token>` 或重置过 `mcp.json`  | 从最新 `mcp.json` 复制 `token` 更新外部 Agent 配置并重开会话。                                                    |
-| 工具列表为空或提示 `Ask 模式不提供任何工具` | 应用内对话面板处于 `Ask` 模式，或 `Plan` 模式尚未确认方案       | 在对话面板底部将模式切回 `Agent (Craft)`，或在 `Plan` 模式的确认卡点击「继续」。                                  |
-| Blender 工具报连接失败 / 超时               | Blender 未打开、未启用 MCP Addon，或社区版/官方扩展协议类型选反 | 确认 Blender 已开启 Addon 监听（默认 `9876`），在「设置 → MCP 工具服务 → Blender 工具集」选对协议类型并点击重连。 |
+| 常见报错 / 现象                             | 原因定位                                                        | 解决办法                                                                                                                          |
+| :------------------------------------------ | :-------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------- |
+| `未找到 mcp.json` / `ECONNREFUSED`          | AI Art Engine 桌面端未启动，或端口顺延后直连写死了旧端口        | 启动桌面应用；优先改用 `npx -y ai-art-engine-mcp` 或 `mcp-bridge.mjs` 自动读取实际端口，或核对 `%APPDATA%\aiartengine\mcp.json`。 |
+| HTTP `401 Unauthorized`                     | 请求头缺少 `Authorization: Bearer <token>` 或重置过 `mcp.json`  | 从最新 `mcp.json` 复制 `token` 更新外部 Agent 配置并重开会话。                                                                    |
+| 工具列表为空或提示 `Ask 模式不提供任何工具` | 应用内对话面板处于 `Ask` 模式，或 `Plan` 模式尚未确认方案       | 在对话面板底部将模式切回 `Agent (Craft)`，或在 `Plan` 模式的确认卡点击「确认执行计划 / 继续」。                                   |
+| Blender 工具报连接失败 / 超时               | Blender 未打开、未启用 MCP Addon，或社区版/官方扩展协议类型选反 | 确认 Blender 已开启 Addon 监听（默认 `9876`），在「设置 → MCP 工具服务 → Blender 工具集」选对协议类型并点击重连。                 |

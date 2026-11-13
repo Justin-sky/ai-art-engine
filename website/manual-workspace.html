@@ -20,14 +20,14 @@
         } catch (e) {}
       })()
     </script>
-    <title>工作区、AI 对话与资产库 · 使用手册（v8.9.1）— 多工程侧栏、24h 定时任务、技能市场与祈愿巫女 | AI Art Engine</title>
+    <title>工作区、AI 对话与资产库 · 使用手册（v9.0.0）— 进程内 Pi 智能体、6 路并发会话、24h 定时任务与技能市场 | AI Art Engine</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.1 使用手册第 2 卷：多面板工作区布局、◈ AI 对话可展开多工程左侧边栏与内置工作区文件编辑器、零 Key 极速体验、00:00–23:59 全天候定时任务、技能市场（Skill Marketplace）、画布祈愿巫女与程序化天气（晴空/樱吹雪/极光/流星雨）及资产库管理。"
+      content="AI Art Engine (AIArtEngine) v9.0.0 使用手册第 2 卷：多面板工作区布局、◈ AI 对话进程内 Pi 智能体运行时（load_toolset 按需惰性工具集、Craft/Plan/Ask 双层门禁、受限↔完全访问实时沙箱切换、最多 6 路并发会话与无锁跨模型切换）、24h 定时任务、技能市场、多精灵祈愿巫女与程序化天气及资产库管理。"
     />
     <meta
       name="keywords"
-      content="AI Art Engine 工作区, ◈ AI 对话多工程侧栏, 内置文件编辑器, 24h 定时任务自动化, 技能市场 Skill Marketplace, 祈愿巫女程序化天气, skill_install graph_edit task_run, 本地 AIGC 资产库"
+      content="AI Art Engine 工作区, ◈ AI 对话 Pi 智能体, load_toolset 按需惰性加载, 6 路并发会话, 受限模式 完全访问 沙箱切换, 24h 定时任务自动化, 技能市场 Skill Marketplace, 多精灵祈愿巫女程序化天气, 本地 AIGC 资产库"
     />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
@@ -35,20 +35,20 @@
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:locale:alternate" content="en_US" />
-    <meta property="og:title" content="工作区、AI 对话与资产库 · 使用手册（v8.9.1）— AI Art Engine" />
+    <meta property="og:title" content="工作区、AI 对话与资产库 · 使用手册（v9.0.0）— AI Art Engine" />
     <meta
       property="og:description"
-      content="详解 ◈ AI 对话多工程侧边栏与内置文件编辑器、零 Key 极速体验、24 小时定时任务、技能市场、画布祈愿巫女天气系统及资产库操作。"
+      content="详解 ◈ AI 对话进程内 Pi 智能体（load_toolset 惰性挂载、6 路并发无锁会话、实时沙箱切换）、零 Key 极速体验、24 小时定时任务、技能市场、多精灵祈愿巫女天气系统及资产库操作。"
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="工作区、AI 对话与资产库 · 使用手册（v8.9.1）— AI Art Engine" />
+    <meta name="twitter:title" content="工作区、AI 对话与资产库 · 使用手册（v9.0.0）— AI Art Engine" />
     <meta
       name="twitter:description"
-      content="详解 ◈ AI 对话多工程侧边栏与内置文件编辑器、零 Key 极速体验、24 小时定时任务、技能市场、画布祈愿巫女天气系统及资产库操作。"
+      content="详解 ◈ AI 对话进程内 Pi 智能体（load_toolset 惰性挂载、6 路并发无锁会话、实时沙箱切换）、零 Key 极速体验、24 小时定时任务、技能市场、多精灵祈愿巫女天气系统及资产库操作。"
     />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
@@ -69,13 +69,13 @@
         "@graph": [
           {
             "@type": "TechArticle",
-            "headline": "工作区、AI 对话与资产库 · AI Art Engine v8.9.1 使用手册（第 2 卷）",
-            "description": "AI Art Engine v8.9.1 工作区完整指南：涵盖可停靠面板布局、◈ AI 对话多工程侧边栏与内置工作区文件编辑器、零 Key 极速体验、24 小时（00:00–23:59）定时自动化任务、技能市场（Skill Marketplace）、画布祈愿巫女与四种程序化天气及资产库管理。",
+            "headline": "工作区、AI 对话与资产库 · AI Art Engine v9.0.0 使用手册（第 2 卷）",
+            "description": "AI Art Engine v9.0.0 工作区完整指南：涵盖可停靠面板布局、◈ AI 对话进程内 Pi 智能体（load_toolset 按需惰性工具集、Craft/Plan/Ask 模式、受限↔完全访问实时切换、最多 6 路并发无锁会话与内置文件编辑器）、零 Key 极速体验、24 小时定时任务、技能市场、多精灵祈愿巫女天气系统及资产库管理。",
             "inLanguage": "zh-CN",
             "url": "https://justin-sky.github.io/ai-art-engine/manual-workspace.html",
             "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/manual-workspace.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
-            "dateModified": "2026-11-11",
+            "dateModified": "2026-11-13",
             "author": {
               "@type": "Organization",
               "name": "AI Art Engine",
@@ -204,10 +204,10 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Manual · Workspace</p>
+          <p class="eyebrow">Manual · Workspace · v9.0.0</p>
           <h1>工作区、AI 对话与资产库</h1>
           <p class="lede">
-            工作区的顶栏、可停靠面板布局与画布祈愿巫女天气系统，右侧 <code>◈ AI 对话</code> 面板的可展开多工程侧边栏、内置工作区文件编辑器、零 Key 极速体验与 24 小时定时任务，技能系统与技能市场（Skill Marketplace），以及资产库管理。
+            工作区的顶栏、可停靠面板布局与多精灵祈愿巫女天气系统，右侧 <code>◈ AI 对话</code> 面板的进程内 <strong>Pi 智能体</strong>运行时、最多 6 路跨工程并发会话、<code>load_toolset</code> 按需惰性工具集、实时沙箱模式切换与 24 小时定时任务，技能系统与技能市场（Skill Marketplace），以及资产库管理。
           </p>
         </header>
 
@@ -305,9 +305,9 @@
             <li>布局菜单保存的是展开几何；侧栏收起偏好单独记忆，不会把收起态写成零宽灰洞。</li>
           </ul>
 
-          <h3 id="ai-chat">5.5 ◈ AI 对话面板（多工程侧栏 · 内置文件编辑器 · 全工作区直控）</h3>
+          <h3 id="ai-chat">5.5 ◈ AI 对话面板（进程内 Pi 智能体 · 6 路并发会话 · 全工作区直控）</h3>
           <p>
-            点击工作区右侧的 <strong><code>◈ AI 对话</code></strong> 打开应用内原生 Agent 协作面板。它运行内置的 DeepSeek Harness（<code>dsh</code>）运行时，实时感知当前焦点编辑器（节点图、全部 Dive 专业工作台、Machinations v2 沙盘、3D 导演台、成片时间线、剧本），并直接调用本地 <strong>102 个 MCP 工具</strong>与实时联网搜索——
+            点击工作区右侧的 <strong><code>◈ AI 对话</code></strong> 打开应用内原生 Agent 协作面板。v9.0.0 直接在主进程内运行全新的 <strong>Pi 智能体（Pi Agent）</strong>运行时（基于 <code>src/main/agent/</code> 下的 <code>@earendil-works/pi-agent-core</code> 与 <code>@earendil-works/pi-ai</code> 构建），实时感知当前焦点编辑器（节点图、全部 Dive 专业工作台、Machinations v2 沙盘、3D 导演台、成片时间线、剧本），并直接调用本地 <strong>102 个 MCP 工具</strong>、已挂载外部 MCP 服务与实时联网搜索——
             <strong>所有手动可在画布、Dive 工作台或 Inspector 中完成的操作，都可以在对话中用一句话驱动</strong>。
           </p>
           <ul>
@@ -315,22 +315,22 @@
               <strong>⚡ 零 Key 极速体验（新手免配置入口）</strong>：在尚未填写任何 API Key 时，直接点击 <code>◈ AI 对话</code> 欢迎区的 <strong>「⚡ 零 Key 极速体验」</strong>，系统即刻在本地自动运行一套<strong>仙侠 RPG 装备界面拆解 + 3D 爆炸视图分层预览 → 导出原生可编辑 <code>TySh</code> 文本图层 <code>.psd</code> / Unity UGUI / Godot 4</strong> 的完整演示流水线。
             </li>
             <li>
-              <strong>可展开多工程左侧边栏与内置工作区文件编辑器</strong>：点击 <code>◈ AI 对话</code> 顶部的侧栏展开按钮，即可打开<strong>多工程管理侧边栏</strong>——支持在同一工作区（<code>workspace.json</code>）下新建或秒切不同子工程（<code>project.json</code>）、管理多条持久化对话会话、浏览工作区磁盘文件树，并直接在<strong>内置工作区文件编辑器</strong>中查阅与修改剧本、JSON 配置、Markdown 技能或脚本文件，无需切出应用。
+              <strong>多工程侧边栏、最多 6 路并发会话与无锁跨模型切换</strong>：点击 <code>◈ AI 对话</code> 顶部的侧栏展开按钮，即可在同一工作区（<code>workspace.json</code>）下新建或秒切不同子工程（<code>project.json</code>）、跨工程同时并行运行<strong>最多 6 路对话会话</strong>（每路会话显示实时运行状态圆点），并在<strong>内置工作区文件编辑器</strong>中直接查阅与修改剧本、JSON 配置、Markdown 技能或脚本文件。所有会话采用无锁原子 JSON 文件持久化于 <code>&lt;userData&gt;/dsh-harness/pi-sessions/</code>（工程记忆保存在 <code>&lt;userData&gt;/dsh-harness/memory/</code>），支持在<strong>同一会话中途跨提供商无缝切换模型</strong>而绝不会出现写锁报错。
             </li>
             <li>
-              <strong>全工作区感知与 MCP 工具直控</strong>：无论是安装并挂载市场工作流（调用 <code>skill_install</code>、<code>workflow_use_installed</code>）、增删连线编辑节点图并触发执行（调用 <code>graph_edit</code>、<code>task_run</code>）、运行本地离线 OCR 识别 UI 文字（调用 <code>vision_local_ocr</code>），还是操控 Machinations v2 经济沙盘仿真与曲线反推（调用 <code>machinations_studio</code>）或调度 3D 导演台机位灯光，工具执行进度均以实时状态卡片回显。
+              <strong>按需惰性工具集加载（<code>load_toolset</code>）与全工作区直控</strong>：会话启动时仅挂载约 24 个高频核心工具，当任务涉及节点图/Dive 工作台、Blender 实时桥或第三方 MCP 服务时通过 <code>load_toolset</code> 动态激活 Studio/Blender 领域工具集与外部工具集（<code>ext:&lt;serverId&gt;</code>），配合 LRU 自动淘汰始终保持活跃工具数 <code>&lt;= 96</code>（远低于 OpenAI / DeepSeek API 的 <code>128</code> 工具上限，即使在「设置 → MCP」同时挂载多个外部 MCP 服务也绝不会触发 <code>tools array too long</code> 报错）。无论是调用 <code>skill_install</code> / <code>workflow_use_installed</code>、<code>graph_edit</code> / <code>task_run</code>、<code>vision_local_ocr</code> 还是 <code>machinations_studio</code>，工具执行进度均以实时状态卡片回显。
             </li>
             <li>
               <strong><code>@</code> 引用资产与原生联网搜索</strong>：输入 <code>@</code> 弹出工程资产选择器（支持图片 / 视频 / 声音 / 3D 模型缩略图内联引用）；同时内置 <code>web_search</code> 与 <code>web_fetch</code> 工具，可结合 <a href="manual-setup.html#web-search">设置 → 联网搜索</a> 实时检索参考资料与竞品页面。
             </li>
-            <li><strong>Ask / Plan / Craft 三档模式</strong>：自由切换只读问答（Ask）、沙箱规划（Plan）与全权执行（Craft），并与 MCP 的 <code>X-MCP-Mode</code> 权限模型严格对齐。</li>
-            <li><strong>任意 BYOK 文本模型选择</strong>：面板底部可选用任一已配置密钥的文本模型（OpenRouter、DeepSeek、Claude、GPT、Gemini、本地 Ollama 等），偏好自动记忆。</li>
+            <li><strong>Craft / Plan / Ask 三档模式（双层运行时工具门禁）</strong>：自由切换 <strong>Craft</strong>（全权执行）、<strong>Plan</strong>（严格只读勘察与方案规划，直至用户在 <code>ask_user</code> 交互卡片上确认批准后才进入执行）与 <strong>Ask</strong>（零工具纯问答），由双层运行时工具门禁严格拦截，并与 MCP 的 <code>X-MCP-Mode</code> 权限模型对齐。</li>
+            <li><strong>任意 BYOK 文本模型无锁热切换</strong>：面板底部可随时选用任一已配置密钥的文本模型（OpenRouter、DeepSeek、Claude、GPT、Gemini、本地 Ollama 等），支持会话中途跨提供商切换并自动记忆偏好。</li>
             <li>
-              <strong>越界需单次授权（Fail-Closed）</strong>：当 Agent 需要执行越过沙箱边界的操作时，对话内会弹出<strong>「需要你授权这一步」</strong>卡片，列明工具与原因，仅提供<strong>「允许一次」</strong>与<strong>「拒绝」</strong>（刻意不设「总是允许」）；无人应答的路径一律按失败即拒绝处理。
+              <strong>实时沙箱切换与交互式权限审批卡片</strong>：对话工具栏提供 <strong><code>🛡️ 受限模式</code>（<code>workspace-write</code>）↔ <code>🔓 完全访问</code>（<code>danger-full-access</code>）</strong> 一键实时切换按钮（空闲时或对话执行中途均可即时切换）；受限模式下遇到越界或敏感操作时弹出交互式权限审批卡片，提供 <strong>「允许一次 / 总是允许 / 拒绝」</strong>（「总是允许」按当前工程持久化保存），无人应答的非交互路径一律按失败即拒绝（Fail-Closed）处理。
             </li>
           </ul>
           <div class="tip">
-            <strong>开箱即用：</strong>应用已内置 Node.js 与 <code>dsh</code> 运行时，无需安装外部开发环境。「⚡ 零 Key 极速体验」免密钥即可运行；常规 AI 对话需至少启用一个文本模型。
+            <strong>开箱即用：</strong>Pi 智能体（Pi Agent）直接内嵌于主进程运行（安装包同时内置 Node.js 供本地桥接与脚本使用），无需配置外部子进程或开发环境。「⚡ 零 Key 极速体验」免密钥即可运行；常规 AI 对话需至少启用一个文本模型。
           </div>
 
           <h3 id="skills">5.6 技能（Skills）</h3>
@@ -340,7 +340,7 @@
           </p>
           <ul>
             <li><strong>内置技能</strong>：涵盖 21 题材影视分镜拆解、11 项导演连贯性审核、游戏 UI 拆层与图集组装、Machinations 经济建模、爆款视频四轴取证，以及图生提示词、多角度机位、打光、美颜精修、扩图重绘等系统创作规范（程序自动维护，请勿手动改动）。</li>
-            <li><strong>自定义技能</strong>：在<strong>技能市场 → 技能</strong>页签点击「打开目录」，放入符合 <code>SKILL.md</code> 规范（frontmatter <code>name</code> / <code>description</code> + Markdown 正文，文件名小写连字符如 <code>my-skill.md</code>）的文档，下次对话自动生效；可点「生成示例模板」快速起步。</li>
+            <li><strong>自定义技能</strong>：在<strong>技能市场 → 技能</strong>页签点击「打开目录」（对应本机 <code>&lt;userData&gt;/dsh-harness/skills/</code>），放入符合 <code>SKILL.md</code> 规范（frontmatter <code>name</code> / <code>description</code> + Markdown 正文，文件名小写连字符如 <code>my-skill.md</code>）的文档，下次对话自动生效；可点「生成示例模板」快速起步。</li>
             <li><strong>技能与 MCP 工具协同</strong>：技能清单通过 <code>&lt;available_skills&gt;</code> 按需注入上下文——技能定义领域 SOP（怎么做），而 <code>graph_edit</code>、<code>workflow_use_installed</code>、<code>task_run</code> 等 MCP 工具负责实际落盘与执行。</li>
             <li>
               <strong>随工作流附带的技能包</strong>：从<a href="#marketplace">技能市场</a>安装工作流时若附带技能包，会在「技能」页签标注来源为<strong>「技能包」</strong>，生命周期跟随所属工作流（卸载工作流时一并清理）。
@@ -384,7 +384,7 @@
 
           <h3 id="schedules">5.8 定时任务（24 小时无人值守自动化）</h3>
           <p>
-            v8.9.1 内置全天候 <strong>24 小时（<code>00:00–23:59</code>）定时任务（Scheduled Automations）</strong>调度器，支持在指定时间点或周期自动唤醒 <code>◈ AI 对话</code> Agent 与已安装工作流，实现无人值守的日常内容生产与巡检：
+            v9.0.0 内置全天候 <strong>24 小时（<code>00:00–23:59</code>）定时任务（Scheduled Automations）</strong>调度器，支持在指定时间点或周期自动唤醒 <code>◈ AI 对话</code> Agent 与已安装工作流，实现无人值守的日常内容生产与巡检：
           </p>
           <ul>
             <li><strong>全时段精确调度</strong>：支持在 <code>00:00–23:59</code> 任意分钟级时间窗设置每日定时或周期触发规则（例如凌晨自动抓取热点文案 → 调用 <code>short-drama</code> 跑出分镜初稿、定时批量拉取竞品视频执行 <code>rea-video</code> 四轴取证拆解、或夜间批量渲染多语言电商变体）。</li>
@@ -392,12 +392,12 @@
             <li><strong>启停控制与运行审计</strong>：在 <code>◈ AI 对话</code> 侧边栏的定时任务视图中可随时新建、暂停/启用、立即试跑一次或删除任务；每次自动触发的会话记录、节点产出与工具审计日志均完整落盘，次日打开工作区即可直接审阅成片。</li>
           </ul>
 
-          <h3>5.9 画布祈愿巫女与程序化天气系统</h3>
+          <h3>5.9 多精灵祈愿巫女与程序化天气系统</h3>
           <p>
-            为了让高强度的节点编排与等待渲染过程更具沉浸感与陪伴感，工作区节点画布内置了可交互的<strong>祈愿巫女（Wish Maiden）</strong>与实时<strong>程序化天气渲染层</strong>：
+            为了让高强度的节点编排、多会话并行调度与等待渲染过程更具沉浸感与陪伴感，工作区节点画布内置了可交互的<strong>多精灵祈愿巫女（Multi-Fairy Wish Maiden）</strong>与实时<strong>程序化天气渲染层</strong>：
           </p>
           <ul>
-            <li><strong>祈愿巫女（<code>祈愿巫女</code>）</strong>：驻留在画布角落的看板伙伴（支持点击互动抽签祈愿，祈求「抽卡不崩脸、一次过审、渲染秒出」，亦可在画布外观开关中随时隐藏或开启）。</li>
+            <li><strong>多精灵祈愿巫女伴随（<code>祈愿巫女</code>）</strong>：驻留在画布上的看板伙伴，与多路并发 AI 对话会话实时联动伴随——多会话并行创作时多位小精灵同步登场陪伴，支持点击互动抽签祈愿（祈求「抽卡不崩脸、一次过审、渲染秒出」），亦可在画布外观开关中随时隐藏或开启。</li>
             <li><strong>四种程序化天气氛围</strong>：支持在画布工具栏一键切换 <strong>晴空（Sunny）</strong>、<strong>樱吹雪（Sakura Snow）</strong>、<strong>极光（Aurora）</strong> 与 <strong>流星雨（Meteor Shower）</strong> 四套轻量级 GPU/Canvas 程序化粒子与光影天气，渲染开销极低且绝不遮挡节点连线与端口交互。</li>
           </ul>
         </section>

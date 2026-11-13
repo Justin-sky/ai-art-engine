@@ -22,7 +22,7 @@
     </script>
     <meta
       name="description"
-      content="AI Art Engine v8.9.1 一键工作流与节点图手册：内置爆款视频拆解复刻与技能市场工作流、aiae:graph PNG 拖入即还原、5 阶段 21 类型 AI 漫剧工作台、游戏 UI PSD TySh 与 ui.atlasCompose 图集拼装、Machinations v2 120fps 曲线反推与 script.run 脚本节点。"
+      content="AI Art Engine v9.0.0 一键工作流与节点图手册：内置爆款视频拆解复刻与技能市场工作流、aiae:graph PNG 拖入即还原、5 阶段 21 类型 AI 漫剧工作台、游戏 UI PSD TySh 与 ui.atlasCompose 图集拼装、Machinations v2 120fps 曲线反推与 script.run 脚本节点。"
     />
     <meta
       name="keywords"
@@ -32,20 +32,20 @@
       name="robots"
       content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
     />
-    <title>一键工作流与节点图（UI 拆层 PSD · 经济仿真 · 视频复刻）· 使用手册 — AI Art Engine</title>
+    <title>一键工作流与节点图（UI 拆层 PSD · 经济仿真 · 视频复刻）· 使用手册（v9.0.0）— AI Art Engine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
     <meta property="og:site_name" content="AI Art Engine" />
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:locale:alternate" content="en_US" />
-    <meta property="og:title" content="一键工作流与节点图（UI 拆层 PSD · 经济仿真 · 视频复刻）· 使用手册 — AI Art Engine" />
+    <meta property="og:title" content="一键工作流与节点图（UI 拆层 PSD · 经济仿真 · 视频复刻）· 使用手册（v9.0.0）— AI Art Engine" />
     <meta property="og:description" content="内置爆款视频拆解复刻与技能市场工作流、aiae:graph PNG 拖入还原、5 阶段 21 类型 AI 漫剧工作台、游戏 UI PSD TySh 与 ui.atlasCompose、Machinations v2 120fps 曲线反推与全节点参考。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="一键工作流与节点图（UI 拆层 PSD · 经济仿真 · 视频复刻）· 使用手册 — AI Art Engine" />
+    <meta name="twitter:title" content="一键工作流与节点图（UI 拆层 PSD · 经济仿真 · 视频复刻）· 使用手册（v9.0.0）— AI Art Engine" />
     <meta name="twitter:description" content="内置爆款视频拆解复刻与技能市场工作流、aiae:graph PNG 拖入还原、5 阶段 21 类型 AI 漫剧工作台、游戏 UI PSD TySh 与 ui.atlasCompose、Machinations v2 120fps 曲线反推与全节点参考。" />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
@@ -58,7 +58,7 @@
           {
             "@type": "TechArticle",
             "@id": "https://justin-sky.github.io/ai-art-engine/manual-workflow.html#article",
-            "headline": "一键工作流与节点图 · AI Art Engine v8.9.1 使用手册",
+            "headline": "一键工作流与节点图 · AI Art Engine v9.0.0 使用手册",
             "description": "讲解一键工作流、技能市场工作流与 aiae:graph PNG 拖入还原、5 阶段 21 类型影视工作台，以及游戏 UI 拆层与图集拼装、Machinations v2 经济仿真、rea-video 爆款视频拆解复刻与 script.run 等全部节点类型。",
             "inLanguage": "zh-CN",
             "url": "https://justin-sky.github.io/ai-art-engine/manual-workflow.html",
@@ -204,7 +204,7 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Manual · Workflow · v8.9.1</p>
+          <p class="eyebrow">Manual · Workflow · v9.0.0</p>
           <h1>一键工作流与节点图</h1>
           <p class="lede">
             通过内置预设、技能市场工作流包或拖入 <code>aiae:graph</code> 配方 PNG 秒级搭好可复用的宿主资产；用 5 阶段 21 类型影视工作台跑通短剧闭环，并查阅游戏 UI 拆层与图集拼装、Machinations v2 经济仿真、<code>rea-video</code> 视频复刻与 <code>script.run</code> 等全部节点类型。
@@ -214,7 +214,7 @@
         <section id="ai-workflow">
           <h2>7. 一键工作流与 PNG 即工作流</h2>
           <p>
-            在 AI Art Engine v8.9.1 中，你可以通过<strong>三种方式</strong>秒级启动一条完整的可复用工作流（外层暴露边界 I/O 的<strong>宿主资产</strong>或直接展开的画布节点链）：
+            在 AI Art Engine v9.0.0 中，你可以通过<strong>三种方式</strong>秒级启动一条完整的可复用工作流（外层暴露边界 I/O 的<strong>宿主资产</strong>或直接展开的画布节点链）：
           </p>
           <ol>
             <li>

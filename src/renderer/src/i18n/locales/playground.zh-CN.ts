@@ -52,7 +52,7 @@ export default {
     importedErr: '导入失败：请选择有效的 Machinations JSON 文件'
   },
   modal: {
-    eyebrow: 'AI ART ENGINE · DESKTOP FULL EDITION (v8.9.5)',
+    eyebrow: 'AI ART ENGINE · DESKTOP FULL EDITION (v9.0.0)',
     closeAria: '关闭弹窗',
     freeTag: 'GPL-3.0 永久免费开源 · 100% 本地工程 · 内置零 Key 体验',
     reasons: {

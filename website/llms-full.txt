@@ -1,10 +1,12 @@
-# AI Art Engine (AIArtEngine) — Complete Technical & Product Reference (v8.9.5)
+# AI Art Engine (AIArtEngine) — Complete Technical & Product Reference (v9.0.0)
 
 > Canonical Origin: https://justin-sky.github.io/ai-art-engine/
+> Live Online Machinations v2 Playground: https://justin-sky.github.io/ai-art-engine/playground/
 > GitHub: https://github.com/Justin-sky/ai-art-engine
+> Agent Architecture Docs: https://github.com/Justin-sky/ai-art-engine/blob/main/docs/PI_AGENT.md
 > License: GPL-3.0 (Free & Open Source)
 > Platforms: Windows (NSIS `.exe`), macOS (Intel `x64` & Apple Silicon `arm64` `.dmg`), Linux (`AppImage`)
-> Architecture: Electron + Vue 3 + TypeScript + Typed Multimodal DAG Graph + DeepSeek Harness (`dsh`) Agent + Local ONNX Vision + HTTP Streamable MCP Server (`127.0.0.1`)
+> Architecture: Electron + Vue 3 + TypeScript + Typed Multimodal DAG Graph + In-Process Pi Agent Runtime (`src/main/agent/`, On-Demand Lazy MCP Toolset Engine) + Local ONNX Vision + Streamable HTTP MCP Server (`127.0.0.1:43110`)
 
 ---
 
@@ -41,9 +43,9 @@ Most generative AI tools stop at flat raster images or isolated 5-second video c
 - **100% Machinations Semantic Alignment**: Pools, Sources, Drains, Converters, Gates (deterministic / probabilistic / skill / condition), Traders, Delays, Queue, Register (`STEP` formulas), End Conditions, Resource Connections, and State Connections (`+2`, `*1.15`, `>10`, `==0`, `*`).
 - **59 Verified Building Blocks**: Ready-to-drop economy, combat, gacha pity, stamina regeneration, battle pass, town builder, roguelike risk/reward, MOBA XP snowball, and auction house patterns.
 - **Simple Macro ↔ Pro Blueprint Lossless Toggle**: Switch between high-level macro cards for rapid design pitches and full Machinations node-edge blueprints without losing state.
-- **120fps Curve-Drag Inverse Goal-Seek Solver (v8.9.1)**: Drag target curve points or the purple Bezier slope diamond (`◆` `shapeCtrl`) directly on the chart at 120fps; the studio inversely solves `k * pow(STEP, p)` or linear progression formulas and highlights affected formulas live.
+- **120fps Curve-Drag Inverse Goal-Seek Solver**: Drag target curve points or the purple Bezier slope diamond (`◆` `shapeCtrl`) directly on the chart at 120fps; the studio inversely solves `k * pow(STEP, p)` or linear progression formulas and highlights affected formulas live.
 - **Monte Carlo & 2D Sensitivity Matrix**: Run multi-seed stochastic simulations with P10 / P50 / P90 shaded bands, 2D parameter sweep heatmaps, and one-click Quick-Fix balance diagnostics (deadlocks, runaway inflation, starvation).
-- **Zero-Code Playable HUD & Engine Code Export**: Playtest your economy immediately as an interactive card/HUD prototype, or export PNG, SVG, CSV telemetry, **Unity C# (`EconomySimulator.cs`)**, and **Godot 4 GDScript (`economy_simulator.gd`)**.
+- **Zero-Code Playable HUD, Live Web Playground & Engine Code Export**: Playtest your economy immediately as an interactive card/HUD prototype (or try it in the browser with zero install at `https://justin-sky.github.io/ai-art-engine/playground/`), and export PNG, SVG, CSV telemetry, **Unity C# (`EconomySimulator.cs`)**, and **Godot 4 GDScript (`economy_simulator.gd`)**.
 
 ### 2.3 AI Comic Drama (漫剧) 5-Stage Film Workbench (`film.workbench`)
 - **21 Genre Blueprints (`P01`–`P21`)**: Urban Suspense, Xianxia Cultivation, Rebirth Revenge, Cyberpunk Sci-Fi, Ancient Palace Intrigue, Post-Apocalyptic Survival, Sweet Romance, Infinite Flow Horror, Mecha War, Wuxia Jianghu, Campus Youth, Mythic Folklore, Detective Noir, Healing Slice-of-Life, Game Isekai, Historical Epic, Supernatural Exorcism, Sports Competition, Business Tycoon, Pet/Chibi Comedy, Dark Fairy Tale.
@@ -65,9 +67,14 @@ Most generative AI tools stop at flat raster images or isolated 5-second video c
 
 ---
 
-## 3. Complete 102-Tool MCP Reference (`127.0.0.1`)
+## 3. Pi Agent 9.0 In-Process Runtime & Complete 102-Tool MCP Reference (`127.0.0.1:43110`)
 
-When AI Art Engine is running, it exposes an authenticated HTTP Streamable MCP server on `127.0.0.1` (plus `resources/mcp-bridge.mjs` for `stdio` clients like Claude Code, Cursor, Codex, and Windsurf). Request headers or mode switches enforce `agent` (full read/write), `plan` (read + planning), or `ask` (strict read-only) access control.
+### 3.0 Pi Agent 9.0 Runtime Architecture (`src/main/agent/`, see `docs/PI_AGENT.md`)
+- **In-Process Pi Agent Runtime**: Built on `@earendil-works/pi-agent-core` & `@earendil-works/pi-ai`, executing inside the Electron main process (`src/main/agent/`) and invoking Studio & Blender MCP tools directly in-process with zero HTTP loopback or subprocess serialization overhead.
+- **On-Demand Lazy MCP Toolset Engine (`load_toolset`)**: Starts every session with ~24 core tools (`12` native coding/file/shell/skill tools + `12` `studio_core` MCP tools) and dynamically mounts 6 Studio/Blender domain toolsets (`project_assets`, `video_timeline_audio`, `director_3d_blender`, `game_production`, `tutorial_recording`, `skills_web_vision`) plus external MCP servers (`ext:<serverId>`, keyword-scored top 32 tools) via zero-turn intent pre-warming and LRU eviction (`MAX_ACTIVE_TOOLS = 96 < 128`). This permanently eliminates the OpenAI/DeepSeek 128-tool API limit error even with dozens of external MCP servers attached, while preserving LLM prompt prefix caches (`supportsMidConvoToolAdditions: false`).
+- **Native Governance & Live Sandbox**: Dual-layer `Craft / Plan / Ask` mode gating (`agent.state.tools` + `beforeToolCall` + `mcpModeAccess`), interactive `ask_user` confirmation cards, single-use fail-closed permission approval cards (`Allow Once` / project-scoped `Always Allow` / `Reject`), and live mid-turn switching between `🛡️ Restricted Mode` (`workspace-write`) and `🔓 Full Access` (`danger-full-access`).
+- **Lock-Free Atomic JSON Session Store (`piSessionStore.ts`)**: Persists conversations as plain atomic JSON under `<userData>/dsh-harness/pi-sessions/<sessionId>.json` (while Claude Code / marketplace skills remain under `<userData>/dsh-harness/skills/<skillName>/SKILL.md`, loaded via Pi Agent's native `skill` tool). Supports up to 6 concurrent multi-project parallel sessions, instant cross-provider model hot-switching without lock conflicts, message rewind/fork, and `.zip` session export.
+- **External Agent Connectivity**: When AI Art Engine is running, it exposes an authenticated Streamable HTTP MCP server on `127.0.0.1:43110` (`/mcp` 93 tools + `/mcp/blender` 9 tools = 102 tools) plus the zero-dependency `npx -y ai-art-engine-mcp` (and `scripts/mcp-bridge.mjs` / `resources/mcp-bridge.mjs`) `stdio` bridge for Claude Code, Cursor, Codex, and Windsurf. Request headers (`X-MCP-Mode` / `X-AIArt-Mode`) enforce `agent` (Craft: full read/write), `plan` (read + planning until `ask_user` confirmation), or `ask` (strict read-only) access control.
 
 ### 3.1 Main Engine Endpoint (`/mcp` — 93 Tools)
 
@@ -105,4 +112,4 @@ When AI Art Engine is running, it exposes an authenticated HTTP Streamable MCP s
 - **Is AI Art Engine free and open source?** Yes. Licensed under GPL-3.0, with zero subscription fees or platform markup. All project files live locally on your disk, and you connect your own API keys (BYOK) or local models (Ollama, LM Studio, ComfyUI, ONNX).
 - **Can I try it without any API key?** Yes. Open any workspace, expand `◈ AI Chat`, and click **⚡ Zero-Key Instant Demo (`零 Key 极速体验`)** to watch a live RPG Game UI + 3D Exploded Layer Split → PSD/Unity/Godot pipeline run locally.
 - **How does AI Art Engine differ from ComfyUI?** ComfyUI excels at low-level diffusion sampling graphs; AI Art Engine integrates ComfyUI as one backend while providing 10+ domain Dive studios (Film Workbench, Game UI Layer Split, Machinations v2 Economy, Spine 2D Stage, 3D Director, Multi-Track NLE Timeline) and direct industrial exports (`.psd`, `.uxml`, `.tscn`, Spine `.json`/`.atlas`, CapCut drafts, C#/GDScript, `single.html`).
-- **How does Claude Code or Cursor control AI Art Engine?** Run `claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs` (or connect via Streamable HTTP `http://127.0.0.1:<port>/mcp`) using the Bearer token from Settings → MCP Server.
+- **How does Claude Code, Cursor, Codex, or Windsurf control AI Art Engine?** Run `claude mcp add aiartengine -- npx -y ai-art-engine-mcp` (or `node ./resources/mcp-bridge.mjs`, or connect directly via Streamable HTTP `http://127.0.0.1:43110/mcp` with the Bearer token from `%APPDATA%/aiartengine/mcp.json` / Settings → MCP Server).

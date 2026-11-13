@@ -19,14 +19,14 @@
         } catch (e) {}
       })()
     </script>
-    <title>User Manual (v8.9.1) — Game UI PSD/Atlas, Machinations v2, 5-Stage AI Drama &amp; 102-Tool MCP | AI Art Engine</title>
+    <title>User Manual (v9.0.0) — Game UI PSD/Atlas, Machinations v2, 5-Stage AI Drama &amp; Pi Agent / 102-Tool MCP | AI Art Engine</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.1 Complete User Manual: multi-project workspaces, Zero-Key Instant Demo, 102-tool MCP server, 24h scheduled automations, Game UI native TySh PSD &amp; ui.atlasCompose, Machinations v2 120fps curve-drag Goal-Seek, 21-genre 5-stage AI Comic Drama, rea-video forensic remake, and CapCut-grade NLE."
+      content="AI Art Engine (AIArtEngine) v9.0.0 Complete User Manual: in-process Pi Agent runtime (load_toolset lazy MCP loading, 6 parallel sessions &amp; live sandbox toggle), multi-project workspaces, Zero-Key Instant Demo, 102-tool MCP server, 24h scheduled automations, Game UI native TySh PSD &amp; ui.atlasCompose, Machinations v2, 5-stage AI Comic Drama, rea-video remake, and CapCut-grade NLE."
     />
     <meta
       name="keywords"
-      content="AI Art Engine manual, AIArtEngine documentation, Game UI TySh PSD, ui.atlasCompose, Machinations v2 economy simulation, 5-stage AI comic drama, rea-video forensic remake, 102 MCP tools, CapCut draft export"
+      content="AI Art Engine manual, AIArtEngine documentation, Pi Agent runtime, load_toolset lazy MCP, Game UI TySh PSD, ui.atlasCompose, Machinations v2 economy simulation, 5-stage AI comic drama, rea-video forensic remake, 102 MCP tools"
     />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
@@ -34,20 +34,20 @@
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:locale:alternate" content="zh_CN" />
-    <meta property="og:title" content="User Manual (v8.9.1) — Complete AI Art Engine Reference" />
+    <meta property="og:title" content="User Manual (v9.0.0) — Complete AI Art Engine Reference" />
     <meta
       property="og:description"
-      content="5-volume AI Art Engine v8.9.1 reference: Game UI TySh PSD &amp; sprite-atlas compose, Machinations v2 120fps Goal-Seek, 21-genre 5-stage AI Comic Drama, 2-node rea-video remake, 102-tool MCP, and 24h automations."
+      content="5-volume AI Art Engine v9.0.0 reference: in-process Pi Agent &amp; load_toolset lazy MCP loading, Game UI TySh PSD &amp; sprite-atlas compose, Machinations v2 120fps Goal-Seek, 21-genre 5-stage AI Comic Drama, 2-node rea-video remake, 102-tool MCP, and 24h automations."
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="User Manual (v8.9.1) — Complete AI Art Engine Reference" />
+    <meta name="twitter:title" content="User Manual (v9.0.0) — Complete AI Art Engine Reference" />
     <meta
       name="twitter:description"
-      content="5-volume AI Art Engine v8.9.1 reference: Game UI TySh PSD &amp; sprite-atlas compose, Machinations v2 120fps Goal-Seek, 21-genre 5-stage AI Comic Drama, 2-node rea-video remake, 102-tool MCP, and 24h automations."
+      content="5-volume AI Art Engine v9.0.0 reference: in-process Pi Agent &amp; load_toolset lazy MCP loading, Game UI TySh PSD &amp; sprite-atlas compose, Machinations v2 120fps Goal-Seek, 21-genre 5-stage AI Comic Drama, 2-node rea-video remake, 102-tool MCP, and 24h automations."
     />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
@@ -68,13 +68,13 @@
         "@graph": [
           {
             "@type": "TechArticle",
-            "headline": "AI Art Engine v8.9.1 User Manual — Multimodal AI Studio & Production Asset Reference",
-            "description": "Complete operating reference for AI Art Engine v8.9.1 covering core concepts, multi-project workspaces, Game UI TySh PSD & sprite-atlas compose, Machinations v2 studio, 21-genre 5-stage AI Comic Drama, rea-video forensic remake, 102-tool MCP server, and the 5-volume chapter map.",
+            "headline": "AI Art Engine v9.0.0 User Manual — Multimodal AI Studio & Production Asset Reference",
+            "description": "Complete operating reference for AI Art Engine v9.0.0 covering the in-process Pi Agent runtime, load_toolset lazy MCP loading, multi-project workspaces, Game UI TySh PSD & sprite-atlas compose, Machinations v2 studio, 21-genre 5-stage AI Comic Drama, rea-video forensic remake, 102-tool MCP server, and the 5-volume chapter map.",
             "inLanguage": "en",
             "url": "https://justin-sky.github.io/ai-art-engine/manual.en.html",
             "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/manual.en.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
-            "dateModified": "2026-11-11",
+            "dateModified": "2026-11-13",
             "author": {
               "@type": "Organization",
               "name": "AI Art Engine",
@@ -231,10 +231,10 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Manual · Overview</p>
+          <p class="eyebrow">Manual · Overview · v9.0.0</p>
           <h1>Manual</h1>
           <p class="lede">
-            The complete operating reference for AI Art Engine <strong>v8.9.1</strong>, organized into this overview plus five chapter volumes by workflow. This page covers preparation, flagship v8.9.1 capabilities, and core concepts; everything else lives under “Manual chapters” below or in the sidebar. Wording follows the in-app UI — switch the app to English under Settings → General → Language. Video walkthroughs are on <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Bilibili</a>.
+            The complete operating reference for AI Art Engine <strong>v9.0.0</strong>, organized into this overview plus five chapter volumes by workflow. This page covers preparation, flagship v9.0.0 capabilities, and core concepts; everything else lives under “Manual chapters” below or in the sidebar. Wording follows the in-app UI — switch the app to English under Settings → General → Language. Video walkthroughs are on <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Bilibili</a>.
           </p>
         </header>
 
@@ -260,14 +260,14 @@
         <section id="intro">
           <h2>1. Overview &amp; preparation</h2>
           <p>
-            AI Art Engine (AIArtEngine) is a local-first, agent-native multimodal AI desktop studio and production asset engine for game development, AI comic dramas / short dramas, viral video remakes, advertising and e-commerce. In <strong>v8.9.1</strong>, beyond flat images and clips, it compiles AI outputs directly into engine-ready production assets:
+            AI Art Engine (AIArtEngine) is a local-first, agent-native multimodal AI desktop studio and production asset engine for game development, AI comic dramas / short dramas, viral video remakes, advertising and e-commerce. In <strong>v9.0.0</strong>, beyond flat images and clips, it compiles AI outputs directly into engine-ready production assets:
           </p>
           <ul>
             <li><strong>Game UI Layer Split &amp; Sprite-Atlas Compose</strong> (<code>image.layerSplit</code> + <code>ui.atlasCompose</code> + <code>ui.componentLib</code>): 16 UI control classes, offline/online OCR fill+stroke extraction, 9-slice clean-plate inpainting, 3D exploded preview, real sprite-atlas UI composition, and one-click export to <strong>editable <code>.psd</code> with native <code>TySh</code> text layers</strong> plus <strong>Unity UGUI/UXML, Godot 4 <code>.tscn</code>, and HTML5</strong> code.</li>
             <li><strong>Machinations v2 Game Economy Studio</strong> (<code>game.economy</code>): 100% Machinations semantic alignment across 59 verified building blocks, lossless Simple Macro ↔ Pro Blueprint toggle, <strong>120fps Bezier slope diamond (<code>◆</code>) &amp; direct curve-drag inverse Goal-Seek formula solver (<code>k * pow(STEP, p)</code>)</strong>, Monte Carlo P10/P50/P90 bands, 2D sensitivity heatmaps, and zero-code playable HUD card prototypes.</li>
             <li><strong>21-Genre, 5-Stage AI Comic Drama / Short Drama Workbench</strong> (<code>film.workbench</code>): ships <code>P01</code>–<code>P21</code> genre archetypes across a 5-stage closed loop (① A+B dual-rhythm beat breakdown → ② 11-point continuity &amp; ≥67% dialogue audit → ③ <code>#variant</code> wardrobe / scene / prop / <code>STYLE01</code> anchors &amp; cross-episode TTS voice binding → ④ <code>@1</code>–<code>@4</code> locked batch shoot &amp; Vision QC → ⑤ Cover/Title release pack &amp; full episode <code>.mp4</code>).</li>
             <li><strong>2-Node Forensic Viral Video Remake</strong> (<code>rea-video</code>: <code>semantic.analyze</code> → <code>semantic.rebuild</code>): combines WhisperX word-level ASR, PySceneDetect cuts, Librosa BPM/beats, Demucs vocal/BGM stems, and 3-frame VLM camera forensics to strip burned-in subtitles and render a 1:1 split-screen comparison remake (<code>compare.mp4</code>).</li>
-            <li><strong>102-Tool Bi-Directional MCP Server &amp; 24h Scheduled Automations</strong>: exposes <code>/mcp</code> (93 core tools) and <code>/mcp/blender</code> (9 live Blender modeling tools), paired with built-in <code>◈ AI Chat</code> featuring multi-project workspace switching, native web search, and 24-hour (<code>00:00–23:59</code>) unattended scheduled runs.</li>
+            <li><strong>In-Process Pi Agent, 102-Tool Bi-Directional MCP Server &amp; 24h Scheduled Automations</strong>: exposes <code>/mcp</code> (93 core tools) and <code>/mcp/blender</code> (9 live Blender modeling tools), paired with built-in <code>◈ AI Chat</code> running an in-process <strong>Pi Agent</strong> runtime with <code>load_toolset</code> on-demand lazy MCP loading (<code>&lt;= 96</code> active tools — never hits the <code>128</code>-tool API limit), <code>Craft</code> / <code>Plan</code> / <code>Ask</code> dual-layer gating, live <code>🛡️ Restricted Mode</code> ↔ <code>🔓 Full Access</code> toolbar toggle, up to 6 parallel cross-project sessions (with multi-fairy Wish Maiden accompaniment), and <code>00:00–23:59</code> scheduled runs.</li>
             <li><strong>CapCut-Grade 6-Tab NLE, Spine 2D Rigging &amp; Wavelet Portrait Lab</strong>: 120+ GPU/FFmpeg effects/transitions/LUTs, editable JianyingPro / CapCut draft export, AI-aligned Spine 2D skeleton export, 4-band wavelet skin retouching, and 56-bone 3D Director Stage blocking.</li>
           </ul>
           <p>
@@ -312,7 +312,7 @@
         <section id="concepts">
           <h2>2. Core concepts</h2>
           <p>
-            Spend two minutes on the terms below and every screen afterwards will make sense. In v8.9.1, data
+            Spend two minutes on the terms below and every screen afterwards will make sense. In v9.0.0, data
             is organized as <strong>Workspace → Multi-Project → Host Asset / Node Graph → Asset</strong>: the workspace and projects
             are local folder containers, the node graph is the production floor, and assets are the deliverables.
           </p>
@@ -414,7 +414,7 @@
           </div>
 
           <h3>2.1 How a 5-stage AI comic / short drama runs</h3>
-          <p>With the concepts above in place, the closed-loop data flow of the v8.9.1 short-drama pipeline reads:</p>
+          <p>With the concepts above in place, the closed-loop data flow of the v9.0.0 short-drama pipeline reads:</p>
           <ol>
             <li>
               <strong>Script input</strong> (<code>text.plain</code>) → wired into
@@ -453,7 +453,7 @@
             </a>
             <a class="entry-card" href="manual-workspace.en.html">
               <strong>Vol. 2 · §5–6 Workspace, AI Chat &amp; assets</strong>
-              <span>◈ AI Chat sidebar &amp; file editor, 24h scheduled automations, Skill Marketplace, Canvas Wish Maiden &amp; weather, asset library</span>
+              <span>◈ AI Chat (in-process Pi Agent, 6 parallel sessions, live sandbox toggle), 24h automations, Skill Marketplace, multi-fairy Wish Maiden &amp; assets</span>
             </a>
             <a class="entry-card" href="manual-workflow.en.html">
               <strong>Vol. 3 · §7–8 Workflows &amp; core node graph</strong>

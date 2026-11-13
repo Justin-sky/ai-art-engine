@@ -21,31 +21,31 @@
     </script>
     <meta
       name="description"
-      content="AI Art Engine v8.9.1 Reference & Troubleshooting Manual: local multi-project workspace file layout (workspace.json + project.json), .aipackage asset bundles, aiae:graph PNG recipes, full keyboard shortcut table, 102-tool MCP setup, and symptom-based troubleshooting."
+      content="AI Art Engine v9.0.0 Reference & Troubleshooting Manual: local multi-project workspace & Pi Agent file layout (workspace.json + project.json + dsh-harness), .aipackage asset bundles, aiae:graph PNG recipes, full keyboard shortcut table, 102-tool MCP setup, and symptom-based troubleshooting."
     />
     <meta
       name="keywords"
-      content="AI Art Engine shortcuts, troubleshooting, workspace.json project.json, .aipackage asset package, aiae:graph PNG, 102 MCP tools troubleshooting, ComfyUI API format, S3 signed URL"
+      content="AI Art Engine shortcuts, troubleshooting, workspace.json project.json, pi-sessions dsh-harness, .aipackage asset package, aiae:graph PNG, 102 MCP tools troubleshooting, ComfyUI API format, S3 signed URL"
     />
     <meta
       name="robots"
       content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
     />
-    <title>Workspace Structure, Shortcuts &amp; Troubleshooting · Manual — AI Art Engine</title>
+    <title>Workspace Structure, Shortcuts &amp; Troubleshooting · Manual (v9.0.0) — AI Art Engine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
     <meta property="og:site_name" content="AI Art Engine" />
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:locale:alternate" content="zh_CN" />
-    <meta property="og:title" content="Workspace Structure, Shortcuts &amp; Troubleshooting · Manual — AI Art Engine" />
-    <meta property="og:description" content="Workspace directory layout (workspace.json + project.json), .aipackage asset packages, complete shortcut reference, 102-tool MCP diagnostics, and symptom-based troubleshooting." />
+    <meta property="og:title" content="Workspace Structure, Shortcuts &amp; Troubleshooting · Manual (v9.0.0) — AI Art Engine" />
+    <meta property="og:description" content="Workspace directory layout (workspace.json + project.json) &amp; Pi Agent session/skill directories, .aipackage asset packages, complete shortcut reference, 102-tool MCP diagnostics, and symptom-based troubleshooting." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Workspace Structure, Shortcuts &amp; Troubleshooting · Manual — AI Art Engine" />
-    <meta name="twitter:description" content="Workspace directory layout (workspace.json + project.json), .aipackage asset packages, complete shortcut reference, 102-tool MCP diagnostics, and symptom-based troubleshooting." />
+    <meta name="twitter:title" content="Workspace Structure, Shortcuts &amp; Troubleshooting · Manual (v9.0.0) — AI Art Engine" />
+    <meta name="twitter:description" content="Workspace directory layout (workspace.json + project.json) &amp; Pi Agent session/skill directories, .aipackage asset packages, complete shortcut reference, 102-tool MCP diagnostics, and symptom-based troubleshooting." />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
@@ -57,8 +57,8 @@
           {
             "@type": "TechArticle",
             "@id": "https://justin-sky.github.io/ai-art-engine/manual-reference.en.html#article",
-            "headline": "Workspace Structure, Shortcuts & Troubleshooting · AI Art Engine v8.9.1 Manual",
-            "description": "Reference guide to AI Art Engine v8.9.1 workspace directory layout (workspace.json + project.json), .aipackage asset packages, keyboard shortcuts, 102-tool MCP diagnostics, and symptom-based troubleshooting.",
+            "headline": "Workspace Structure, Shortcuts & Troubleshooting · AI Art Engine v9.0.0 Manual",
+            "description": "Reference guide to AI Art Engine v9.0.0 workspace directory layout (workspace.json + project.json), Pi Agent lock-free sessions & skills directories, .aipackage asset packages, keyboard shortcuts, 102-tool MCP diagnostics, and symptom-based troubleshooting.",
             "inLanguage": "en-US",
             "url": "https://justin-sky.github.io/ai-art-engine/manual-reference.en.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
@@ -200,10 +200,10 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Manual · Reference · v8.9.1</p>
+          <p class="eyebrow">Manual · Reference · v9.0.0</p>
           <h1>Reference &amp; troubleshooting</h1>
           <p class="lede">
-            Multi-project workspace file layout (<code>workspace.json</code> + <code>project.json</code>), <code>.aipackage</code> bundles &amp; <code>aiae:graph</code> PNG recipes, the complete shortcut reference, 102-tool MCP setup, and symptom-based troubleshooting.
+            Multi-project workspace &amp; in-process Pi Agent file layout (<code>workspace.json</code> + <code>project.json</code> + <code>dsh-harness</code>), <code>.aipackage</code> bundles &amp; <code>aiae:graph</code> PNG recipes, the complete shortcut reference, 102-tool MCP setup, and symptom-based troubleshooting.
           </p>
         </header>
 
@@ -223,6 +223,9 @@
             </li>
             <li>
               <strong><code>Cache/</code></strong>: intermediate node-graph and Dive workbench outputs (<code>Cache/Images</code>, <code>Cache/Videos</code>, <code>Cache/Voices</code>, <code>Cache/Music</code>, <code>Cache/Sfx</code>, <code>Cache/Models</code>), kept separate until you save items to the library.
+            </li>
+            <li>
+              <strong>Pi Agent sessions, skills &amp; memory (<code>&lt;userData&gt;/dsh-harness/</code>)</strong>: lock-free atomic JSON chat sessions live in <code>&lt;userData&gt;/dsh-harness/pi-sessions/</code> (enabling mid-session cross-provider model switching), user-installed <code>SKILL.md</code> packages reside in <code>&lt;userData&gt;/dsh-harness/skills/</code>, and per-project memory lives in <code>&lt;userData&gt;/dsh-harness/memory/</code>.
             </li>
             <li>
               <strong>MCP bridge descriptor</strong>: app-managed <code>%APPDATA%/aiartengine/mcp.json</code> (macOS: <code>~/Library/Application Support/aiartengine/mcp.json</code>) storing the persistent local port and Bearer token for the 102-tool MCP server (never edit by hand).
@@ -532,13 +535,14 @@
           </details>
 
           <details class="trouble">
-            <summary>AI Chat errors / web search returns nothing / scheduled automation didn't fire</summary>
+            <summary>AI Chat errors / tools gated / web search returns nothing / scheduled automation didn't fire</summary>
             <div class="trouble-body">
               <ol>
-                <li><strong>Model unavailable (HTTP_404 etc.)</strong>: verify the selected text model exists on your provider account and its API key is enabled under Settings → Models.</li>
-                <li><strong>Web search &amp; extraction</strong>: both built-in <code>◈ AI Chat</code> (native <code>web_search</code> / <code>web_fetch</code>) and MCP (<code>web_extract_article</code>, <code>web_fetch_video</code>) use the provider configured in <a href="manual-setup.en.html#web-search">Settings → Web Search (§4.6)</a> — verify your search key or network proxy there if lookups fail.</li>
+                <li><strong>Model unavailable (HTTP_404 etc.)</strong>: verify the selected text model exists on your provider account and its API key is enabled under Settings → Models; v9.0.0's lock-free JSON sessions (<code>&lt;userData&gt;/dsh-harness/pi-sessions/</code>) let you switch models across providers mid-session without write-lock errors.</li>
+                <li><strong>Tools blocked or awaiting approval</strong>: check the active mode — <code>Ask</code> is zero-tool Q&amp;A and <code>Plan</code> stays strictly read-only until you confirm via the <code>ask_user</code> card; switch to <code>Craft</code> for execution, and either approve via the <strong>Allow Once / Always Allow</strong> card or toggle the toolbar <code>🛡️ Restricted Mode</code> ↔ <code>🔓 Full Access</code> button. (Note: <code>load_toolset</code> keeps active tools <code>&lt;= 96</code>, so mounting multiple external MCP servers never hits the 128-tool API limit.)</li>
+                <li><strong>Web search &amp; extraction</strong>: both built-in <code>◈ AI Chat</code> (Pi Agent native <code>web_search</code> / <code>web_fetch</code>) and MCP (<code>web_extract_article</code>, <code>web_fetch_video</code>) use the provider configured in <a href="manual-setup.en.html#web-search">Settings → Web Search (§4.6)</a> — verify your search key or network proxy there if lookups fail.</li>
                 <li><strong>24-hour Scheduled Automations (<code>00:00–23:59</code>)</strong>: schedules execute locally while the desktop app process is running (minimized to tray is fine); ensure the app wasn't quit and the schedule toggle is enabled (see <a href="manual-workspace.en.html#schedules">§5.8 Scheduled Automations</a>).</li>
-                <li><strong>Missing chat history after switching projects</strong>: expand the left sidebar inside <code>◈ AI Chat</code> and switch back to the target workspace.</li>
+                <li><strong>Missing chat history after switching projects</strong>: expand the left sidebar inside <code>◈ AI Chat</code> and switch back to the target workspace/project (up to 6 parallel sessions can run simultaneously).</li>
               </ol>
             </div>
           </details>
@@ -554,7 +558,7 @@
           <p>Path: Settings → General → About &amp; updates.</p>
           <ul>
             <li>
-              <strong>Current version</strong>: shown as <code>v{version}</code> (e.g. <code>v8.9.1</code>; pre-releases are flagged as prerelease).
+              <strong>Current version</strong>: shown as <code>v{version}</code> (e.g. <code>v9.0.0</code>; pre-releases are flagged as prerelease).
             </li>
             <li>
               <strong>Check for updates</strong>: queries GitHub Releases (skipped in local dev mode).

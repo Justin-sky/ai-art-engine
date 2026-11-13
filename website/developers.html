@@ -22,11 +22,11 @@
     <title>技能市场与工作流插件开发者文档（Claude Code 技能规范 &amp; MCP 分发）— AI Art Engine</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.1 技能市场开发者文档：涵盖独立 ai-art-engine-skills 技能与工作流仓库契约、Claude Code SKILL.md 规范与 GitHub 直装、MCP 技能管理工具、客户端原子安装契约、脚本同意流、QuickJS WASM 可执行代码节点与 18 大节点命名空间规范。"
+      content="AI Art Engine (AIArtEngine) v9.0.0 技能市场开发者文档：涵盖独立 ai-art-engine-skills 技能与工作流仓库契约、进程内 Pi Agent 原生 skill 加载机制、Claude Code SKILL.md 规范与 GitHub 直装、MCP 技能管理工具、客户端原子安装契约、脚本同意流与实时沙箱审批、QuickJS WASM 可执行代码节点及 18 大节点命名空间规范。"
     />
     <meta
       name="keywords"
-      content="AI Art Engine开发者文档, 技能市场开发, ai-art-engine-skills, Claude Code Skill规范, SKILL.md, GitHub技能直装, aiae-workflow, QuickJS沙箱节点, script.run, MCP工作流工具"
+      content="AI Art Engine开发者文档, 技能市场开发, ai-art-engine-skills, Pi Agent, Claude Code Skill规范, SKILL.md, GitHub技能直装, aiae-workflow, QuickJS沙箱节点, script.run, MCP工作流工具"
     />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
@@ -37,7 +37,7 @@
     <meta property="og:title" content="技能市场与工作流插件开发者文档（Claude Code 技能规范 &amp; MCP 分发）— AI Art Engine" />
     <meta
       property="og:description"
-      content="面向技能与工作流贡献者的完整客户端契约：ai-art-engine-skills 独立分发架构、Claude Code 技能规范、GitHub 直装、MCP 技能工具链与 QuickJS 受限代码沙箱。"
+      content="面向技能与工作流贡献者的完整客户端契约（v9.0.0）：ai-art-engine-skills 独立分发架构、进程内 Pi Agent 技能加载、Claude Code 技能规范、GitHub 直装、MCP 技能工具链与 QuickJS 受限代码沙箱。"
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/developers.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
@@ -47,7 +47,7 @@
     <meta name="twitter:title" content="技能市场与工作流插件开发者文档（Claude Code 技能规范 &amp; MCP 分发）— AI Art Engine" />
     <meta
       name="twitter:description"
-      content="AI Art Engine v8.9.1 技能市场契约、ai-art-engine-skills 工作流规范、Claude Code SKILL.md 支持与 QuickJS WASM 代码节点开发指南。"
+      content="AI Art Engine v9.0.0 技能市场契约、ai-art-engine-skills 工作流规范、进程内 Pi Agent 技能运行时、Claude Code SKILL.md 支持与 QuickJS WASM 代码节点开发指南。"
     />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
@@ -69,12 +69,12 @@
           {
             "@type": "TechArticle",
             "headline": "技能市场与工作流插件开发者文档（Claude Code 技能规范 & MCP 分发）— AI Art Engine",
-            "description": "AI Art Engine v8.9.1 技能市场开发者参考手册：详解独立仓库 ai-art-engine-skills 交付链路、Claude Code SKILL.md 规范与 GitHub 直装、MCP 技能市场工具组、原子安装与脚本同意流、QuickJS WASM script.run 沙箱，以及 18 类合法画布节点命名空间。",
+            "description": "AI Art Engine v9.0.0 技能市场开发者参考手册：详解独立仓库 ai-art-engine-skills 交付链路、进程内 Pi Agent 技能加载与无锁 JSON 会话存储、Claude Code SKILL.md 规范与 GitHub 直装、MCP 技能市场工具组、原子安装与脚本同意流、QuickJS WASM script.run 沙箱，以及 18 类合法画布节点命名空间。",
             "inLanguage": "zh-CN",
             "url": "https://justin-sky.github.io/ai-art-engine/developers.html",
             "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/developers.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
-            "dateModified": "2026-11-11",
+            "dateModified": "2026-11-13",
             "author": {
               "@type": "Organization",
               "name": "AI Art Engine",
@@ -207,7 +207,7 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Developers · v8.9.1 · Skill Marketplace &amp; Workflow SDK</p>
+          <p class="eyebrow">Developers · v9.0.0 · Skill Marketplace &amp; Workflow SDK</p>
           <h1>技能市场开发者文档</h1>
           <p class="lede">
             面向<strong>往技能市场发布内容或接入 Claude Code 技能</strong>的开发者：市场里有什么、内容长什么样、怎么被校验与分发、
@@ -218,7 +218,8 @@
             用户视角怎么用市场，见<a href="manual-workspace.html#marketplace">使用手册 §5.7 技能市场</a>。
           </p>
           <div class="tip">
-            <strong>相关的客户端实现：</strong><code>src/shared/claudeSkill.ts</code>（Claude Code 技能规范与 frontmatter 解析）、
+            <strong>相关的客户端实现：</strong><code>src/main/agent/</code>（v9.0 进程内 Pi Agent 运行时、原生 <code>skill</code> 工具、<code>load_toolset</code> 按需工具集引擎与 <code>piSessionStore.ts</code> 无锁 JSON 会话存储）、
+            <code>src/shared/claudeSkill.ts</code>（Claude Code 技能规范与 frontmatter 解析）、
             <code>src/main/services/claudeSkillRuntime.ts</code>（变量展开、<code>!`cmd`</code> 预处理、hooks / fork 子代理 / allowed-tools 治理）、
             <code>src/main/services/githubSkillInstaller.ts</code>（GitHub 技能直装）、
             <code>src/shared/graph/nodeCapabilities.ts</code>（画布节点原生能力定义）、
@@ -261,7 +262,7 @@
                 <td>
                   <strong>官方/社区市场技能</strong>（可附带 <code>workflow.json</code> 画布模板）、<strong>GitHub 直装技能</strong>、<strong>项目级技能</strong>（<code>.claude/skills</code> / <code>.agents/skills</code>）、<strong>自定义技能</strong>
                 </td>
-                <td>内容仓库 + GitHub 任意仓库 + 工作区 + <code>$DSH_HOME/skills</code></td>
+                <td>内容仓库 + GitHub 任意仓库 + 工作区 + <code>&lt;userData&gt;/dsh-harness/skills</code></td>
               </tr>
             </tbody>
           </table>
@@ -269,10 +270,10 @@
           <ul>
             <li>
               <strong>内置技能已重构为画布节点原生能力</strong>：旧版曾把 40+ 个画布节点的默认系统提示词与用法写成 <code>.md</code> 文件铺在
-              <code>$DSH_HOME/skills/</code> 下。重构后，节点的生成能力（<code>defaultSystemPrompt</code>、<code>usage</code>、<code>inputBindings</code> 等）全部收归为节点自身定义（<code>src/shared/graph/nodeCapabilities.ts</code>），由 MCP <code>graph_node_types</code> 直接向 Agent 暴露，不再混入技能目录。
+              <code>&lt;userData&gt;/dsh-harness/skills/</code> 下。重构后，节点的生成能力（<code>defaultSystemPrompt</code>、<code>usage</code>、<code>inputBindings</code> 等）全部收归为节点自身定义（<code>src/shared/graph/nodeCapabilities.ts</code>），由 MCP <code>graph_node_types</code> 直接向 Agent 暴露，不再混入技能目录。
             </li>
             <li>
-              <strong>工作流与技能合流为「技能」页签</strong>：远端市场仓库里的条目本质上是「给 Agent 看的操作手册（<code>SKILL.md</code>）+ 可选的一键工作流画布模板（<code>workflow.json</code>）」。安装后，条目既能在画布「新建 → 一键工作流」里复现节点图，也会把技能包落盘到 <code>$DSH_HOME/skills/&lt;skill.name&gt;/</code>，在「技能」页签中统一管理（不重复渲染两张卡片）。
+              <strong>工作流与技能合流为「技能」页签</strong>：远端市场仓库里的条目本质上是「给 Agent 看的操作手册（<code>SKILL.md</code>）+ 可选的一键工作流画布模板（<code>workflow.json</code>）」。安装后，条目既能在画布「新建 → 一键工作流」里复现节点图，也会把技能包落盘到 <code>&lt;userData&gt;/dsh-harness/skills/&lt;skill.name&gt;/</code>（由进程内 Pi Agent 的原生 <code>skill</code> 工具无缝发现与加载），在「技能」页签中统一管理（不重复渲染两张卡片）。
             </li>
           </ul>
 
@@ -309,13 +310,13 @@
    ↓  原子安装（staging → rename，失败不留半成品）
 &lt;userData&gt;/workflows/&lt;id&gt;/            画布模板本体
    ↓  同一次安装内
-$DSH_HOME/skills/&lt;skill.name&gt;/        技能包（随条目一起落盘）
+&lt;userData&gt;/dsh-harness/skills/&lt;skill.name&gt;/   技能包（随条目一起落盘，无缝兼容旧版路径）
    ↓
-Agent 下次对话扫到该技能 → 注入 &lt;available_skills&gt; → 按需加载 / 斜杠调用</code></pre>
+进程内 Pi Agent 扫描发现该技能 → 注入 &lt;available_skills&gt; → 原生 skill 工具按需加载 / 斜杠调用</code></pre>
 
           <h3>2.0 单一事实源：核心精简内置 + 独立 <code>ai-art-engine-skills</code> 仓库分发</h3>
           <p>
-            自 v8.9.1 起，垂直领域工作流预设已全面迁出客户端主仓库，统一收归独立的开源仓库
+            垂直领域工作流预设已全面迁出客户端主仓库，统一收归独立的开源仓库
             <strong><code>ai-art-engine-skills</code></strong> 作为单一事实源（早期主仓库内的预设双份镜像与旧版同步导出脚本已随架构迁移一并移除，彻底根绝「客户端与市场同名不同图」的版本漂移）：
           </p>
           <ul>
@@ -359,7 +360,7 @@ Agent 下次对话扫到该技能 → 注入 &lt;available_skills&gt; → 按需
 
           <h3>2.2 市场附带画布模板的技能包为什么要带 <code>wf-</code> 前缀</h3>
           <p>
-            技能包落地目录是 <code>$DSH_HOME/skills/&lt;name&gt;</code>，与用户从 GitHub 直装的 Claude Code 技能、本地自定义技能共享同一个目录。
+            技能包落地目录是 <code>&lt;userData&gt;/dsh-harness/skills/&lt;name&gt;</code>，与用户从 GitHub 直装的 Claude Code 技能、本地自定义技能共享同一个目录。
             因此，<code>ai-art-engine-skills</code> 仓库里随画布模板分发的技能包强制将 <code>name</code> 命名为
             <strong><code>wf-&lt;工作流 id&gt;</code></strong>，从源头避免与通用 Claude Code 技能重名。仓库校验器逐条拦这件事。
           </p>
@@ -381,9 +382,9 @@ Agent 下次对话扫到该技能 → 注入 &lt;available_skills&gt; → 按需
             </li>
           </ul>
 
-          <h3>2.4 工作流预设与技能正文中的合法节点命名空间（v8.9.1）</h3>
+          <h3>2.4 工作流预设与技能正文中的合法节点命名空间（v9.0.0）</h3>
           <p>
-            仓库校验器会严格校验工作流预设 <code>plan</code> 及技能正文里<strong>反引号包裹的 <code>x.y</code> 节点类型记号</strong>。v8.9.1 允许使用的 <strong>18 个标准画布节点命名空间</strong>如下：
+            仓库校验器会严格校验工作流预设 <code>plan</code> 及技能正文里<strong>反引号包裹的 <code>x.y</code> 节点类型记号</strong>。v9.0.0 允许使用的 <strong>18 个标准画布节点命名空间</strong>如下：
           </p>
           <pre class="mcp-code"><code>input.*     text.*      image.*     video.*     voice.*     audio.*
 film.*      game.*      ui.*        novel.*     semantic.*  script.*
@@ -412,7 +413,7 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
               <code>scripts/</code> 则复用 §4 的脚本同意流；落盘后写入 <code>.source.json</code> 记录源仓库、分支、子路径与 commit SHA，支持在技能卡片上一键<strong>从 GitHub 更新</strong>或<strong>卸载</strong>。
             </li>
             <li>
-              <strong>多级技能发现作用域</strong>：项目级（<code>&lt;workspace&gt;/.claude/skills/&lt;name&gt;/SKILL.md</code>、<code>&lt;workspace&gt;/.agents/skills/&lt;name&gt;/SKILL.md</code>，优先级最高）&gt; 个人/市场级（<code>$DSH_HOME/skills/&lt;name&gt;/SKILL.md</code>）。
+              <strong>多级技能发现作用域</strong>：项目级（<code>&lt;workspace&gt;/.claude/skills/&lt;name&gt;/SKILL.md</code>、<code>&lt;workspace&gt;/.agents/skills/&lt;name&gt;/SKILL.md</code>，优先级最高）&gt; 个人/市场级（<code>&lt;userData&gt;/dsh-harness/skills/&lt;name&gt;/SKILL.md</code>）。
             </li>
             <li>
               <strong>Frontmatter 全字段支持（<code>claudeSkill.ts</code>）</strong>：支持 <code>name</code>、<code>description</code>、<code>argument-hint</code>、<code>disable-model-invocation</code>、<code>user-invocable</code>、<code>allowed-tools</code>（支持 <code>Bash(git *)</code> 等通配模式）、<code>model</code>、<code>context: inline | fork</code>（<code>fork</code> 在独立子代理上下文中运行技能）、<code>agent</code>、<code>hooks</code>（<code>PreToolUse</code> / <code>PostToolUse</code> / <code>Stop</code>）、<code>when_to_use</code>、<code>version</code>、<code>license</code>、<code>author</code>、<code>workflow</code>。
@@ -447,7 +448,7 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
 
           <h3>3.3 安装前校验（否则「装上了却看不见」）</h3>
           <p>
-            dsh 对<strong>不合法</strong>的技能是<strong>静默忽略</strong>（只写一行日志然后跳过）。所以客户端在 staging
+            Pi Agent 运行时在扫描技能目录时会对<strong>不合法</strong>的 <code>SKILL.md</code> 自动跳过（仅写告警日志而不挂载）。所以客户端在 staging
             阶段就校验 <code>SKILL.md</code>：frontmatter 是否存在、<code>name</code> 是否合法、
             <code>description</code> 是否非空、字段类型是否符合 Claude Code 技能规范。不通过就<strong>安装失败并给出具体原因</strong>，绝不会留下一个装了却不生效的技能包。
           </p>
@@ -491,10 +492,10 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
             <li>脚本文件同样受路径白名单与体积上限约束。</li>
           </ul>
 
-          <h3>4.2 运行时：一次授权只对一次调用有效</h3>
+          <h3>4.2 运行时：实时沙箱与单次失效关闭（Fail-Closed）审批卡</h3>
           <p>
-            Agent 真正去跑脚本时，走的是 harness 的通用 shell（Windows 上是 <code>pwsh</code>），
-            受沙箱约束。一旦某一步需要越出沙箱，就由<strong>审批应答器</strong>把决定权交给用户：
+            内置 Pi Agent 真正去跑脚本时，走的是原生跨平台终端工具（Windows 上默认 <code>pwsh</code> / PowerShell），
+            受<strong>实时沙箱</strong>约束（默认处于 <code>🛡️ 受限模式</code> / <code>workspace-write</code>，用户也可在对话底栏实时切换为 <code>🔓 完全访问</code> / <code>danger-full-access</code>）。在受限模式下，一旦某一步需要越出工作区沙箱或执行敏感命令，就由<strong>对话内权限审批卡</strong>把决定权交给用户：
           </p>
           <table>
             <thead>
@@ -505,16 +506,20 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
             </thead>
             <tbody>
               <tr>
-                <td>允许一次</td>
-                <td>该次调用放行（<strong>唯一放行路径</strong>）</td>
+                <td>允许一次（Allow Once）</td>
+                <td>仅该次调用单次放行（令牌用后即焚）</td>
               </tr>
               <tr>
-                <td>拒绝</td>
+                <td>始终允许（Always Allow · 项目作用域）</td>
+                <td>仅在当前工程作用域内对该类受控操作放行（跨工程隔离，不污染全局）</td>
+              </tr>
+              <tr>
+                <td>拒绝（Reject）</td>
                 <td>工具调用被拒</td>
               </tr>
               <tr>
                 <td>无人应答 / 超时 / 载荷读不懂 / 读文件出错 / 任何异常</td>
-                <td><strong>失败即关闭</strong>（工具调用失败，绝不放行）</td>
+                <td><strong>失效即关闭（Fail-Closed）</strong>（工具调用失败，绝不放行）</td>
               </tr>
               <tr>
                 <td>请求被中止（本轮结束）</td>
@@ -523,8 +528,7 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
             </tbody>
           </table>
           <p>
-            界面上是一张对话内授权卡：工具名 + 原因，只有 <strong>允许一次 / 拒绝</strong>，
-            <strong>没有「总是允许」</strong>——一次性授权是刻意的，持久授予等于悄悄放宽 Agent 能跑的东西。
+            界面上是一张对话内授权卡：清晰展示工具名、命令与风险原因，提供 <strong>允许一次 / 始终允许（仅限当前项目）/ 拒绝</strong>，任何未显式授权的异常分支一律拒绝执行。
           </p>
           <div class="tip">
             写技能时请据此设计：<strong>脚本必须是可选的</strong>。用户拒绝脚本时，仅凭说明与 references
@@ -540,7 +544,7 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
           </p>
           <p>
             <code>script.run</code> 是一种节点类型，代码（JavaScript）作为它的参数写在 <code>plan</code> 里，
-            由应用的<strong>图执行引擎</strong>在渲染进程里跑——而不是 harness shell。它运行在
+            由应用的<strong>图执行引擎</strong>在渲染进程里跑——而不是 Agent 的本机终端。它运行在
             <strong>受限沙箱</strong>（QuickJS WASM，<code>src/shared/graph/execute/scriptSandboxQuickjs.ts</code>）里：
             <strong>无文件、无网络、无 <code>require</code>、无宿主全局</strong>。沙箱与应用之间只有三样东西过得去——
             上游输入进、端口输出出，以及一组 <code>await om.&lt;能力&gt;(...)</code> 的<strong>受控能力调用</strong>：
@@ -623,11 +627,10 @@ node --test scripts/validate.test.mjs  # 校验器自身的单测</code></pre>
               ⚠️ <strong>当前设置界面还没有暴露这个输入项</strong>，属于数据层能力。
             </li>
             <li>
-              想验证「Agent 到底有没有真的加载技能」，最可靠的证据是 dsh 的会话日志
-              （<code>$DSH_HOME/sessions/&lt;workspace&gt;/&lt;session&gt;/session.v3.jsonl.zstd</code>）：
-              里面能查到 <code>tool/call</code>，<code>name: "skill"</code>、<code>arguments: {"name": "&lt;skill-name&gt;"}</code>，
-              以及紧随其后的 <code>&lt;skill_content&gt;</code> 结果。<strong>别只看界面</strong>——技能是否被加载，
-              界面是看不出来的。
+              想验证「Agent 到底有没有真的加载技能」，最可靠的证据是内置 Pi Agent 的无锁原子 JSON 会话文件
+              （<code>&lt;userData&gt;/dsh-harness/pi-sessions/&lt;sessionId&gt;.json</code>，由 <code>piSessionStore.ts</code> 维护）：
+              直接打开该明文 JSON 即可查到原生 <code>skill</code> 工具调用记录（<code>name: "skill"</code>、参数 <code>{"name": "&lt;skill-name&gt;"}</code>）
+              及紧随其后注入的技能正文内容（或直接把会话导出为 <code>.zip</code> 检查）。<strong>别只看回复文案</strong>——技能是否被真正加载，看会话工具调用记录最准确。
             </li>
           </ul>
         </section>
@@ -648,7 +651,7 @@ node --test scripts/validate.test.mjs  # 校验器自身的单测</code></pre>
               <tr>
                 <td>装完 Agent 那边没有这份技能</td>
                 <td>
-                  <code>SKILL.md</code> 的 frontmatter 不合法（dsh <strong>静默忽略</strong>）。客户端的安装前校验
+                  <code>SKILL.md</code> 的 frontmatter 不合法（Pi Agent 扫描技能目录时<strong>自动跳过</strong>不合法条目）。客户端的安装前校验
                   就是为了把这种失败提前成一句可读的报错
                 </td>
               </tr>

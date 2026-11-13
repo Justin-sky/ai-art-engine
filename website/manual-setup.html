@@ -20,14 +20,14 @@
         } catch (e) {}
       })()
     </script>
-    <title>工作区与设置 · 使用手册（v8.9.1）— BYOK 模型、本地 ONNX/OCR、S3、102 工具 MCP 与联网搜索 | AI Art Engine</title>
+    <title>工作区与设置 · 使用手册（v9.0.0）— BYOK 模型、本地 ONNX/OCR、S3、102 工具 MCP 与联网搜索 | AI Art Engine</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.1 使用手册第 1 卷：多工程工作区（workspace.json + project.json）与零 Key 极速体验、30+ BYOK 模型提供商接入、离线 ONNX 视觉与 OCR、兼容 S3 对象存储、102 工具 MCP 服务及内置 AI 对话/MCP 联网搜索配置。"
+      content="AI Art Engine (AIArtEngine) v9.0.0 使用手册第 1 卷：多工程工作区（workspace.json + project.json）与零 Key 极速体验、30+ BYOK 模型提供商接入、离线 ONNX 视觉与 OCR、兼容 S3 对象存储、102 工具 MCP 服务（含 Pi 智能体 load_toolset 按需惰性加载）及内置 AI 对话/MCP 联网搜索配置。"
     />
     <meta
       name="keywords"
-      content="AI Art Engine 设置, AIArtEngine 模型配置, 多工程工作区 workspace.json, 零 Key 极速体验, 本地 ONNX 视觉, Amazon S3 对象存储, 102 MCP 工具服务, AI 对话联网搜索"
+      content="AI Art Engine 设置, AIArtEngine 模型配置, 多工程工作区 workspace.json, 零 Key 极速体验, 本地 ONNX 视觉, Amazon S3 对象存储, 102 MCP 工具服务, load_toolset, AI 对话联网搜索"
     />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
@@ -35,20 +35,20 @@
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:locale:alternate" content="en_US" />
-    <meta property="og:title" content="工作区与设置 · 使用手册（v8.9.1）— AI Art Engine" />
+    <meta property="og:title" content="工作区与设置 · 使用手册（v9.0.0）— AI Art Engine" />
     <meta
       property="og:description"
-      content="管理多工程工作区（workspace.json + project.json），配置 30+ 模型提供商、离线 ONNX 视觉、兼容 S3 对象存储、102 工具双向 MCP 服务与实时联网搜索提取。"
+      content="管理多工程工作区（workspace.json + project.json），配置 30+ 模型提供商、离线 ONNX 视觉、兼容 S3 对象存储、102 工具双向 MCP 服务（load_toolset 惰性挂载外部 MCP）与实时联网搜索提取。"
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="工作区与设置 · 使用手册（v8.9.1）— AI Art Engine" />
+    <meta name="twitter:title" content="工作区与设置 · 使用手册（v9.0.0）— AI Art Engine" />
     <meta
       name="twitter:description"
-      content="管理多工程工作区（workspace.json + project.json），配置 30+ 模型提供商、离线 ONNX 视觉、兼容 S3 对象存储、102 工具双向 MCP 服务与实时联网搜索提取。"
+      content="管理多工程工作区（workspace.json + project.json），配置 30+ 模型提供商、离线 ONNX 视觉、兼容 S3 对象存储、102 工具双向 MCP 服务（load_toolset 惰性挂载外部 MCP）与实时联网搜索提取。"
     />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
@@ -69,13 +69,13 @@
         "@graph": [
           {
             "@type": "TechArticle",
-            "headline": "工作区与设置 · AI Art Engine v8.9.1 使用手册（第 1 卷）",
-            "description": "详解 AI Art Engine v8.9.1 多工程工作区（workspace.json + project.json）、零 Key 极速体验入口、30+ 云端与本地模型提供商配置、本地 ONNX 视觉模型、兼容 S3 对象存储、102 工具 MCP 服务及内置 AI 对话与 MCP 联网搜索检索。",
+            "headline": "工作区与设置 · AI Art Engine v9.0.0 使用手册（第 1 卷）",
+            "description": "详解 AI Art Engine v9.0.0 多工程工作区（workspace.json + project.json）、零 Key 极速体验入口、30+ 云端与本地模型提供商配置、本地 ONNX 视觉模型、兼容 S3 对象存储、102 工具 MCP 服务与 Pi 智能体 load_toolset 按需惰性工具集加载及联网搜索。",
             "inLanguage": "zh-CN",
             "url": "https://justin-sky.github.io/ai-art-engine/manual-setup.html",
             "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/manual-setup.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp",
-            "dateModified": "2026-11-11",
+            "dateModified": "2026-11-13",
             "author": {
               "@type": "Organization",
               "name": "AI Art Engine",
@@ -203,7 +203,7 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Manual · Setup</p>
+          <p class="eyebrow">Manual · Setup · v9.0.0</p>
           <h1>工作区与设置</h1>
           <p class="lede">
             新建与打开多工程工作区（<code>workspace.json</code> + <code>project.json</code>），体验免配置的「⚡ 零 Key 极速体验」，并在设置中完成通用偏好、模型提供商、本地 ONNX 视觉、对象存储、扩展、102 工具 MCP 服务与实时联网搜索的配置。第一次使用时，建议先把这一部分走一遍。
@@ -220,7 +220,7 @@
             <li>点击「创建」后进入工作区画布。</li>
           </ol>
           <p>
-            v8.9.1 采用<strong>多工程工作区（Workspace）</strong>架构：工作区根目录由 <code>workspace.json</code> 统一索引多个子工程，每个子工程由各自的 <code>project.json</code> 描述节点图与资产元数据。进入工作区后，随时展开右侧 <strong><code>◈ AI 对话</code> 面板的左侧边栏</strong>即可在同一工作区下新建、切换多个子工程，或使用内置工作区文件编辑器直接查看与修改文本/配置文件。
+            v9.0.0 采用<strong>多工程工作区（Workspace）</strong>架构：工作区根目录由 <code>workspace.json</code> 统一索引多个子工程，每个子工程由各自的 <code>project.json</code> 描述节点图与资产元数据。进入工作区后，随时展开右侧 <strong><code>◈ AI 对话</code> 面板的左侧边栏</strong>即可在同一工作区下新建、切换多个子工程，或使用内置工作区文件编辑器直接查看与修改文本/配置文件。
           </p>
           <div class="tip">
             <strong>⚡ 零 Key 极速体验：</strong>尚未配置模型 API Key 时，进入任意工作区并打开右侧 <strong><code>◈ AI 对话</code></strong> 面板，直接点击引导区的 <strong>「⚡ 零 Key 极速体验」</strong>，即可免密钥运行仙侠 RPG 装备 UI 智能拆解 + 3D 爆炸视图拆层 → 一键导出可编辑 <code>TySh</code> 文本层 <code>.psd</code> / Unity / Godot 管线。
@@ -875,9 +875,7 @@
             修改即时落盘，外部 Agent 重连即生效，不需要重启应用。
           </p>
           <p>
-            同一设置面板还支持 <strong>「反向桥」</strong>：注册任意外部 stdio MCP server（如 Blender
-            addon / 其它本地 MCP 服务），让应用内 ◈ AI 对话面板（DeepSeek Harness / <code>dsh</code>）也能直接消费
-            它们的工具 —— 不再需要它们额外暴露 socket 端口。详见
+            同一设置面板还支持 <strong>「反向桥」与外部 MCP 按需惰性挂载</strong>：注册任意外部 stdio 或远程 HTTP MCP server（如 Blender addon 或其它第三方 MCP 服务），让应用内 <code>◈ AI 对话</code> 面板（进程内 <strong>Pi 智能体</strong>运行时，基于 <code>@earendil-works/pi-agent-core</code> 与 <code>@earendil-works/pi-ai</code>）直接消费它们的工具 —— 无需额外暴露 socket 端口。得益于 v9.0.0 的<strong>按需惰性工具集加载（<code>load_toolset</code>）</strong>，会话初始仅挂载约 24 个高频核心工具，按需动态激活 Studio / Blender 领域工具集与外部 MCP 工具集（<code>ext:&lt;serverId&gt;</code>），并配合 LRU 淘汰将活跃工具数严格控制在 <code>&lt;= 96</code>（远低于 OpenAI / DeepSeek API 的 <code>128</code> 工具上限），因此在「设置 → MCP」挂载再多外部 MCP 服务也绝不会触发 <code>tools array too long</code> 报错。详见
             <a href="guide-mcp.html">MCP 接入教程</a>里的反向桥段。
           </p>
           <p>
@@ -899,7 +897,7 @@
               <strong>面板操作</strong>：工具栏「新增 provider」下拉 → 选择类型添加；每张 provider 卡片支持折叠 / 展开、勾选启用 / 禁用 / 移除；内置「连通性测试」按钮可即时验证响应或排查报错原因。
             </li>
             <li>
-              <strong>全链路已打通（AI 对话 + MCP）</strong>：配置的联网搜索服务已直接接入内置 <strong><code>◈ AI 对话</code></strong>（<code>dsh</code> 原生 <code>web_search</code> 与 <code>web_fetch</code> 工具，可实时搜索资料、调研竞品与抓取参考网页）以及本地 <strong>MCP 工具服务</strong>（提供 <code>web_extract_article</code> 正文结构化提取与 <code>web_fetch_video</code> 在线视频抓取入库工具），在对话与自动化任务中开箱即用。
+              <strong>全链路已打通（AI 对话 + MCP）</strong>：配置的联网搜索服务已直接接入内置 <strong><code>◈ AI 对话</code></strong>（Pi 智能体原生 <code>web_search</code> 与 <code>web_fetch</code> 工具，可实时搜索资料、调研竞品与抓取参考网页）以及本地 <strong>MCP 工具服务</strong>（提供 <code>web_extract_article</code> 正文结构化提取与 <code>web_fetch_video</code> 在线视频抓取入库工具），在对话与自动化任务中开箱即用。
             </li>
           </ul>
           <div class="tip">

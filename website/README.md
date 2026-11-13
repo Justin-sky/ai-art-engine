@@ -1,4 +1,4 @@
-# AI Art Engine 官方主页（v8.9.1）
+# AI Art Engine 官方主页（v9.0.0）
 
 纯静态中英双语官网与文档站，无需构建步骤。仓库：https://github.com/Justin-sky/ai-art-engine
 
@@ -17,7 +17,7 @@ npm run site
 | `quickstart.html` / `quickstart.en.html` | 快速上手：`◈ AI 对话` 零 Key 极速体验 → 接入模型 → 多项目工作区 → 一键工作流 / `aiae:graph` PNG 配方拖入 → 出片 |
 | `manual.html` / `manual.en.html` | 使用手册总览页（§1–2 概述与核心概念 + 五卷章节卡片；历史 `manual(.en).html#锚点` 自动重定向到对应子页） |
 | `manual-setup.html` / `manual-setup.en.html` | 手册第 1 卷（§3–4）：多项目工作区（`workspace.json` + `project.json`）、云端/本地模型、对象存储、离线视觉、102 工具 MCP 与联网搜索 |
-| `manual-workspace.html` / `manual-workspace.en.html` | 手册第 2 卷（§5–6）：工作区、AI 对话多项目侧栏与内嵌编辑器、技能市场、24h 定时任务、祈愿巫女与程序化天气、资产库 |
+| `manual-workspace.html` / `manual-workspace.en.html` | 手册第 2 卷（§5–6）：工作区、进程内 Pi Agent 对话面板（`load_toolset` 按需懒加载工具集、实时沙箱切换、6 路无锁多工程并行会话与内嵌编辑器）、技能市场、24h 定时任务、祈愿巫女与程序化天气、资产库 |
 | `manual-workflow.html` / `manual-workflow.en.html` | 手册第 3 卷（§7–8）：一键工作流与 `aiae:graph` PNG 即工作流、UI 拆层（原生 `TySh` PSD）与 `ui.atlasCompose`、Machinations v2（120fps Goal-Seek）、`rea-video` 爆款视频复刻与 `script.run` |
 | `manual-production.html` / `manual-production.en.html` | 手册第 4 卷（§9–12）：21 类题材五阶段影视工作台、6 页签剪映级 NLE 时间线（剪映草稿导出）、2D 舞台（YOLOv8-Pose + Spine 导出）、4 频段小波人像精修与 56 骨 3D 导演台 |
 | `manual-reference.html` / `manual-reference.en.html` | 手册第 5 卷（§13–16）：工作区目录结构、`.aipackage` 资产包、完整快捷键表、高频故障排查与版本更新 |
@@ -25,7 +25,7 @@ npm run site
 | `guide-video.html` / `guide-video.en.html` | 自由画布 · 视频生成、`rea-video` 拆解复刻与参考视频教程 |
 | `guide-comfyui.html` / `guide-comfyui.en.html` | ComfyUI 接入教程（API v2、本机 `comfy-api-proxy` 与 API 格式 workflow） |
 | `guide-newapi.html` / `guide-newapi.en.html` | NewAPI 自建中转网关接入教程（端点元数据识别与令牌分组注意事项） |
-| `guide-mcp.html` / `guide-mcp.en.html` | MCP 接入教程（Claude Code / Cursor / Codex 接入 `/mcp` 93 工具 + `/mcp/blender` 9 工具，合计 102 工具） |
+| `guide-mcp.html` / `guide-mcp.en.html` | MCP 接入教程（Claude Code / Cursor / Codex / Windsurf 通过 `npx -y ai-art-engine-mcp` 或 `127.0.0.1:43110` 接入 `/mcp` 93 工具 + `/mcp/blender` 9 工具，合计 102 工具） |
 | `guide-gameplay.html` / `guide-gameplay.en.html` | 可玩 HTML 与 Machinations v2 玩法/经济原型教程 |
 | `developers.html` / `developers.en.html` | 技能市场开发者文档：发布工作流与技能包、Claude Code 技能规范支持、GitHub 直装、运行时脚本审批与索引派生规则 |
 
@@ -36,7 +36,7 @@ npm run site
 | `sitemap.xml` | 覆盖全部 30 个中英文页面的 XML 站点地图（含 `xhtml:link` 多语言互指） |
 | `robots.txt` | 搜索引擎与主流 AI 检索爬虫抓取放行规则及 `Sitemap` 声明 |
 | `llms.txt` | 面向 LLM / AI Agent 的精简站点导航与能力索引（遵循 llms.txt 规范） |
-| `llms-full.txt` | 面向 LLM / AI Agent 的 AI Art Engine v8.9.1 全量技术架构、节点与 MCP 工具参考 |
+| `llms-full.txt` | 面向 LLM / AI Agent 的 AI Art Engine v9.0.0 全量技术架构（Pi Agent 进程内运行时）、节点与 102 工具 MCP 参考 |
 | `manifest.webmanifest` | Web App Manifest 站点清单（应用名称、主题色与图标元数据） |
 | `manual.css` | 手册与专题教程页样式（中英文共用） |
 | `styles.css` | 首页样式（中英文共用） |

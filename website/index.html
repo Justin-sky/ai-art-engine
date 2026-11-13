@@ -22,7 +22,7 @@
     <title>AI Art Engine (AIArtEngine) — 开源 AI 漫剧短剧 · 游戏 UI 拆层导出 PSD/Unity · 数值仿真与 MCP 工业资产引擎</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.5 — 开源免费的 Agent 原生全模态 AI 创作与工业资产引擎。直接交付分层可编辑 PSD（原生 TySh 文本层）、Unity/Godot/HTML5 界面代码、Machinations 游戏经济数值仿真（C#/GDScript）、Spine 2D 骨骼包、21 题材五阶段 AI 漫剧成片、双节点爆款视频逆向复刻、剪映/CapCut 多轨草稿与可玩 HTML5 游戏。内置全工作区 AI 对话与 102 工具双向 MCP 服务，100% 本地工程优先 · GPL-3.0。"
+      content="AI Art Engine (AIArtEngine) v9.0.0 — 开源免费的 Agent 原生全模态 AI 创作与工业资产引擎。全新进程内 Pi Agent 运行时与按需懒加载 MCP 工具引擎（突破 128 工具上限），直接交付分层可编辑 PSD（原生 TySh 文本层）、Unity/Godot/HTML5 界面代码、Machinations 游戏经济数值仿真（C#/GDScript）、Spine 2D 骨骼包、21 题材五阶段 AI 漫剧成片、双节点爆款视频逆向复刻、剪映/CapCut 多轨草稿与可玩 HTML5 游戏。内置 102 工具双向 MCP 服务（npx -y ai-art-engine-mcp），100% 本地工程优先 · GPL-3.0。"
     />
     <meta
       name="keywords"
@@ -47,7 +47,7 @@
     <meta property="og:image:height" content="860" />
     <meta property="og:image:alt" content="AI Art Engine 游戏 UI 3D 爆炸拆层与分层 PSD / Unity / Godot 导出界面" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="AI Art Engine — Agent 原生的全模态 AI 创作与工业资产引擎 (v8.9.5)" />
+    <meta name="twitter:title" content="AI Art Engine — Agent 原生的全模态 AI 创作与工业资产引擎 (v9.0.0)" />
     <meta
       name="twitter:description"
       content="直接交付分层可编辑 PSD（原生 TySh 文本层）、Unity/Godot UI 代码、Machinations 游戏数值仿真、Spine 2D 骨骼包、AI 漫剧成片、剪映多轨草稿与可玩 HTML5 游戏。内置 102 工具 MCP 服务，开源 GPL-3.0。"
@@ -78,7 +78,7 @@
             "url": "https://justin-sky.github.io/ai-art-engine/",
             "applicationCategory": ["DesignApplication", "MultimediaApplication", "DeveloperApplication"],
             "operatingSystem": "Windows 10+, macOS 12+, Linux",
-            "softwareVersion": "8.9.5",
+            "softwareVersion": "9.0.0",
             "license": "https://www.gnu.org/licenses/gpl-3.0.html",
             "isAccessibleForFree": true,
             "downloadUrl": "https://github.com/Justin-sky/ai-art-engine/releases",
@@ -98,7 +98,7 @@
               "剪映级六栏成片时间线编辑器（120+ 特效/转场/LUT、DOTween 双层关键帧、TD-PSOLA 歌声合成）与剪映/CapCut 多轨草稿导出",
               "2D 角色立绘自动切件、AI 骨骼对齐与 Spine 2D（skeleton.json + .atlas）导出，及四频段小波级人像精修",
               "56 骨骼 3D 导演台、World Labs 3D 高斯泼溅空间世界与 9 工具 Blender MCP 实时建模桥",
-              "内置多工程工作区 AI 对话、24 小时定时自动化与 102 工具本地双向 MCP 服务（支持 Claude Code / Cursor / Codex）",
+              "进程内 Pi Agent 9.0 运行时（load_toolset 按需懒加载突破 128 工具上限、Craft/Plan/Ask 双层护栏、实时沙箱切换、6 路无锁多工程并行会话）、24 小时定时自动化与 102 工具本地双向 MCP 服务（npx -y ai-art-engine-mcp 支持 Claude Code / Cursor / Codex / Windsurf）",
               "PNG 即工作流（aiae:graph 块嵌入完整节点拓扑）与本地 ONNX 视觉模型及三端原生离线 OCR"
             ]
           },
@@ -173,7 +173,7 @@
                 "name": "Claude Code、Cursor 或 Codex 如何通过 MCP 控制 AI Art Engine？",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "软件启动后自动在 127.0.0.1 暴露带 Bearer Token 鉴权的本地 MCP 服务（共 102 个工具：/mcp 主端点 93 个 + /mcp/blender 实时建模端点 9 个）。只需运行 claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs 即可让外部 Agent 直接编排节点图、安装技能工作流、跑数值仿真与导出成片。"
+                  "text": "软件启动后自动在 127.0.0.1:43110 暴露带 Bearer Token 鉴权的本地流式 HTTP MCP 服务（共 102 个工具：/mcp 主端点 93 个 + /mcp/blender 实时建模端点 9 个）。只需运行 claude mcp add aiartengine -- npx -y ai-art-engine-mcp（或使用内置 ./resources/mcp-bridge.mjs）即可让 Claude Code、Cursor、Codex、Windsurf 直接编排节点图、安装技能工作流、跑数值仿真与导出成片。"
                 }
               },
               {
@@ -221,7 +221,7 @@
       <a class="brand" href="#top">
         <img src="assets/logo-mark.png" alt="AI Art Engine 图标" width="30" height="30" />
         <span>AI Art Engine</span>
-        <span class="brand-ver">v8.9.5</span>
+        <span class="brand-ver">v9.0.0</span>
       </a>
       <nav class="nav" aria-label="主导航">
         <a href="#features">核心亮点</a>
@@ -297,7 +297,7 @@
             target="_blank"
             rel="noopener noreferrer"
           >
-            <b>v8.9.5</b><span>免安装在线机制试玩沙盘 · 同会话热切模型与超 128 工具无损网关 · 6 路多会话并行 Agent · 102 工具 MCP</span> →
+            <b>v9.0.0</b><span>全新进程内 Pi Agent 引擎 · 按需懒加载突破 128 工具上限 · 实时沙箱与 6 路无锁并行会话 · 在线试玩沙盘</span> →
           </a>
           <h1 class="reveal" style="--d: 0.04s">
             <span class="hero-lead">不止生成素材，直接交付</span><span class="grad">工业级游戏与影视工程</span>
@@ -434,10 +434,10 @@
           <div class="bento">
             <article class="bento-card span-4 reveal">
               <span class="bento-icon"><svg aria-hidden="true"><use href="#i-chat" /></svg></span>
-              <span class="bento-tag">多工程工作区 · 24h 定时自动化 · 零 Key 极速体验</span>
-              <h3>内置 AI 对话面板 · 一句话实时操控画布与全部子工作台</h3>
+              <span class="bento-tag">Pi Agent 进程内引擎 · 按需懒加载工具集 · 6 路无锁并行与实时沙箱</span>
+              <h3>内置 Pi Agent 对话面板 · 一句话零延迟操控画布与全部工作台</h3>
               <p>
-                在对话里用 <code>@</code> 引用工程资产，AI 直接调用 100+ 工具搭节点图、拆解游戏 UI、拖拽数值仿真曲线、摆 3D 骨骼并编排时间线；支持多工程侧栏秒切与 <code>00:00–23:59</code> 无人值守日更任务。
+                全新 v9.0 进程内 Pi Agent 运行时：<code>@</code> 引用工程资产，通过 <code>load_toolset</code> 按需挂载 102 个工作台工具与外部 MCP（彻底根治 128 工具上限报错并保留前缀缓存）；支持 Craft / Plan / Ask 双层治理、对话中实时切换受限沙箱 / 完全访问、6 路多工程无锁并行会话与 <code>00:00–23:59</code> 定时自动化。
               </p>
               <div class="chat-mock" aria-hidden="true">
                 <div class="chat-row is-user">
@@ -458,7 +458,7 @@
               <span class="bento-tag">102 工具双向 MCP 服务</span>
               <h3>Claude Code / Cursor 直连</h3>
               <p>
-                内置 <code>127.0.0.1</code> 本地 MCP 服务（<code>/mcp</code> 93 工具 + <code>/mcp/blender</code> 9 工具），支持 Agent / Plan / Ask 请求级权限闸门，外部 Agent 一行命令接管整座工作室。
+                内置 <code>127.0.0.1:43110</code> 流式 HTTP MCP 服务（<code>/mcp</code> 93 工具 + <code>/mcp/blender</code> 9 工具）与零依赖 <code>npx -y ai-art-engine-mcp</code> 桥接，支持 Craft / Plan / Ask 请求级权限闸门，Claude Code / Cursor / Codex / Windsurf 一行命令接管整座工作室。
               </p>
               <a class="bento-link" href="guide-mcp.html">MCP 102 工具接入教程</a>
             </article>
@@ -736,7 +736,7 @@
                   <th scope="col">核心维度</th>
                   <th scope="col">传统网页端 AIGC 工具</th>
                   <th scope="col">纯底层采样节点工具</th>
-                  <th scope="col" class="is-hi">AI Art Engine (v8.9.5)</th>
+                  <th scope="col" class="is-hi">AI Art Engine (v9.0.0)</th>
                 </tr>
               </thead>
               <tbody>
@@ -774,7 +774,7 @@
                   <th scope="row">Agent 操控与 MCP</th>
                   <td>封闭网页黑盒，外部编程 Agent 无法介入</td>
                   <td>仅提供底层 JSON 提交，无语义级工作台工具</td>
-                  <td class="is-hi">内置多工程 AI 对话 + 24h 定时任务 + <strong>102 工具本地 MCP 服务</strong>（Claude Code / Cursor / Blender 直连）</td>
+                  <td class="is-hi">进程内 <strong>Pi Agent 9.0</strong>（按需懒加载工具集 + 6 路无锁会话）+ 24h 定时任务 + <strong>102 工具本地 MCP 服务</strong>（Claude Code / Cursor / Codex / Blender 直连）</td>
                 </tr>
                 <tr>
                   <th scope="row">费用与数据主权</th>
@@ -867,12 +867,12 @@
             <p class="section-label reveal">Agent Native · 102 MCP Tools</p>
             <h2 class="section-title reveal" id="agent-title">一行命令，让 Claude Code / Cursor<br /><span class="grad">全自动驱动 102 个生产工具</span></h2>
             <p class="section-lede reveal" style="--d: 0.06s">
-              应用运行时自动在 <code class="code-inline">127.0.0.1</code> 启动带 Bearer Token 鉴权的本地 MCP 服务（<code>/mcp</code> 93 个核心工具 + <code>/mcp/blender</code> 9 个建模工具），外部编程 Agent 与内置 AI 对话共享同一套工业底座。
+              应用运行时自动在 <code class="code-inline">127.0.0.1:43110</code> 启动带 Bearer Token 鉴权的本地流式 HTTP MCP 服务（<code>/mcp</code> 93 个核心工具 + <code>/mcp/blender</code> 9 个建模工具），内置进程内 Pi Agent 零回环开销直调，外部 Agent 通过 <code>npx -y ai-art-engine-mcp</code> 一行命令共享同一套工业底座。
             </p>
             <ul class="check-list">
               <li class="reveal"><div><strong>全栈节点与技能编排</strong> —— <code>skill_install</code> 安装技能市场管线、<code>workflow_use_installed</code> 落盘工作流、<code>graph_edit</code> 精准增删改连线与运行 <code>task_run</code></div></li>
               <li class="reveal" style="--d: 0.04s"><div><strong>跨游戏、影视与 3D 闭环</strong> —— <code>machinations_studio</code> 跑数值仿真、<code>vision_local_ocr</code> 离线识字、<code>semantic_analyze_video</code> 视频取证、<code>timeline_export</code> 导出成片与剪映草稿</div></li>
-              <li class="reveal" style="--d: 0.08s"><div><strong>权限分明且可审计</strong> —— Token 持久复用、并发闸门保护，支持 <code>Agent / Plan / Ask</code> 三档模式在请求头级收窄写入权限</div></li>
+              <li class="reveal" style="--d: 0.08s"><div><strong>权限分明且可审计</strong> —— Token 持久复用、并发闸门保护，支持 <code>Craft / Plan / Ask</code> 三档模式在请求头与进程内双层收窄写入权限</div></li>
             </ul>
             <div class="cta reveal" style="justify-content: flex-start; margin-top: 0">
               <a class="btn btn-solid" href="guide-mcp.html"><svg aria-hidden="true"><use href="#i-terminal" /></svg>查看 102 工具 MCP 接入指南</a>
@@ -881,7 +881,7 @@
 
           <div class="term reveal reveal-stage" style="--d: 0.1s" role="img" aria-label="终端演示：Claude Code 通过 MCP 调用 AI Art Engine 102 个工具">
             <div class="term-bar"><i></i><i></i><i></i><span>claude — ~/projects/xianxia-production</span></div>
-            <pre><span class="t-dim">$</span> <span class="t-cmd">claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs</span>
+            <pre><span class="t-dim">$</span> <span class="t-cmd">claude mcp add aiartengine -- npx -y ai-art-engine-mcp</span>
 <span class="t-ok">✓</span> Connected <span class="t-ok">aiartengine</span> <span class="t-dim">(/mcp 93 tools + /mcp/blender 9 tools)</span>
 
 <span class="t-user">&gt;</span> 装好短剧技能包跑第1集五阶段漫剧，同时校验抽卡经济模型并导出剪映草稿
@@ -1017,13 +1017,13 @@
             <details class="faq-item reveal">
               <summary>Machinations 游戏数值仿真沙盘能做什么？支持反推公式吗？</summary>
               <div class="faq-ans">
-                <p><code>game.economy</code> 100% 对齐 Machinations 核心语义，内置 59 个验证机制积木，支持精简宏观卡片与完整蓝图无损切换。v8.9.1 支持直接在图表上以 <strong>120fps 拖拽目标曲线点或紫色贝塞尔斜率控制点（◆）反推底层成长公式（Goal-Seek）</strong>，并支持蒙特卡洛仿真、二维灵敏度热力图与导出 Unity C# / Godot GDScript。</p>
+                <p><code>game.economy</code> 100% 对齐 Machinations 核心语义，内置 59 个验证机制积木，支持精简宏观卡片与完整蓝图无损切换。支持直接在图表上以 <strong>120fps 拖拽目标曲线点或紫色贝塞尔斜率控制点（◆）反推底层成长公式（Goal-Seek）</strong>，并支持蒙特卡洛仿真、二维灵敏度热力图与导出 Unity C# / Godot GDScript。</p>
               </div>
             </details>
             <details class="faq-item reveal">
               <summary>Claude Code、Cursor 或 Codex 如何通过 MCP 操控本软件？</summary>
               <div class="faq-ans">
-                <p>桌面端运行后自动在 <code>127.0.0.1</code> 开启带 Bearer Token 鉴权的本地 MCP 服务（共 102 个工具：<code>/mcp</code> 93 个 + <code>/mcp/blender</code> 9 个）。执行一行 <code>claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs</code> 即可接入。详见 <a href="guide-mcp.html">MCP 接入指南</a>。</p>
+                <p>桌面端运行后自动在 <code>127.0.0.1:43110</code> 开启带 Bearer Token 鉴权的本地流式 HTTP MCP 服务（共 102 个工具：<code>/mcp</code> 93 个 + <code>/mcp/blender</code> 9 个）。执行一行 <code>claude mcp add aiartengine -- npx -y ai-art-engine-mcp</code>（或使用内置 <code>./resources/mcp-bridge.mjs</code>）即可接入 Claude Code、Cursor、Codex 与 Windsurf。详见 <a href="guide-mcp.html">MCP 接入指南</a>。</p>
               </div>
             </details>
             <details class="faq-item reveal">
@@ -1095,7 +1095,7 @@
         <h2 class="reveal" id="cta-title">准备好把 AI 变成你的<span class="grad">本地全模态制片厂与游戏工坊</span>了吗？</h2>
         <p class="reveal" style="--d: 0.05s">GPL-3.0 免费开源 · 100% 本地工程主权 · 直接交付工业级可编辑资产。</p>
         <div class="cta reveal" style="--d: 0.1s">
-          <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>立即免费下载 v8.9.5</a>
+          <a class="btn btn-solid" href="#download"><svg aria-hidden="true"><use href="#i-download" /></svg>立即免费下载 v9.0.0</a>
           <a class="btn btn-line" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">
             <svg aria-hidden="true"><use href="#i-github" /></svg>在 GitHub 点亮 Star
           </a>
@@ -1121,7 +1121,7 @@
               <li><a href="#agent">102 工具 MCP</a></li>
               <li><a href="#faq">常见问题</a></li>
               <li><a href="#download">免费下载</a></li>
-              <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志 (v8.9.5)</a></li>
+              <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志 (v9.0.0)</a></li>
             </ul>
           </div>
           <div class="foot-col">

@@ -27,6 +27,7 @@
 
 <p>
   <a href="https://justin-sky.github.io/ai-art-engine/"><b>🌐 官方网站</b></a> ·
+  <a href="https://justin-sky.github.io/ai-art-engine/playground/"><b>🎮 在线试玩</b></a> ·
   <a href="https://justin-sky.github.io/ai-art-engine/quickstart.html"><b>🚀 5 分钟上手</b></a> ·
   <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>📖 完整手册</b></a> ·
   <a href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html"><b>🔌 MCP 接入</b></a> ·
@@ -122,10 +123,21 @@
 - **3D 导演台与分镜白模预演（`director.stage`）**：支持 56 根标准人形骨骼摆姿、**24 款程序化生活/战斗动作片段**、38 款全身/手势预设与 Cinemachine 多机位轨迹编排；可后台无头（Offscreen）按分镜自动录制 `.webm` 3D 白模运镜参考视频（`@2`）锁死下游视频生成运镜。
 - **空间世界与全链路 3D 加工**：对接 **World Labs Marble** 文/图/视频生可漫游 3D 高斯泼溅世界（`.spz` / `.ply`）并导出 60 万面带贴图 `.glb`；支持 Meshy / Tripo / Rodin / Luma AI / Lux3D 的 **云端绑骨蒙皮、动画重定向、智能拆件、重拓扑与 PBR 贴图**；内置 `/mcp/blender` 零依赖直连本机 Blender 实时建模入库。
 
-### 6. 🔌 全工作区 Agent 原生直控 & 102 个双向 MCP 工具全覆盖
+### 6. 🧠 进程内 Pi Agent 9.0 运行时 · 按需懒加载 MCP 引擎 · 原生沙箱治理
 
-- **内外同源的 102 个 MCP 工具**：应用启动即在 `127.0.0.1:43110` 开启带持久 Token 与审计日志的本地 MCP 服务（93 个主工具 + 9 个 Blender 工具），100% 覆盖多工程管理、Git 状态与 Diff、节点图自省与智能深层补丁（`SmartPatch`）、3D 导演台操控、Machinations 仿真反推、本地离线 OCR / YOLO / SAM2 视觉推理、时间线剪辑、可玩 HTML5 游戏编译（含无头浏览器冒烟自检）与 24 小时定时自动化任务。
-- **一行命令接入外部编程 Agent**：Claude Code、Codex、Cursor、Windsurf 等可直接通过 stdio 桥或 Streamable HTTP 接管你的创作工程；内置 Ask / Plan / Craft 请求级安全权限闸门。
+- **零子进程开销的进程内 Pi Agent（`src/main/agent/`）**：v9.0 全新搭载基于 `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai` 的主进程内嵌智能体运行时，内置工具零 HTTP 回环直调，支持最多 **6 路会话跨工程并行执行**、领域专精子智能体协同与无锁原子 JSON 会话存储（同会话跨服务商切换模型零写锁冲突，支持任意轮次回滚分叉与 `.zip` 导出）。
+- **`load_toolset` 按需懒加载 MCP 引擎（彻底终结 `<= 128` 工具路数上限）**：会话初始仅挂载 ~24 个高频底座工具（12 个原生工具 + 12 个 `studio_core` 核心工具），将其余内部工具划分为 **6 大语义工具包**，并对多路外部 MCP 服务采用目录摘要 + 关键词相关性打分懒加载（单次最多激活 32 项）+ 意图零轮次预热 + **LRU 淘汰（活跃上限 `96 < 128`）**，在保护大模型 Prompt 前缀缓存命中率的同时，无论挂载多少外部 MCP 均永不触发 `Invalid 'tools': array too long`。
+- **原生双层治理与盘中实时沙箱切换**：`Craft / Plan / Ask` 三模式由暴露工具集过滤 + `beforeToolCall` 运行时硬门禁双重锁定；内置 `ask_user` 确认卡与一次性失败闭合（Fail-Closed）权限审批卡（`允许一次 / 工程级总是允许 / 拒绝`），底部工具栏支持空闲或运行盘中随时切换 **`🛡️ 受限模式`（`workspace-write`）↔ `🔓 完全访问`（`danger-full-access`）**。
+
+### 7. 🔌 102 个双向本地 MCP 工具全覆盖 & 一行命令接入外部编程 Agent
+
+- **内外同源的 102 个 MCP 工具**：应用启动即在 `127.0.0.1:43110` 开启带持久 Token 与 JSONL 审计日志的本地 MCP 服务（93 个主工具 + 9 个 Blender 工具），100% 覆盖多工程管理、Git 状态与 Diff、节点图自省与智能深层补丁（`SmartPatch`）、3D 导演台操控、Machinations 仿真反推、本地离线 OCR / YOLO / SAM2 视觉推理、时间线剪辑、可玩 HTML5 游戏编译与 24 小时定时自动化任务。
+- **一行命令接入外部编程 Agent**：Claude Code、Codex、Cursor、Windsurf 等可通过零依赖 `npx -y ai-art-engine-mcp`、内置 stdio 桥或 Streamable HTTP 直接接管你的创作工程。
+
+### 8. 🕹️ 一句话可玩 HTML5 游戏编译 & 免费本地 GPU 离线视觉（ONNX + 原生 OCR）
+
+- **自动冒烟门禁验证的可玩游戏原型**：一句话经 Agent 生成纯代码程序化美术与 WebAudio 音效的自包含单文件 **`single.html`**，内置无头 Chromium 自动执行零控制台异常、模拟按键指针输入与 Canvas 帧差分可玩性门禁。
+- **跨平台免费离线视觉算力**：随包内置 `utilityProcess` 隔离的 ONNX Runtime（`YOLOv8/11` 检测/分割/姿态、468 点人脸网格、`SAM 2.1` 点框分割、`RMBG` 高精抠图）与系统原生离线 OCR（Windows WinRT / macOS Vision / Linux Tesseract），自动启用 DirectML / CoreML / CUDA 硬件加速。
 
 ---
 
@@ -219,15 +231,15 @@
 应用运行期间自动在本机 `127.0.0.1:43110` 启动 MCP 服务（连接配置与 Token 位于 **设置 → MCP 工具服务**）：
 
 ```bash
-# 方式 A：stdio 桥接（推荐，自动读取本机端口与持久 Token）
+# 方式 A：零依赖官方 npm 桥接包（推荐，自动发现本机端口与持久 Token）
+claude mcp add ai-art-engine -- npx -y ai-art-engine-mcp
+claude mcp add ai-art-engine-blender -- npx -y ai-art-engine-mcp --blender
+
+# 方式 B：仓库/安装目录内置 stdio 桥接脚本
 claude mcp add aiartengine -- node <安装目录或仓库路径>/scripts/mcp-bridge.mjs
 
-# 方式 B：Streamable HTTP 直连（无需本机安装 Node.js）
+# 方式 C：Streamable HTTP 直连（无需本机安装 Node.js）
 claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp \
-  --header "Authorization: Bearer <token>"
-
-# 可选：挂载内置 Blender MCP 实时 3D 建模端点
-claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender \
   --header "Authorization: Bearer <token>"
 ```
 
@@ -256,7 +268,7 @@ npm run dist     # 构建生产环境安装包
 | 🎬 [AI 短剧与漫剧制作教程](https://justin-sky.github.io/ai-art-engine/guide-short-video.html) · [自由画布视频教程](https://justin-sky.github.io/ai-art-engine/guide-video.html)                                                                                                                                                                                                                          | 👁️ [本地 ONNX 视觉与跨平台离线 OCR (`ARCH_YOLO_LOCAL.md`)](./docs/ARCH_YOLO_LOCAL.md)                                            |
 | 🕹️ [一句话生成可玩 HTML5 游戏](https://justin-sky.github.io/ai-art-engine/guide-gameplay.html)                                                                                                                                                                                                                                                                                                           | 🪪 [四频段小波人像精修架构 (`PORTRAIT.md`)](./docs/PORTRAIT.md)                                                                  |
 | 🔗 [ComfyUI 本地接入教程](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) · [NewAPI 网关教程](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)                                                                                                                                                                                                                               | 🧩 [节点图插件扩展规范 (`GRAPH_PLUGINS.md`)](./docs/GRAPH_PLUGINS.md) · [技能市场规范 (`MARKETPLACE.md`)](./docs/MARKETPLACE.md) |
-| 🤖 [外部 Agent MCP 接入指南](https://justin-sky.github.io/ai-art-engine/guide-mcp.html) · [技能市场开发者文档](https://justin-sky.github.io/ai-art-engine/developers.html)                                                                                                                                                                                                                               | 💬 [AI 对话运行时指南 (`DEEPSEEK_HARNESS.md`)](./docs/DEEPSEEK_HARNESS.md) · [演进路线图 (`ROADMAP.md`)](./docs/ROADMAP.md)      |
+| 🤖 [外部 Agent MCP 接入指南](https://justin-sky.github.io/ai-art-engine/guide-mcp.html) · [技能市场开发者文档](https://justin-sky.github.io/ai-art-engine/developers.html)                                                                                                                                                                                                                               | 🧠 [进程内 Pi Agent 与懒加载 MCP 架构 (`PI_AGENT.md`)](./docs/PI_AGENT.md) · [演进路线图 (`ROADMAP.md`)](./docs/ROADMAP.md)      |
 
 ---
 

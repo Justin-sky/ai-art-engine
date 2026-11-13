@@ -1,4 +1,4 @@
-# 节点图插件与扩展开发指南（v8.9.1）
+# 节点图插件与扩展开发指南（v9.0.0）
 
 本文说明如何基于 Cordis 运行时为 AI Art Engine 开发与扩展**节点类型（`NodeTypeDefinition`）**、**画布作用域（Scope）**、**图策略（Policy）**、**画布卡片（Card）**、**属性检查器（Inspector）**与**节点原生能力（`NodeCapabilityDef`）**。用户侧连线与节点手册见官网 [工作流与节点图手册](https://justin-sky.github.io/ai-art-engine/manual-workflow.html#graph)。
 
@@ -23,7 +23,7 @@
 
 ## 2. 核心概念与命名规范
 
-### 2.1 `v8.9.1` 常用内置节点命名空间
+### 2.1 `v9.0.0` 常用内置节点命名空间
 
 扩展或编排节点时，建议对齐现有领域前缀（第三方或实验扩展统一使用 `plugin.*` 前缀）：
 

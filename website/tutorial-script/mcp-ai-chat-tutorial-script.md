@@ -2,7 +2,7 @@
 
 > 适用于剪映「AI 创作 · 文生视频」：逐条复制画面提示词生成镜头，拖入轨道拼接；
 > 配音用剪映「文本朗读」粘贴配音文案生成。总时长约 105 秒。
-> 对应功能：AI 对话面板（DeepSeek Harness 运行时，@ 引用工程资产 + MCP 工具调用）+ 内置 MCP Server（stdio 桥 / HTTP 直连，Claude Code / Codex 等外部 Agent 可操作工程）。
+> 对应功能（v9.0.0）：AI 对话面板（进程内 Pi Agent 运行时，`@` 引用工程资产 + `load_toolset` 按需懒加载工具集 + 实时沙箱与 6 路无锁并行会话）+ 内置 102 工具 MCP Server（`npx -y ai-art-engine-mcp` 零依赖 stdio 桥 / `127.0.0.1:43110` HTTP 直连，Claude Code / Cursor / Codex / Windsurf 等外部 Agent 可操作工程）。
 
 ## 使用说明
 
@@ -153,7 +153,7 @@
 
 字幕要点：
 
-> generate_image / generate_model3d / generate_video / task_run
+> graph_node_types / graph_edit / task_run / timeline_export
 
 ### 镜头 11（约 8 秒）
 
@@ -193,8 +193,8 @@
 | B | 生成图上的 AI 质检五维评分面板，触发一次 FAIL 后自动注入原因重试，最终通过 | 对应镜头 5 |
 | C | 对话里输入「把这张图转成 3D 白模，扔进导演台」，节点图自动连线，双击 dive 进入 3D 舞台查看白模场景 | 对应镜头 6 |
 | D | 对话里输入「用可灵把主视觉变成 15 秒产品广告」，视频生成后素材落到成片时间线并整轨预览 | 对应镜头 7 |
-| E | 设置 → MCP Server：开启 stdio 桥与 HTTP 端点、查看/编辑 token（跨重启复用）；打开 Claude Code 终端，命令连接本应用后规划并落盘一个工作流、`task_run` 执行并 `task_status` 查状态 | 对应镜头 8、9 |
-| F | MCP 工具清单界面（models_list / generate_image / generate_model3d / generate_video / generate_speech / graph_read / graph_edit / task_run / task_status / folder_list）与操作审计日志 | 对应镜头 10 |
+| E | 设置 → MCP Server：查看 `127.0.0.1:43110` 端点与持久化 token；打开 Claude Code 终端执行 `claude mcp add aiartengine -- npx -y ai-art-engine-mcp` 连接本应用，规划并落盘一个节点图工作流、`task_run` 执行并 `task_status` 查状态 | 对应镜头 8、9 |
+| F | 102 个 MCP 工具清单（`models_list` / `graph_node_types` / `graph_read` / `graph_edit` / `task_run` / `task_status` / `skill_install` / `workflow_use_installed` / `machinations_studio` / `timeline_export`）与操作审计日志 | 对应镜头 10 |
 
 ## 三、拼接与配音顺序
 

@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [9.0.0] — 2026-11-13
+
+9.0.0 里程碑大版本（Agent 架构换代）：**内置智能体运行时（`src/main/agent/*`）** 全面重构为基于 `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai` 的 **主进程原生进程内 Pi Agent 运行时**，彻底移除旧版 `@deepseek-ai/dsh` 外部子进程、stdout marker 文本协议与跨进程 `.jsonl.zstd` 文件锁；全新落地 **`load_toolset` 按需懒加载 MCP 工具包引擎（永久根治 `<= 128` 工具路数上限）**、**原生双层 `Craft / Plan / Ask` 门禁与盘中实时沙箱切换**、**无锁原子 JSON 会话存储与跨厂商无感热切模型**，以及 **会话结束画布运行态自动收束与工程上次打开画布自动恢复**。
+
+- **重构 · 进程内 Pi Agent 运行时全面取代 `dsh` 子进程架构（`src/main/agent/piHarnessService` + `piModelResolver` + `piWorkspaceTools` + `mcpServerService`）**：Agent 循环直接运行于 Electron 主进程，内置 102 项 Studio / Blender MCP 工具改为进程内零 HTTP 回环直调（`callInProcessMcpTool`），同时完整保留 `127.0.0.1:43110`（`/mcp` + `/mcp/blender`）与 `ai-art-engine-mcp` 供外部 Claude Code / Cursor / Codex 接入；支持 `openai-completions`、`anthropic-messages`、`google-generative-ai` 原生流式协议、6 路跨工程并发会话槽位与 `spawn_subagent` 领域子智能体（`storyboard-director`、`visual-asset-artist`、`blender-3d-director`、`timeline-audio-editor`、`general`），内置状态机级工具大参数未转义引号/裸换行自愈（`repairMalformedToolJsonString`）与 `<｜DSML｜function_calls>` 文本流回退解析。
+- **新增 · `load_toolset` 按需懒加载 MCP 引擎，彻底根治 `<= 128` 工具路数上限（`src/main/agent/mcpLazyToolsets` + `piWorkspaceTools`）**：每轮会话默认仅挂载 24 项核心底座工具（12 项原生工具 + 12 项 `studio_core` 高频工具），将其余内部工具按业务域拆分为 6 大语义工具包（`project_assets`、`video_timeline_audio`、`director_3d_blender`、`game_production`、`tutorial_recording`、`skills_web_vision`）；多路外部 MCP 服务（`ext:<serverId>`）仅注入轻量目录摘要，调用 `load_toolset` 时经关键词相关性打分单次最多激活 32 项高分工具，配合首轮意图零轮次预热（`prewarmForPrompt`）、LRU 自动淘汰（`MAX_ACTIVE_TOOLS = 96 < 128`）与 `supportsMidConvoToolAdditions: false` 前缀缓存保护，彻底消除多路 MCP 下的 `400: Invalid 'tools': array too long`。
+- **重构 · 原生双层 `Craft / Plan / Ask` 门禁、`ask_user` 确认卡与盘中实时沙箱治理（`src/main/agent/piGovernance` + `ChatPanel`）**：采用「暴露工具集裁剪（`agent.state.tools`）+ `beforeToolCall` 运行时拦截 + `mcpModeAccess`」双层硬门禁；进程内 `ask_user` 原生保留用户自定义输入（`fromCustom`）并在确认后自动解锁同会话 `Plan -> Craft` 执行；`🛡️ 受限模式`（`workspace-write`）与 `🔓 完全访问`（`danger-full-access`）支持空闲或运行盘中随时切换并经 `agent.steer(...)` 即时通知在跑 Agent，受限越界写与命令执行弹出单次有效失败闭合（Fail-Closed）审批卡（`允许一次 / 工程级总是允许 / 拒绝`），并硬性拦截直写 `.canvas.asset.json`、篡改 `$DSH_HOME/skills` 与有头浏览器拉起。
+- **升级 · 无锁原子 JSON 会话存储、画布运行态收束与上次画布自动恢复（`piSessionStore` + `NodeGraphEditor` + `useProject`）**：会话持久化升级为 `<userData>/dsh-harness/pi-sessions/` 下的原子临时文件重命名 JSON，彻底根绝跨服务商热切模型时的写句柄锁冲突，原生支持轮次回滚分叉、全文检索与 `.zip` 会话包导出；修复对话轮次结束或中断后画布节点仍残留运行态以及重新打开工程时自动恢复上次活跃画布的体验细节。
+- **说明（发版提示）**：9.0.0 为内置 Agent 运行时架构升级大版本，升级后请**重启应用**；原有工程资产、`SKILL.md` 技能目录与工作区记忆完全兼容。
+
 ## [8.9.5] — 2026-11-12
 
 8.9.5 在线试玩与 Agent 稳定性升级版：**官网（`website/playground` + `src/playground`）** 全新上线免安装 **Machinations v2 游戏机制与经济在线试玩沙盘**；**AI 对话与执行内核（`aiartHeadlessRunner` + `deepseekHarnessService`）** 彻底修复 **同会话跨服务商切换模型写锁冲突** 与 **多路 MCP 超 128 项工具上限报错**；并打通 **浏览 `.md` 文档或无工程状态下自动新建画布聚焦渲染** 与 **超长工具 JSON 语法自愈**。

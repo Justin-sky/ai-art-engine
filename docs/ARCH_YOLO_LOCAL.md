@@ -1,4 +1,4 @@
-# 本地视觉（ONNX / YOLO / FaceMesh / SAM 2.1）与跨平台离线 OCR 架构（v8.9.1）
+# 本地视觉（ONNX / YOLO / FaceMesh / SAM 2.1）与跨平台离线 OCR 架构（v9.0.0）
 
 > 将目标检测、实例分割、17 点人体姿态、468 点人脸网格、SAM 2.1 交互式点框分割、高精度 Alpha 抠图，以及零依赖原生系统离线 OCR 以 **Local-First** 方式集成进桌面端：数据不出本机、零云端调用成本，同时通过 IPC 与 MCP 工具（`vision_local_ocr` / `vision_local_yolo`）向全工作区节点与 AI Agent 开放。
 
@@ -14,7 +14,7 @@
 4. **SAM 2.1（Segment Anything 2.1）交互式点/框分割**（`src/main/yolo/sam2Infer.ts`、`src/shared/sam2Catalog.ts`）：支持正负点击点（`points`）与矩形框（`box`）提示词实时解码掩码，内置 6 槽位图像 Embedding LRU 缓存，点选交互毫秒级响应。
 5. **高精度边缘 Alpha 抠图精修（Matting）**（`src/main/yolo/mattingInfer.ts`、`src/shared/mattingCatalog.ts`）：支持 `BiRefNet-Lite`、`RMBG-1.4`（FP16 / Q8）与 `MODNet`，可在分割抠图与 UI 拆层时替换粗糙掩码，保留发丝与半透明边缘。
 6. **跨平台原生 OS 离线 OCR**（`src/main/services/localOcrService.ts`）：调用 Windows `Windows.Media.Ocr`、macOS Apple `Vision.framework`、Linux `tesseract`，零原生 NPM 依赖完成词级坐标检测、同行聚类与文字主色/描边双采样。
-7. **MCP 标准工具直通**（`src/main/services/mcpServerService.ts`）：通过 `vision_local_ocr` 与 `vision_local_yolo` 直接向内置 DeepSeek Harness 与外部 Claude / Cursor Agent 暴露全部本地视觉能力。
+7. **MCP 标准工具直通**（`src/main/services/mcpServerService.ts`）：通过 `vision_local_ocr` 与 `vision_local_yolo` 直接向内置进程内 Pi Agent（`src/main/agent/`，归属 `skills_web_vision` 工具包并支持意图预热）与外部 Claude / Cursor / Codex Agent 暴露全部本地视觉能力。
 
 ### 1.2 架构边界
 

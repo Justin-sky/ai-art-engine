@@ -1,6 +1,6 @@
-# AI Art Engine 系统架构说明（v8.9.1）
+# AI Art Engine 系统架构说明（v9.0.0）
 
-AI Art Engine（`v8.9.1`）采用类似 Unity Editor 的 **「微内核（Editor Kernel）+ Cordis 插件运行时 + 强类型多模态 DAG 执行层 + 全工作区 Agent 直控」** 架构，在保持 Electron 严格进程安全隔离的前提下，直接交付可进入商业游戏与影视管线的结构化工程产物。
+AI Art Engine（`v9.0.0`）采用类似 Unity Editor 的 **「微内核（Editor Kernel）+ Cordis 插件运行时 + 强类型多模态 DAG 执行层 + 进程内 Pi Agent 9.0 全工作区直控」** 架构，在保持 Electron 严格进程安全隔离的前提下，直接交付可进入商业游戏与影视管线的结构化工程产物。
 
 ---
 
@@ -8,13 +8,13 @@ AI Art Engine（`v8.9.1`）采用类似 Unity Editor 的 **「微内核（Editor
 
 ### 1.1 五层进程隔离
 
-| 进程 / 层级              | 源码目录                                        | 核心职责                                                                                                                                                                                        |
-| :----------------------- | :---------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Main（主进程）**       | `src/main/`                                     | 文件系统原子持久化、工作区与 Git 服务、`127.0.0.1` 102 工具 MCP 服务、Blender TCP 桥、FFmpeg 媒体管线、跨平台原生离线 OCR、无头浏览器抓取与可玩 HTML5 冒烟门禁。                                |
-| **Preload（类型化桥）**  | `src/preload/index.ts`                          | Renderer 与 Main 之间唯一的 `contextIsolation` 安全受控桥接（`window.studio`），契约统一声明于 `src/shared/ipc.ts`。                                                                            |
-| **Renderer（工作台）**   | `src/renderer/src/`                             | Editor Kernel、Dockview 多窗工作台、强类型节点图画布、10+ 全屏 Dive 专业子工作台、Three.js 3D 导演台、AI 对话面板（`ChatPanel.vue`）与技能市场界面。                                            |
-| **Shared（纯逻辑契约）** | `src/shared/`                                   | 零宿主耦合的领域模型、节点图拓扑与执行器、参数自省与 `SmartPatch`、Machinations v2 仿真与逆向求解器、漫剧 21 题材引擎、UI 16 类控件规范、PNG 隐写与剪映草稿编译器。                             |
-| **隔离工作子进程**       | `src/main/yolo/yoloWorker.ts` · `resources/dsh` | ① ONNX Runtime 本地视觉推理运行在独立 `utilityProcess` 中（崩溃可自愈，不阻塞主事件循环）；② DeepSeek Harness（`@deepseek-ai/dsh` `0.2.2-rc.1`）以独立受限子进程运行并通过本地 MCP 回连工作台。 |
+| 进程 / 层级              | 源码目录                                                  | 核心职责                                                                                                                                                                                                            |
+| :----------------------- | :-------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Main（主进程）**       | `src/main/` · `src/main/agent/`                           | 进程内 Pi Agent 9.0 运行时（6 槽并发会话、按需懒加载 MCP 引擎、原生双层权限治理）、文件系统原子持久化、工作区与 Git 服务、`127.0.0.1` 102 工具 MCP 服务、Blender TCP 桥、FFmpeg 媒体管线与跨平台原生离线 OCR。      |
+| **Preload（类型化桥）**  | `src/preload/index.ts`                                    | Renderer 与 Main 之间唯一的 `contextIsolation` 安全受控桥接（`window.studio`），契约统一声明于 `src/shared/ipc.ts`。                                                                                                |
+| **Renderer（工作台）**   | `src/renderer/src/`                                       | Editor Kernel、Dockview 多窗工作台、强类型节点图画布、10+ 全屏 Dive 专业子工作台、Three.js 3D 导演台、AI 对话面板（`ChatPanel.vue`）与技能市场界面。                                                                |
+| **Shared（纯逻辑契约）** | `src/shared/`                                             | 零宿主耦合的领域模型、节点图拓扑与执行器、参数自省与 `SmartPatch`、Machinations v2 仿真与逆向求解器、漫剧 21 题材引擎、UI 16 类控件规范、PNG 隐写与剪映草稿编译器。                                                 |
+| **隔离工作子进程**       | `src/main/yolo/yoloWorker.ts` · 受控隐藏窗口 / 静默子进程 | ① ONNX Runtime 本地视觉推理运行在独立 `utilityProcess` 中（崩溃可自愈，不阻塞主事件循环）；② 网页图文提取与可玩 HTML5 冒烟门禁运行在受控隐藏窗口中，工作区 `bash` 工具强制 `windowsHide: true` 与进程树级超时清理。 |
 
 ### 1.2 多工程工作区（Multi-Project Workspaces）与原子持久化
 
@@ -51,14 +51,15 @@ Graph 编辑宿主端口收敛于 `src/renderer/src/features/graph/model/graphEd
 
 ---
 
-## 3. Agent 原生工作区、定时自动化与四支柱直控架构
+## 3. Agent 原生工作区、按需懒加载引擎与四支柱直控架构
 
-### 3.1 DeepSeek Harness（`dsh`）+ 102 工具 MCP + 24h 定时自动化
+### 3.1 进程内 Pi Agent 9.0（`src/main/agent/`）+ 102 工具 MCP + 24h 定时自动化
 
-- **内置 Agent 运行时（`src/main/services/deepseekHarnessService.ts`）**：随安装包离线内置 `@deepseek-ai/dsh`（`0.2.2-rc.1`），复用 Electron 内置 Node（`ELECTRON_RUN_AS_NODE=1`）开箱即用。
-- **向左自适应扩展的多工程会话侧栏与 24h 定时任务（`ChatPanel.vue` + `useChatHistory.ts` + `sidePanelCollapse.ts`）**：支持跨工作区会话树检索、置顶与分叉；展开工程/历史侧栏时自动向左扩展 Dockview 面板宽度（由中心画布让出空间，不挤压主对话流）；内置覆盖全天 `00:00–23:59` 的周期自动化任务面板与 `dsh` 会话级定时提醒（`schedule_list` / `schedule_delete`）。
-- **零 Key 极速体验样板间（`src/shared/chatShowcaseStarters.ts`）**：`buildZeroKeyLiveDemoGraph()` 离线构建自包含的 6 图层仙侠装备 UI + PSD 拆层预置画布，新用户无需配置任何 API Key 即可一键体验 3D 爆炸视图、原生 `TySh` PSD 导出与 Unity/Godot 代码生成。
-- **102 工具双向 MCP 服务与技能市场**：`src/main/services/mcpServerService.ts`（93 个核心工具）+ `src/main/services/blenderMcpService.ts`（9 个 `/mcp/blender` 工具）受 `src/shared/mcpModeAccess.ts`（`Agent/Craft`、`Plan`、`Ask`）请求级权限门禁保护；官方与社区工作流/技能包由 `src/main/services/skillMarketService.ts`、`src/main/services/githubSkillInstaller.ts`、`src/main/services/marketPipeline.ts` 与 `src/main/services/claudeSkillRuntime.ts` 治理（详见 [MCP.md](./MCP.md) 与 [MARKETPLACE.md](./MARKETPLACE.md)）。
+- **进程内多协议运行时与 6 槽并发（`src/main/agent/piHarnessService.ts` · `piModelResolver.ts`）**：取代旧版外部 `@deepseek-ai/dsh` 子进程，基于 `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai`（`^1.5.2`）直接运行在 Electron 主进程内；原生支持跨 30+ 云端服务商与本地 Ollama/vLLM/LM Studio 的多协议流式调度（`openai-completions` / `anthropic-messages` / `google-generative-ai`）、长参数畸形工具 JSON 状态机自愈（`repairMalformedToolJsonString`）与 `<｜DSML｜function_calls>` 恢复，并提供最高 **6 个跨工程并发会话槽位**（`MAX_PARALLEL_SESSIONS = 6`）与 4 大专业领域子代理（`spawn_subagent`，详见 [PI_AGENT.md](./PI_AGENT.md)）。
+- **按需懒加载 MCP 工具集引擎（`src/main/agent/mcpLazyToolsets.ts`）**：每轮默认仅常驻 `24` 个核心工具（`12` 个进程内工作区与协调工具 + `12` 个 `studio_core` 高频 MCP 工具），其余 80+ Studio 工具、9 个 Blender 工具与 `ext:<serverId>` 外部 MCP 服务按 `6` 大语义工具包通过 `load_toolset` 或首轮意图预热（`prewarmForPrompt`）按需挂载；外部大型服务按相关性筛选最多挂载 `32` 个工具，全局严格封顶 `MAX_ACTIVE_TOOLS = 96 < 128` 并支持 LRU 淘汰，从根源杜绝网关 `128` 工具超限报错。
+- **原生双层权限治理与无锁原子会话（`src/main/agent/piGovernance.ts` · `piSessionStore.ts`）**：通过 `agent.state.tools` 暴露面过滤与 `beforeToolCall` 双层硬门禁执行 `Craft / Plan / Ask` 权限隔离，支持内存态 `ask_user` 同轮解锁、失败即关闭单次审批卡、盘中实时热切换 `🛡️ 受限模式 / 🔓 完全访问`，以及针对 `.canvas.asset.json` 与 `$DSH_HOME/skills` 的不可逾越结构护栏；会话以无锁原子 JSON（`*.tmp` → `rename`）落盘至 `<userData>/dsh-harness/pi-sessions/`，随时切换任意服务商/模型零文件锁冲突。
+- **向左扩展多工程侧栏、24h 定时任务与零 Key 样板间（`ChatPanel.vue` · `chatShowcaseStarters.ts`）**：对话侧栏展开时向左侧画布平滑拓宽（不挤压对话流），内置覆盖全天 `00:00–23:59` 的周期自动化任务与 `schedule_manage` 调度；`buildZeroKeyLiveDemoGraph()` 提供免配置 API Key 的 6 图层仙侠装备 UI + 原生 `TySh` PSD 拆层即时体验样板间。
+- **102 工具双向 MCP 服务、零依赖 CLI 与技能市场**：内置 Pi Agent 通过 `callInProcessMcpTool` 内存态零回环直调；对外完整提供 `127.0.0.1:43110`（`/mcp` 93 工具 + `/mcp/blender` 9 工具）与零依赖 `npx -y ai-art-engine-mcp` stdio CLI（`packages/ai-art-engine-mcp`）及 `resources/mcp-bridge.mjs`，并由 `skillMarketService.ts`、`githubSkillInstaller.ts`、`marketPipeline.ts` 与 `claudeSkillRuntime.ts` 统一治理官方技能市场与 GitHub `SKILL.md` 生态（详见 [MCP.md](./MCP.md) 与 [MARKETPLACE.md](./MARKETPLACE.md)）。
 
 ### 3.2 四支柱全工作区 AI 直控架构（4-Pillar Universal Workspace Control）
 
@@ -73,12 +74,12 @@ Graph 编辑宿主端口收敛于 `src/renderer/src/features/graph/model/graphEd
 
 ---
 
-## 4. 八大旗舰领域子系统与工业交付导出器（v8.9.1）
+## 4. 八大旗舰领域子系统与工业交付导出器（v9.0.0）
 
-### 4.1 Machinations v2 游戏经济与机制仿真沙盘（`game.economy`）
+### 4.1 Machinations v2 游戏经济与机制仿真沙盘（`game.economy` + 在线试玩场）
 
 - **100% 机制对齐与 59 款标准积木**：`src/shared/gameAssets/machinationsV2.ts` 实现 10 类标准图元、8 类状态修饰符、条件/技能门与多色资源池策略；`src/shared/gameAssets/machinationsBuildingBlocks.ts` 内置 59 款经仿真验证的机制积木（抽卡软硬保底、护甲减伤、挂机产线、RPG 成长等），拖入同画布自动重映射变量零冲突拼装。
-- **双模无损折叠、卡片试玩台与 120fps 贝塞尔曲线反推**：`src/renderer/src/components/dive/machinations/MachinationsStudio.vue` 支持「极简创造 ↔ 专业蓝图」无损互转、零代码 RPG HUD + 技能卡牌试玩台（含 AI 自动观战与同种子操作录制重放），以及折线图 **120fps 零卡顿直接拖拽靶心与 `◆` 贝塞尔斜率控制点逆向配平**（`autoSolveMxCurveTarget` 自动求解上游参数并合成 `k * pow(STEP, p)` 动态步进公式）。
+- **双模无损折叠、在线交互试玩场与 120fps 贝塞尔曲线反推**：`src/renderer/src/components/dive/machinations/MachinationsStudio.vue`（同步配套免安装浏览器端 **Online Machinations Playground**）支持「极简创造 ↔ 专业蓝图」无损互转、零代码 RPG HUD + 技能卡牌试玩台（含 AI 自动观战与同种子操作录制重放），以及折线图 **120fps 零卡顿直接拖拽靶心与 `◆` 贝塞尔斜率控制点逆向配平**（`autoSolveMxCurveTarget` 自动求解上游参数并合成 `k * pow(STEP, p)` 动态步进公式）。
 - **多格式交付**：`src/shared/gameAssets/machinationsDiagramSvg.ts` 与 `machinationsV2Export.ts` 一键导出高清矢量 SVG、Mermaid、蒙特卡洛预测 CSV 以及 **Unity C# / Godot 4 GDScript** 运行时经济脚本。
 
 ### 4.2 21 题材五阶段 AI 漫剧工作台（`film.workbench` + `asset.screenplay`）
@@ -120,7 +121,7 @@ Graph 编辑宿主端口收敛于 `src/renderer/src/features/graph/model/graphEd
 
 ## 5. 自动化测试保障
 
-全仓通过 Vitest 守护 Editor Kernel、强类型节点图、四支柱 AI 直控与各大工业导出器的核心不变量：
+全仓通过 Vitest 守护 Editor Kernel、强类型节点图、Pi Agent 9.0 治理与懒加载工具集、四支柱 AI 直控及各大工业导出器的核心不变量：
 
 - 全工作区节点零配置自省、深层点路径/JSON 透明补丁与焦点上下文注入：`tests/universalWorkspaceControl.test.ts`
 - 左窗全态感知与 3D 导演台全量场景/骨骼/灯光/镜头 MCP 操控：`tests/leftWindowPerceptionAndDirectorMcp.test.ts`

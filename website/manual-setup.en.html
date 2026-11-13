@@ -19,14 +19,14 @@
         } catch (e) {}
       })()
     </script>
-    <title>Workspaces &amp; Settings · Manual (v8.9.1) — BYOK Models, Local ONNX, S3, 102-Tool MCP &amp; Web Search | AI Art Engine</title>
+    <title>Workspaces &amp; Settings · Manual (v9.0.0) — BYOK Models, Local ONNX, S3, 102-Tool MCP &amp; Web Search | AI Art Engine</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.1 Manual Vol. 1: multi-project workspaces (workspace.json + project.json), Zero-Key Instant Demo in AI Chat, 30+ BYOK model providers, offline ONNX vision &amp; OCR, S3-compatible storage, 102-tool MCP server, and active web search &amp; extraction."
+      content="AI Art Engine (AIArtEngine) v9.0.0 Manual Vol. 1: multi-project workspaces (workspace.json + project.json), Zero-Key Instant Demo in AI Chat, 30+ BYOK model providers, offline ONNX vision &amp; OCR, S3-compatible storage, 102-tool MCP server (with Pi Agent load_toolset lazy MCP loading), and active web search &amp; extraction."
     />
     <meta
       name="keywords"
-      content="AI Art Engine settings, AIArtEngine model providers, workspace.json multi-project, Zero-Key Instant Demo, local ONNX vision, S3 object storage, 102 MCP tools, AI Chat web search"
+      content="AI Art Engine settings, AIArtEngine model providers, workspace.json multi-project, Zero-Key Instant Demo, local ONNX vision, S3 object storage, 102 MCP tools, load_toolset, AI Chat web search"
     />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
@@ -34,20 +34,20 @@
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:locale:alternate" content="zh_CN" />
-    <meta property="og:title" content="Workspaces &amp; Settings · Manual (v8.9.1) — AI Art Engine" />
+    <meta property="og:title" content="Workspaces &amp; Settings · Manual (v9.0.0) — AI Art Engine" />
     <meta
       property="og:description"
-      content="Manage multi-project workspaces (workspace.json + project.json), configure 30+ BYOK providers, offline ONNX vision, S3 storage, the 102-tool bi-directional MCP server, and live web search."
+      content="Manage multi-project workspaces (workspace.json + project.json), configure 30+ BYOK providers, offline ONNX vision, S3 storage, the 102-tool bi-directional MCP server (with load_toolset lazy MCP mounting), and live web search."
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Workspaces &amp; Settings · Manual (v8.9.1) — AI Art Engine" />
+    <meta name="twitter:title" content="Workspaces &amp; Settings · Manual (v9.0.0) — AI Art Engine" />
     <meta
       name="twitter:description"
-      content="Manage multi-project workspaces (workspace.json + project.json), configure 30+ BYOK providers, offline ONNX vision, S3 storage, the 102-tool bi-directional MCP server, and live web search."
+      content="Manage multi-project workspaces (workspace.json + project.json), configure 30+ BYOK providers, offline ONNX vision, S3 storage, the 102-tool bi-directional MCP server (with load_toolset lazy MCP mounting), and live web search."
     />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
@@ -68,13 +68,13 @@
         "@graph": [
           {
             "@type": "TechArticle",
-            "headline": "Workspaces & Settings · AI Art Engine v8.9.1 Manual (Vol. 1)",
-            "description": "Reference for AI Art Engine v8.9.1 multi-project workspaces (workspace.json + project.json), Zero-Key Instant Demo, 30+ cloud and local model providers, offline ONNX vision models, S3-compatible object storage, the 102-tool MCP server, and active web search & extraction.",
+            "headline": "Workspaces & Settings · AI Art Engine v9.0.0 Manual (Vol. 1)",
+            "description": "Reference for AI Art Engine v9.0.0 multi-project workspaces (workspace.json + project.json), Zero-Key Instant Demo, 30+ cloud and local model providers, offline ONNX vision models, S3-compatible object storage, the 102-tool MCP server with Pi Agent load_toolset lazy MCP loading, and active web search & extraction.",
             "inLanguage": "en",
             "url": "https://justin-sky.github.io/ai-art-engine/manual-setup.en.html",
             "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/manual-setup.en.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp",
-            "dateModified": "2026-11-11",
+            "dateModified": "2026-11-13",
             "author": {
               "@type": "Organization",
               "name": "AI Art Engine",
@@ -202,7 +202,7 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Manual · Setup</p>
+          <p class="eyebrow">Manual · Setup · v9.0.0</p>
           <h1>Workspaces &amp; settings</h1>
           <p class="lede">
             Create and open multi-project workspaces (<code>workspace.json</code> + <code>project.json</code>), launch the Zero-Key Instant Demo, and configure general preferences, BYOK model providers, offline ONNX vision, S3 object storage, extensions, the 102-tool MCP server, and live web search. Walk through this volume first when setting up the app.
@@ -219,7 +219,7 @@
             <li>Click <strong>Create</strong> to enter the canvas workspace.</li>
           </ol>
           <p>
-            v8.9.1 organizes work into multi-project <strong>Workspaces</strong>: <code>workspace.json</code> indexes multiple projects inside the workspace root while each project maintains its own <code>project.json</code> manifest for graphs and assets. Once inside a workspace, expand the <strong>left sidebar of the right-hand <code>◈ AI Chat</code> panel</strong> at any time to create or switch projects on the fly or inspect/edit files directly in the embedded workspace file editor.
+            v9.0.0 organizes work into multi-project <strong>Workspaces</strong>: <code>workspace.json</code> indexes multiple projects inside the workspace root while each project maintains its own <code>project.json</code> manifest for graphs and assets. Once inside a workspace, expand the <strong>left sidebar of the right-hand <code>◈ AI Chat</code> panel</strong> at any time to create or switch projects on the fly or inspect/edit files directly in the embedded workspace file editor.
           </p>
           <div class="tip">
             <strong>⚡ Zero-Key Instant Demo:</strong> Before configuring any API keys, open the right-hand <strong><code>◈ AI Chat</code></strong> panel inside any workspace and click <strong>“⚡ Zero-Key Instant Demo”</strong> to run a live Xianxia RPG Equipment UI decomposition + 3D Exploded Layer Split → native editable <code>TySh</code> <code>.psd</code> / Unity UGUI / Godot 4 pipeline completely locally.
@@ -938,9 +938,8 @@
             external agents just reconnect — no app restart needed.
           </p>
           <p>
-            The same panel supports a <strong>“reverse bridge”</strong>: register any external stdio MCP server
-            (such as the Blender addon or any local MCP service) so the in-app ◈ AI Chat panel (DeepSeek
-            Harness / <code>dsh</code>) can consume its tools directly — no need to expose a separate socket port. See the
+            The same panel supports a <strong>“reverse bridge” &amp; on-demand lazy MCP loading</strong>: register any external stdio or remote HTTP MCP server
+            (such as the Blender addon or any local/remote MCP service) so the in-app <code>◈ AI Chat</code> panel (powered by the in-process <strong>Pi Agent</strong> runtime on <code>@earendil-works/pi-agent-core</code> &amp; <code>@earendil-works/pi-ai</code>) can consume its tools directly — with no separate socket port needed. Thanks to v9.0.0's <strong>on-demand lazy MCP toolset loading (<code>load_toolset</code>)</strong>, each session starts with ~24 core tools and dynamically activates Studio/Blender domain toolsets and external MCP toolsets (<code>ext:&lt;serverId&gt;</code>) with LRU eviction (<code>&lt;= 96</code> active tools, well below the <code>128</code>-tool OpenAI/DeepSeek API ceiling) — so mounting multiple external MCP servers in <strong>Settings → MCP</strong> never triggers <code>tools array too long</code> errors. See the
             <a href="guide-mcp.en.html">MCP setup guide</a>, reverse-bridge section.
           </p>
           <p>
@@ -965,7 +964,7 @@
               test prints the live response or failure reason inline.
             </li>
             <li>
-              <strong>Actively wired into AI Chat &amp; MCP</strong>: enabled search providers power both the built-in <strong><code>◈ AI Chat</code></strong> harness (<code>dsh</code> native <code>web_search</code> and <code>web_fetch</code> tools for live research, reference gathering, and documentation lookup) and the local <strong>MCP server</strong> (<code>web_extract_article</code> for clean article extraction and <code>web_fetch_video</code> for downloading online reference videos straight into your project).
+              <strong>Actively wired into AI Chat &amp; MCP</strong>: enabled search providers power both the built-in <strong><code>◈ AI Chat</code></strong> Pi Agent runtime (native <code>web_search</code> and <code>web_fetch</code> tools for live research, reference gathering, and documentation lookup) and the local <strong>MCP server</strong> (<code>web_extract_article</code> for clean article extraction and <code>web_fetch_video</code> for downloading online reference videos straight into your project).
             </li>
           </ul>
           <div class="tip">

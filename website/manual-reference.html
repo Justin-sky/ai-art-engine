@@ -22,31 +22,31 @@
     </script>
     <meta
       name="description"
-      content="AI Art Engine v8.9.1 参考与故障排查手册：工作区文件结构（workspace.json + project.json）、.aipackage 资产包迁移、aiae:graph PNG 配方分享、全站与画布/导演台/时间线快捷键表、102 工具 MCP 与常见故障排查。"
+      content="AI Art Engine v9.0.0 参考与故障排查手册：工作区与 Pi 智能体文件结构（workspace.json + project.json + dsh-harness）、.aipackage 资产包迁移、aiae:graph PNG 配方分享、全站与画布/导演台/时间线快捷键表、102 工具 MCP 与常见故障排查。"
     />
     <meta
       name="keywords"
-      content="AI Art Engine 快捷键, 故障排查, workspace.json project.json, .aipackage 资产包, aiae:graph PNG, MCP 102 工具故障排查, ComfyUI API 格式, 对象存储签名链接"
+      content="AI Art Engine 快捷键, 故障排查, workspace.json project.json, pi-sessions dsh-harness, .aipackage 资产包, aiae:graph PNG, MCP 102 工具故障排查, ComfyUI API 格式, 对象存储签名链接"
     />
     <meta
       name="robots"
       content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
     />
-    <title>工作区结构、快捷键与故障排查 · 使用手册 — AI Art Engine</title>
+    <title>工作区结构、快捷键与故障排查 · 使用手册（v9.0.0）— AI Art Engine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
     <meta property="og:site_name" content="AI Art Engine" />
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:locale:alternate" content="en_US" />
-    <meta property="og:title" content="工作区结构、快捷键与故障排查 · 使用手册 — AI Art Engine" />
-    <meta property="og:description" content="工作区目录结构（workspace.json + project.json）、.aipackage 资产包导入导出、完整快捷键表、102 工具 MCP 与高频故障排查指南。" />
+    <meta property="og:title" content="工作区结构、快捷键与故障排查 · 使用手册（v9.0.0）— AI Art Engine" />
+    <meta property="og:description" content="工作区目录结构（workspace.json + project.json）与 Pi 智能体本地会话/技能目录、.aipackage 资产包导入导出、完整快捷键表、102 工具 MCP 与高频故障排查指南。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="工作区结构、快捷键与故障排查 · 使用手册 — AI Art Engine" />
-    <meta name="twitter:description" content="工作区目录结构（workspace.json + project.json）、.aipackage 资产包导入导出、完整快捷键表、102 工具 MCP 与高频故障排查指南。" />
+    <meta name="twitter:title" content="工作区结构、快捷键与故障排查 · 使用手册（v9.0.0）— AI Art Engine" />
+    <meta name="twitter:description" content="工作区目录结构（workspace.json + project.json）与 Pi 智能体本地会话/技能目录、.aipackage 资产包导入导出、完整快捷键表、102 工具 MCP 与高频故障排查指南。" />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
@@ -58,8 +58,8 @@
           {
             "@type": "TechArticle",
             "@id": "https://justin-sky.github.io/ai-art-engine/manual-reference.html#article",
-            "headline": "工作区结构、快捷键与故障排查 · AI Art Engine v8.9.1 使用手册",
-            "description": "查阅 AI Art Engine v8.9.1 工作区目录结构（workspace.json + project.json）、.aipackage 资产包导入导出、全局与各工作台快捷键表、102 工具 MCP 接入排查与版本更新说明。",
+            "headline": "工作区结构、快捷键与故障排查 · AI Art Engine v9.0.0 使用手册",
+            "description": "查阅 AI Art Engine v9.0.0 工作区目录结构（workspace.json + project.json）、Pi 智能体无锁会话与技能目录、.aipackage 资产包导入导出、全局与各工作台快捷键表、102 工具 MCP 接入排查与版本更新说明。",
             "inLanguage": "zh-CN",
             "url": "https://justin-sky.github.io/ai-art-engine/manual-reference.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
@@ -201,10 +201,10 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Manual · Reference · v8.9.1</p>
+          <p class="eyebrow">Manual · Reference · v9.0.0</p>
           <h1>参考与故障排查</h1>
           <p class="lede">
-            多项目工作区本地目录结构（<code>workspace.json</code> + <code>project.json</code>）、<code>.aipackage</code> 资产包迁移与 <code>aiae:graph</code> 配方分享、完整快捷键表、102 工具 MCP 与高频故障排查。
+            多项目工作区与进程内 Pi 智能体本地目录结构（<code>workspace.json</code> + <code>project.json</code> + <code>dsh-harness</code>）、<code>.aipackage</code> 资产包迁移与 <code>aiae:graph</code> 配方分享、完整快捷键表、102 工具 MCP 与高频故障排查。
           </p>
         </header>
 
@@ -224,6 +224,9 @@
             </li>
             <li>
               <strong><code>Cache/</code></strong>：节点图与各 Dive 工作台的生成缓存（<code>Cache/Images</code>、<code>Cache/Videos</code>、<code>Cache/Voices</code>、<code>Cache/Music</code>、<code>Cache/Sfx</code>、<code>Cache/Models</code> 等），未手动入库前不会污染正式资产树。
+            </li>
+            <li>
+              <strong>Pi 智能体会话、技能与记忆目录（<code>&lt;userData&gt;/dsh-harness/</code>）</strong>：进程内 Pi 智能体的无锁原子 JSON 会话保存在 <code>&lt;userData&gt;/dsh-harness/pi-sessions/</code>（支持跨提供商中途无缝切模型），用户安装的 <code>SKILL.md</code> 技能包存放在 <code>&lt;userData&gt;/dsh-harness/skills/</code>，按工程隔离的长期记忆保存在 <code>&lt;userData&gt;/dsh-harness/memory/</code>。
             </li>
             <li>
               <strong>MCP 桥接描述文件</strong>：应用级 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS 为 <code>~/Library/Application Support/aiartengine/mcp.json</code>）由应用自动维护本地端口与 Bearer Token，供 Claude Code / Cursor / Codex 接入 102 个 MCP 工具（请勿手改）。
@@ -544,15 +547,18 @@
           </details>
 
           <details class="trouble">
-            <summary>AI 对话面板报错 / 联网搜索未返回 / 定时任务未触发</summary>
+            <summary>AI 对话面板报错 / 工具未放行 / 联网搜索未返回 / 定时任务未触发</summary>
             <div class="trouble-body">
               <ol>
                 <li>
-                  <strong>模型不可用（HTTP_404 等）</strong>：确认右上角「模型」下拉选中的文本模型已在对应提供商后台开通，并在 设置 → 模型 填妥密钥。
+                  <strong>模型不可用（HTTP_404 等）</strong>：确认「模型」下拉选中的文本模型已在对应提供商后台开通，并在 设置 → 模型 填妥密钥；v9.0.0 的无锁原子会话（<code>&lt;userData&gt;/dsh-harness/pi-sessions/</code>）支持在当前会话中途直接切换其他提供商的模型继续对话。
                 </li>
-                <li><strong>联网搜索与网页抓取</strong>：内置 <code>◈ AI 对话</code>（原生 <code>web_search</code> / <code>web_fetch</code>）与 MCP（<code>web_extract_article</code> / <code>web_fetch_video</code>）均已接入设置页「联网搜索」配置——若搜索报错，请在 <a href="manual-setup.html#web-search">设置 → 联网搜索（§4.6）</a> 检查搜索引擎 API Key 或本地网络代理。</li>
+                <li>
+                  <strong>工具未执行或等待审批</strong>：检查对话栏当前模式——<code>Ask</code> 为零工具纯问答，<code>Plan</code> 在点击 <code>ask_user</code> 卡片确认前严格只读，需执行节点修改请切至 <code>Craft</code>；若处于 <code>🛡️ 受限模式</code>（<code>workspace-write</code>），请在弹出的审批卡片选择「允许一次 / 总是允许」，或在工具栏实时切换至 <code>🔓 完全访问</code>（<code>danger-full-access</code>）。（注：<code>load_toolset</code> 按需惰性加载会将活跃工具数控制在 <code>&lt;= 96</code>，挂载多个外部 MCP 服务不会触发 128 工具上限报错。）
+                </li>
+                <li><strong>联网搜索与网页抓取</strong>：内置 <code>◈ AI 对话</code>（Pi 智能体原生 <code>web_search</code> / <code>web_fetch</code>）与 MCP（<code>web_extract_article</code> / <code>web_fetch_video</code>）均已接入设置页「联网搜索」配置——若搜索报错，请在 <a href="manual-setup.html#web-search">设置 → 联网搜索（§4.6）</a> 检查搜索引擎 API Key 或本地网络代理。</li>
                 <li><strong>24 小时定时任务（<code>00:00–23:59</code>）未触发</strong>：自动任务依赖桌面应用进程存活（最小化到托盘即可），请确认应用未完全退出且对应计划开关处于启用状态（见 <a href="manual-workspace.html#schedules">§5.8 定时任务</a>）。</li>
-                <li><strong>切换工作区后找不到会话</strong>：展开 <code>◈ AI 对话</code> 左侧项目栏，确认已切回目标工作区。</li>
+                <li><strong>切换工作区后找不到会话</strong>：展开 <code>◈ AI 对话</code> 左侧项目栏，确认已切回目标工作区或子工程（支持最多 6 路跨工程会话并发运行）。</li>
               </ol>
             </div>
           </details>
@@ -566,7 +572,7 @@
           <h2>16. 关于与更新</h2>
           <p>路径：设置 → 通用 → 关于与更新。</p>
           <ul>
-            <li><strong>当前版本</strong>：显示为 <code>v{version}</code>（如当前正式版 <code>v8.9.1</code>；预发布版会标为 prerelease）。</li>
+            <li><strong>当前版本</strong>：显示为 <code>v{version}</code>（如当前正式版 <code>v9.0.0</code>；预发布版会标为 prerelease）。</li>
             <li><strong>检查更新</strong>：查询 GitHub Releases；开发模式下会提示跳过自动更新检查。</li>
             <li>状态包括：正在检查、发现新版本并下载、已是最新、下载进度、失败提示。</li>
             <li>下载完成后可点击<strong>重启并安装</strong>，所有本地工作区（<code>workspace.json</code> + <code>project.json</code>）与密钥配置无损保留。</li>

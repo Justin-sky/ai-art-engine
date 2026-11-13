@@ -27,6 +27,7 @@
 
 <p>
   <a href="https://justin-sky.github.io/ai-art-engine/index.en.html"><b>🌐 Website</b></a> ·
+  <a href="https://justin-sky.github.io/ai-art-engine/playground/?lang=en"><b>🎮 Live Playground</b></a> ·
   <a href="https://justin-sky.github.io/ai-art-engine/quickstart.en.html"><b>🚀 5-Min Quickstart</b></a> ·
   <a href="https://justin-sky.github.io/ai-art-engine/manual.en.html"><b>📖 User Manual</b></a> ·
   <a href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html"><b>🔌 MCP Guide</b></a> ·
@@ -122,10 +123,21 @@ Your Wish ─▶ Agent builds DAG workflow & drives 30+ Cloud/Local Models + Off
 - **3D Director Stage & Offscreen White-Box Previz (`director.stage`)**: 56-bone humanoid rig, **24 procedural motion clips**, 38 full-body/gaze presets, and Cinemachine camera tracks; renders per-shot `.webm` 3D white-box camera moves (`@2`) offscreen to lock downstream video camera trajectories.
 - **Walkable Spatial Worlds & End-to-End 3D Ops**: Generate walkable 3D Gaussian Splatting worlds via **World Labs Marble** and export 600k-tri textured `.glb` meshes; run cloud **auto-rigging, animation retargeting, smart mesh segmentation, retopology & PBR texturing** (Meshy / Tripo / Rodin / Luma / Lux3D); or model live in Blender via the zero-dependency `/mcp/blender` bridge.
 
-### 6. 🔌 Universal Agent Control & 102 Bi-Directional MCP Tools
+### 6. 🧠 In-Process Pi Agent 9.0 Runtime · Lazy MCP Toolsets · Native Sandbox Governance
+
+- **Zero-Subprocess In-Process Pi Agent (`src/main/agent/`)**: v9.0 embeds `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` directly inside the Electron main process with zero-loopback in-process MCP execution, **6-slot multi-project parallel execution**, specialized domain subagents, and lock-free atomic JSON session persistence (instant cross-provider model switching with zero write-lock conflicts, turn-level rewind/fork, and `.zip` export).
+- **`load_toolset` On-Demand Lazy MCP Engine (Permanently Solving the `<= 128` Tool Ceiling)**: Sessions start with ~24 baseline tools (12 native tools + 12 `studio_core` tools) and dynamically load **6 semantic Studio/Blender toolsets** plus multi-server external MCP tools (`ext:<serverId>`, keyword-scored top 32 tools) with zero-turn intent pre-warming and **LRU eviction (`MAX_ACTIVE_TOOLS = 96 < 128`)** — preserving LLM prompt prefix caches while guaranteeing zero `Invalid 'tools': array too long` errors regardless of how many external MCP servers are attached.
+- **Native Dual-Layer Governance & Live Sandbox Toggle**: `Craft / Plan / Ask` modes are enforced by both exposed toolset filtering and runtime `beforeToolCall` interception; paired with in-process `ask_user` confirmation cards, single-use fail-closed permission approval cards (`Allow Once / Always Allow per Project / Reject`), and a live toolbar toggle between **`🛡️ Restricted Mode` (`workspace-write`) ↔ `🔓 Full Access` (`danger-full-access`)** even mid-turn.
+
+### 7. 🔌 102 Bi-Directional Local MCP Tools & One-Command External Agent Setup
 
 - **100% Studio Capability Coverage over MCP**: On launch, the app serves **102 tools** (`93` on `/mcp` + `9` on `/mcp/blender`) over `127.0.0.1:43110` with persistent Bearer auth and JSONL audit logs — spanning multi-project workspaces, Git status/diff, runtime node introspection & `SmartPatch`, 3D Director control, Machinations curve solving, local offline OCR / YOLO / SAM 2.1 vision, NLE timeline editing, playable HTML5 game compilation, and 24h scheduled automations.
-- **One Command for External Agents**: Connect Claude Code, Codex, Cursor, or Windsurf via stdio bridge or Streamable HTTP, guarded by per-request Ask / Plan / Craft access gates.
+- **One Command for External Agents**: Connect Claude Code, Codex, Cursor, or Windsurf via the zero-dependency `npx -y ai-art-engine-mcp` package, bundled stdio bridge, or Streamable HTTP.
+
+### 8. 🕹️ One-Prompt Playable HTML5 Games & Free GPU Offline Vision (ONNX + Native OCR)
+
+- **Smoke-Verified Playable Prototypes**: Compile self-contained **`single.html`** 2D/3D mini-games with procedural art and WebAudio SFX, automatically gated by headless Chromium smoke checks (zero console/page errors, simulated input, and canvas frame-diff validation).
+- **Bundled Local Vision Compute**: Isolated `utilityProcess` ONNX Runtime (`YOLOv8/11` detect/seg/pose, 468-pt FaceMesh, `SAM 2.1` interactive segmentation, `RMBG` matting) + native OS offline OCR (Windows WinRT / macOS Vision / Linux Tesseract) with automatic DirectML / CoreML / CUDA hardware acceleration.
 
 ---
 
@@ -219,15 +231,15 @@ Of course, what actually grants the wish is the **4-pillar runtime introspection
 While AI Art Engine is running, its local MCP server listens on `127.0.0.1:43110` (view port & token in **Settings → MCP**):
 
 ```bash
-# Option A: stdio bridge (recommended — auto-discovers port & persistent token)
+# Option A: Official zero-dependency npm stdio bridge (auto-discovers port & persistent token)
+claude mcp add ai-art-engine -- npx -y ai-art-engine-mcp
+claude mcp add ai-art-engine-blender -- npx -y ai-art-engine-mcp --blender
+
+# Option B: Bundled repo / install-dir stdio bridge script
 claude mcp add aiartengine -- node <install-or-repo-dir>/scripts/mcp-bridge.mjs
 
-# Option B: Direct Streamable HTTP (no local Node.js required)
+# Option C: Direct Streamable HTTP (no local Node.js required)
 claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp \
-  --header "Authorization: Bearer <token>"
-
-# Optional: Built-in Blender MCP live 3D modeling endpoint
-claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender \
   --header "Authorization: Bearer <token>"
 ```
 
@@ -256,7 +268,7 @@ npm run dist     # Package desktop installers
 | 🎬 [AI Short-Drama & Film Guide](https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html) · [Free-Canvas Video Guide](https://justin-sky.github.io/ai-art-engine/guide-video.en.html)                                                                                                                                                                                                                                            | 👁️ [Local ONNX Vision & Offline OCR (`ARCH_YOLO_LOCAL.md`)](./docs/ARCH_YOLO_LOCAL.md)                                                    |
 | 🕹️ [Playable HTML5 Games from One Prompt](https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html)                                                                                                                                                                                                                                                                                                                                  | 🪪 [4-Band Wavelet Portrait Architecture (`PORTRAIT.md`)](./docs/PORTRAIT.md)                                                             |
 | 🔗 [ComfyUI Integration](https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html) · [NewAPI Relay Gateway](https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html)                                                                                                                                                                                                                                                          | 🧩 [Graph Plugin Spec (`GRAPH_PLUGINS.md`)](./docs/GRAPH_PLUGINS.md) · [Skill Marketplace Spec (`MARKETPLACE.md`)](./docs/MARKETPLACE.md) |
-| 🤖 [External Agent MCP Setup](https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html) · [Skill Publisher Docs](https://justin-sky.github.io/ai-art-engine/developers.en.html)                                                                                                                                                                                                                                                           | 💬 [AI Chat Harness Guide (`DEEPSEEK_HARNESS.md`)](./docs/DEEPSEEK_HARNESS.md) · [Roadmap (`ROADMAP.md`)](./docs/ROADMAP.md)              |
+| 🤖 [External Agent MCP Setup](https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html) · [Skill Publisher Docs](https://justin-sky.github.io/ai-art-engine/developers.en.html)                                                                                                                                                                                                                                                           | 🧠 [In-Process Pi Agent & Lazy MCP Guide (`PI_AGENT.md`)](./docs/PI_AGENT.md) · [Roadmap (`ROADMAP.md`)](./docs/ROADMAP.md)               |
 
 ---
 

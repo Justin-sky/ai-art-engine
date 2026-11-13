@@ -22,11 +22,11 @@
     <title>Skill Marketplace &amp; Workflow Plugin Developer Docs (Claude Code Skills &amp; MCP) — AI Art Engine</title>
     <meta
       name="description"
-      content="AI Art Engine v8.9.1 Skill Marketplace Developer Documentation: standalone ai-art-engine-skills repository contract, Claude Code SKILL.md specification &amp; direct GitHub install, MCP skill tools, atomic client install contract, script consent, QuickJS WASM executable-code nodes, and the 18 allowed node namespaces."
+      content="AI Art Engine v9.0.0 Skill Marketplace Developer Documentation: standalone ai-art-engine-skills repository contract, in-process Pi Agent native skill loader, Claude Code SKILL.md specification &amp; direct GitHub install, MCP skill tools, atomic client install contract, script consent &amp; live sandbox approval, QuickJS WASM executable-code nodes, and the 18 allowed node namespaces."
     />
     <meta
       name="keywords"
-      content="AI Art Engine developer docs, Skill Marketplace SDK, ai-art-engine-skills, Claude Code SKILL.md, GitHub skill install, aiae-workflow, QuickJS WASM sandbox, script.run, MCP skill tools"
+      content="AI Art Engine developer docs, Skill Marketplace SDK, ai-art-engine-skills, Pi Agent, Claude Code SKILL.md, GitHub skill install, aiae-workflow, QuickJS WASM sandbox, script.run, MCP skill tools"
     />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
@@ -37,7 +37,7 @@
     <meta property="og:title" content="Skill Marketplace &amp; Workflow Plugin Developer Docs (Claude Code Skills &amp; MCP) — AI Art Engine" />
     <meta
       property="og:description"
-      content="Developer guide to AI Art Engine v8.9.1's Skill Marketplace: standalone ai-art-engine-skills catalog, Claude Code SKILL.md specification, direct GitHub install, MCP skill tools, and QuickJS WASM code nodes."
+      content="Developer guide to AI Art Engine v9.0.0's Skill Marketplace: standalone ai-art-engine-skills catalog, in-process Pi Agent skill loading, Claude Code SKILL.md specification, direct GitHub install, MCP skill tools, and QuickJS WASM code nodes."
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
@@ -47,7 +47,7 @@
     <meta name="twitter:title" content="Skill Marketplace &amp; Workflow Plugin Developer Docs (Claude Code Skills &amp; MCP) — AI Art Engine" />
     <meta
       name="twitter:description"
-      content="Publish workflows and Claude Code skills to AI Art Engine v8.9.1 via ai-art-engine-skills, GitHub direct install, MCP skill tools, and QuickJS WASM sandboxes."
+      content="Publish workflows and Claude Code skills to AI Art Engine v9.0.0 via ai-art-engine-skills, the in-process Pi Agent runtime, GitHub direct install, MCP skill tools, and QuickJS WASM sandboxes."
     />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
@@ -69,12 +69,12 @@
           {
             "@type": "TechArticle",
             "headline": "Skill Marketplace & Workflow Plugin Developer Docs (Claude Code Skills & MCP) — AI Art Engine",
-            "description": "Developer reference for AI Art Engine v8.9.1's Skill Marketplace: standalone ai-art-engine-skills architecture, Claude Code SKILL.md specification, direct GitHub install, MCP marketplace tools, atomic install and script consent contracts, QuickJS WASM script.run sandbox, and the 18 allowed canvas node namespaces.",
+            "description": "Developer reference for AI Art Engine v9.0.0's Skill Marketplace: standalone ai-art-engine-skills architecture, in-process Pi Agent skill loader & lock-free JSON session store, Claude Code SKILL.md specification, direct GitHub install, MCP marketplace tools, atomic install and script consent contracts, QuickJS WASM script.run sandbox, and the 18 allowed canvas node namespaces.",
             "inLanguage": "en",
             "url": "https://justin-sky.github.io/ai-art-engine/developers.en.html",
             "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/developers.en.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
-            "dateModified": "2026-11-11",
+            "dateModified": "2026-11-13",
             "author": {
               "@type": "Organization",
               "name": "AI Art Engine",
@@ -207,7 +207,7 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Developers · v8.9.1 · Skill Marketplace &amp; Workflow SDK</p>
+          <p class="eyebrow">Developers · v9.0.0 · Skill Marketplace &amp; Workflow SDK</p>
           <h1>Skill Marketplace Developer Docs</h1>
           <p class="lede">
             For developers <strong>publishing content to the skill marketplace or integrating Claude Code skills</strong>: what the
@@ -223,6 +223,7 @@
           </p>
           <div class="tip">
             <strong>Related client implementations:</strong>
+            <code>src/main/agent/</code> (v9.0 in-process Pi Agent runtime, native <code>skill</code> tool, <code>load_toolset</code> lazy MCP engine, and <code>piSessionStore.ts</code> lock-free JSON session store),
             <code>src/shared/claudeSkill.ts</code> (Claude Code skill specification &amp; frontmatter parser),
             <code>src/main/services/claudeSkillRuntime.ts</code> (variable substitution, <code>!`cmd`</code> preprocessing, hooks / fork subagent / allowed-tools governance),
             <code>src/main/services/githubSkillInstaller.ts</code> (direct GitHub skill installer),
@@ -269,17 +270,17 @@
                   <strong>GitHub-installed skills</strong>, <strong>project-scoped skills</strong> (<code>.claude/skills</code> / <code>.agents/skills</code>), and
                   <strong>custom local skills</strong>
                 </td>
-                <td>Content repository + any GitHub repo + workspace + <code>$DSH_HOME/skills</code></td>
+                <td>Content repository + any GitHub repo + workspace + <code>&lt;userData&gt;/dsh-harness/skills</code></td>
               </tr>
             </tbody>
           </table>
           <p>Why are there only three tabs, and why are “built-in node skills” no longer listed here?</p>
           <ul>
             <li>
-              <strong>Built-in node prompts are now native canvas node capabilities</strong>: earlier releases wrote 40+ canvas node default prompts as flat <code>.md</code> files into <code>$DSH_HOME/skills/</code>. After refactoring, node generation capabilities (<code>defaultSystemPrompt</code>, <code>usage</code>, <code>inputBindings</code>, etc.) live directly on the node capability registry (<code>src/shared/graph/nodeCapabilities.ts</code>) and are exposed to the Agent through MCP <code>graph_node_types</code> rather than polluting the skills directory.
+              <strong>Built-in node prompts are now native canvas node capabilities</strong>: earlier releases wrote 40+ canvas node default prompts as flat <code>.md</code> files into <code>&lt;userData&gt;/dsh-harness/skills/</code>. After refactoring, node generation capabilities (<code>defaultSystemPrompt</code>, <code>usage</code>, <code>inputBindings</code>, etc.) live directly on the node capability registry (<code>src/shared/graph/nodeCapabilities.ts</code>) and are exposed to the Agent through MCP <code>graph_node_types</code> rather than polluting the skills directory.
             </li>
             <li>
-              <strong>Workflows and skills are unified under the “Skills” tab</strong>: entries in the remote repository are fundamentally “an operator’s manual for the Agent (<code>SKILL.md</code>) + an optional One-Click Workflow canvas template (<code>workflow.json</code>)”. Once installed, an entry can both materialise its node graph under “New → One-Click Workflow” and drop its skill bundle into <code>$DSH_HOME/skills/&lt;skill.name&gt;/</code>, managed as a single unified card in the Skills tab.
+              <strong>Workflows and skills are unified under the “Skills” tab</strong>: entries in the remote repository are fundamentally “an operator’s manual for the Agent (<code>SKILL.md</code>) + an optional One-Click Workflow canvas template (<code>workflow.json</code>)”. Once installed, an entry can both materialise its node graph under “New → One-Click Workflow” and drop its skill bundle into <code>&lt;userData&gt;/dsh-harness/skills/&lt;skill.name&gt;/</code> (discovered and loaded seamlessly by the in-process Pi Agent’s native <code>skill</code> tool), managed as a single unified card in the Skills tab.
             </li>
           </ul>
 
@@ -319,13 +320,13 @@ Downloads workflow.json + cover.png (+ skill files)
    ↓  atomic install (staging → rename; a failure leaves nothing half-installed)
 &lt;userData&gt;/workflows/&lt;id&gt;/            the canvas template itself
    ↓  within that same install
-$DSH_HOME/skills/&lt;skill.name&gt;/        skill bundle (installed together with the entry)
+&lt;userData&gt;/dsh-harness/skills/&lt;skill.name&gt;/   skill bundle (installed together with the entry)
    ↓
-the next Agent conversation picks up the skill → injects &lt;available_skills&gt; → loads on demand or via /slash</code></pre>
+the in-process Pi Agent discovers the skill → injects &lt;available_skills&gt; → loads via native skill tool or /slash</code></pre>
 
           <h3>2.0 Single source of truth: lean built-in core + standalone <code>ai-art-engine-skills</code> distribution</h3>
           <p>
-            Starting in v8.9.1, domain workflow presets have migrated out of the desktop client repository into the standalone open-source repository
+            Domain workflow presets live outside the desktop client repository in the standalone open-source repository
             <strong><code>ai-art-engine-skills</code></strong> as the single source of truth (the legacy duplicate preset registry and sync/export scripts inside the main app repo were removed during this migration, eliminating “same name, different graph” drift between client and marketplace):
           </p>
           <ul>
@@ -375,7 +376,7 @@ the next Agent conversation picks up the skill → injects &lt;available_skills&
 
           <h3>2.2 Why workflow-bundled skills in the catalog carry the <code>wf-</code> prefix</h3>
           <p>
-            A skill bundle lands in <code>$DSH_HOME/skills/&lt;name&gt;</code>, sharing the same directory as
+            A skill bundle lands in <code>&lt;userData&gt;/dsh-harness/skills/&lt;name&gt;</code>, sharing the same directory as
             GitHub-installed Claude Code skills and custom user skills. Therefore, skill bundles distributed alongside
             a canvas template in <code>ai-art-engine-skills</code> are required to use
             <strong><code>wf-&lt;workflow id&gt;</code></strong> as their <code>name</code>, preventing collisions with
@@ -403,10 +404,10 @@ the next Agent conversation picks up the skill → injects &lt;available_skills&
             </li>
           </ul>
 
-          <h3>2.4 Allowed node namespaces in workflow presets &amp; skill bodies (v8.9.1)</h3>
+          <h3>2.4 Allowed node namespaces in workflow presets &amp; skill bodies (v9.0.0)</h3>
           <p>
             The repository validator strictly checks node types in workflow preset <code>plan</code>s as well as
-            <strong>backtick-wrapped <code>x.y</code> tokens</strong> inside a skill’s body. In v8.9.1, the
+            <strong>backtick-wrapped <code>x.y</code> tokens</strong> inside a skill’s body. In v9.0.0, the
             <strong>18 allowed canvas node namespaces</strong> are:
           </p>
           <pre class="mcp-code"><code>input.*     text.*      image.*     video.*     voice.*     audio.*
@@ -443,7 +444,7 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
             <li>
               <strong>Multi-scope discovery</strong>: project scope (<code>&lt;workspace&gt;/.claude/skills/&lt;name&gt;/SKILL.md</code> and
               <code>&lt;workspace&gt;/.agents/skills/&lt;name&gt;/SKILL.md</code>, highest priority) &gt; personal/market scope
-              (<code>$DSH_HOME/skills/&lt;name&gt;/SKILL.md</code>).
+              (<code>&lt;userData&gt;/dsh-harness/skills/&lt;name&gt;/SKILL.md</code>).
             </li>
             <li>
               <strong>Full Frontmatter support (<code>claudeSkill.ts</code>)</strong>: supports <code>name</code>, <code>description</code>,
@@ -490,8 +491,8 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
 
           <h3>3.3 Pre-install validation (otherwise “installed but invisible”)</h3>
           <p>
-            dsh <strong>silently ignores</strong> an <strong>invalid</strong> skill (it writes one log line and
-            skips it). So the client validates <code>SKILL.md</code> during the staging phase: does the
+            The Pi Agent runtime skips <strong>invalid</strong> <code>SKILL.md</code> files during skill discovery (logging a warning without
+            mounting them). So the client validates <code>SKILL.md</code> during the staging phase: does the
             frontmatter exist, is <code>name</code> valid, is
             <code>description</code> non-empty, and do all fields conform to the Claude Code skill specification. If it fails, the
             <strong>install fails with a concrete reason</strong> and never leaves behind a skill bundle that
@@ -545,11 +546,13 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
             <li>Script files are subject to the same path allowlist and size limits.</li>
           </ul>
 
-          <h3>4.2 At run time: one approval covers exactly one call</h3>
+          <h3>4.2 At run time: live sandbox &amp; fail-closed approval cards</h3>
           <p>
-            When the Agent actually runs a script, it goes through the harness’s general shell
-            (<code>pwsh</code> on Windows) and is bounded by the sandbox. As soon as a step needs to go beyond
-            the sandbox, the <strong>approval responder</strong> hands the decision to the user:
+            When the built-in Pi Agent runs a script, it executes through its cross-platform native shell
+            (<code>pwsh</code> / PowerShell on Windows) bounded by the <strong>live sandbox</strong> (defaulting to
+            <code>🛡️ Restricted Mode</code> / <code>workspace-write</code>, or live-switchable mid-turn in the chat bar to
+            <code>🔓 Full Access</code> / <code>danger-full-access</code>). In Restricted Mode, whenever a step reaches beyond
+            the workspace sandbox or triggers a sensitive action, an <strong>in-chat permission approval card</strong> hands the decision to the user:
           </p>
           <table>
             <thead>
@@ -560,11 +563,15 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
             </thead>
             <tbody>
               <tr>
-                <td>Allow once</td>
-                <td>That call is allowed through (<strong>the only path that allows it</strong>)</td>
+                <td>Allow Once</td>
+                <td>That single call is allowed through (single-use approval token)</td>
               </tr>
               <tr>
-                <td>Deny</td>
+                <td>Always Allow (project-scoped)</td>
+                <td>Allows that governed action within the current project scope only (isolated per project, never global)</td>
+              </tr>
+              <tr>
+                <td>Reject</td>
                 <td>The tool call is rejected</td>
               </tr>
               <tr>
@@ -578,9 +585,8 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
             </tbody>
           </table>
           <p>
-            In the UI it is an in-conversation approval card: tool name + reason, offering only
-            <strong>Allow once / Deny</strong>, with <strong>no “always allow”</strong> — one-shot approval is
-            deliberate, because persistent grants silently widen what the Agent can run.
+            In the UI it appears as an interactive permission approval card showing the tool name, command, and risk reason, offering
+            <strong>Allow Once / project-scoped Always Allow / Reject</strong> — every unapproved or error path fails closed.
           </p>
           <div class="tip">
             Design your skills accordingly: <strong>scripts must be optional</strong>. When a user declines
@@ -599,7 +605,7 @@ stage.*     director.*  model3d.*   world.*     gameplay.*  output.*</code></pre
           <p>
             <code>script.run</code> is a node type whose code (JavaScript) is a parameter written into the
             <code>plan</code>, run by the app’s <strong>graph execution engine</strong> in the renderer process
-            — not the harness shell. It runs in a <strong>restricted sandbox</strong> (QuickJS WASM,
+            — not the Agent’s host shell. It runs in a <strong>restricted sandbox</strong> (QuickJS WASM,
             <code>src/shared/graph/execute/scriptSandboxQuickjs.ts</code>): <strong>no file system, no network,
             no <code>require</code>, no host globals</strong>. Only three things cross the sandbox boundary —
             upstream inputs in, port outputs out, and a set of governed capability calls
@@ -700,12 +706,11 @@ node --test scripts/validate.test.mjs  # unit tests for the validator itself</co
               it is a data-layer capability.
             </li>
             <li>
-              To verify “did the Agent really load the skill”, the most reliable evidence is the dsh session log
-              (<code>$DSH_HOME/sessions/&lt;workspace&gt;/&lt;session&gt;/session.v3.jsonl.zstd</code>): it shows
-              the <code>tool/call</code> with <code>name: "skill"</code> and
-              <code>arguments: {"name": "&lt;skill-name&gt;"}</code>, followed immediately by the
-              <code>&lt;skill_content&gt;</code> result. <strong>Don’t just look at the UI</strong> — the UI
-              cannot tell you whether a skill was loaded.
+              To verify “did the Agent really load the skill”, inspect the built-in Pi Agent’s lock-free atomic JSON session file
+              (<code>&lt;userData&gt;/dsh-harness/pi-sessions/&lt;sessionId&gt;.json</code>, managed by <code>piSessionStore.ts</code>):
+              open the plain JSON file directly (or export the session as a <code>.zip</code> archive) to verify the native
+              <code>skill</code> tool call (<code>name: "skill"</code>, arguments <code>{"name": "&lt;skill-name&gt;"}</code>) and the
+              injected skill body that follows. <strong>Don’t rely on prose replies alone</strong> — the session JSON gives ground-truth proof of tool execution.
             </li>
           </ul>
         </section>
@@ -727,7 +732,7 @@ node --test scripts/validate.test.mjs  # unit tests for the validator itself</co
               <tr>
                 <td>The Agent side has no such skill after install</td>
                 <td>
-                  The <code>SKILL.md</code> frontmatter is invalid (dsh <strong>silently ignores</strong> it).
+                  The <code>SKILL.md</code> frontmatter is invalid (the Pi Agent skill loader <strong>skips</strong> invalid entries).
                   The client’s pre-install validation exists to turn this failure into one readable error
                   ahead of time
                 </td>

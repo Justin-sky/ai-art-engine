@@ -19,14 +19,14 @@
         } catch (e) {}
       })()
     </script>
-    <title>Workspace, AI Chat &amp; Asset Library · Manual (v8.9.1) — Multi-Project Sidebar, 24h Automations &amp; Skill Marketplace | AI Art Engine</title>
+    <title>Workspace, AI Chat &amp; Asset Library · Manual (v9.0.0) — In-Process Pi Agent, 6 Parallel Sessions, 24h Automations &amp; Skill Marketplace | AI Art Engine</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.1 Manual Vol. 2: dockable workspace layout, ◈ AI Chat expandable multi-project sidebar &amp; embedded file editor, Zero-Key Instant Demo, 24h (00:00–23:59) scheduled automations, Skill Marketplace, Canvas Wish Maiden &amp; procedural weather (Sunny, Sakura Snow, Aurora, Meteor Shower), and the asset library."
+      content="AI Art Engine (AIArtEngine) v9.0.0 Manual Vol. 2: dockable workspace layout, ◈ AI Chat in-process Pi Agent runtime (load_toolset lazy MCP loading, Craft/Plan/Ask gating, live Restricted↔Full Access toggle, up to 6 parallel lock-free sessions &amp; embedded file editor), 24h scheduled automations, Skill Marketplace, multi-fairy Wish Maiden &amp; procedural weather, and the asset library."
     />
     <meta
       name="keywords"
-      content="AI Art Engine workspace, ◈ AI Chat multi-project sidebar, embedded workspace file editor, 24h scheduled automations, Skill Marketplace, Canvas Wish Maiden procedural weather, skill_install graph_edit task_run, asset library"
+      content="AI Art Engine workspace, ◈ AI Chat Pi Agent, load_toolset lazy MCP, 6 parallel chat sessions, Restricted Mode Full Access toggle, 24h scheduled automations, Skill Marketplace, Multi-Fairy Wish Maiden procedural weather, asset library"
     />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html" />
@@ -34,20 +34,20 @@
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:locale:alternate" content="zh_CN" />
-    <meta property="og:title" content="Workspace, AI Chat &amp; Asset Library · Manual (v8.9.1) — AI Art Engine" />
+    <meta property="og:title" content="Workspace, AI Chat &amp; Asset Library · Manual (v9.0.0) — AI Art Engine" />
     <meta
       property="og:description"
-      content="Explore the ◈ AI Chat multi-project sidebar &amp; embedded file editor, Zero-Key Instant Demo, 24h scheduled automations, Skill Marketplace, Canvas Wish Maiden weather, and asset library."
+      content="Explore the ◈ AI Chat in-process Pi Agent (load_toolset lazy MCP, 6 parallel lock-free sessions &amp; live sandbox toggle), Zero-Key Instant Demo, 24h scheduled automations, Skill Marketplace, multi-fairy Wish Maiden weather, and asset library."
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Workspace, AI Chat &amp; Asset Library · Manual (v8.9.1) — AI Art Engine" />
+    <meta name="twitter:title" content="Workspace, AI Chat &amp; Asset Library · Manual (v9.0.0) — AI Art Engine" />
     <meta
       name="twitter:description"
-      content="Explore the ◈ AI Chat multi-project sidebar &amp; embedded file editor, Zero-Key Instant Demo, 24h scheduled automations, Skill Marketplace, Canvas Wish Maiden weather, and asset library."
+      content="Explore the ◈ AI Chat in-process Pi Agent (load_toolset lazy MCP, 6 parallel lock-free sessions &amp; live sandbox toggle), Zero-Key Instant Demo, 24h scheduled automations, Skill Marketplace, multi-fairy Wish Maiden weather, and asset library."
     />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
@@ -68,13 +68,13 @@
         "@graph": [
           {
             "@type": "TechArticle",
-            "headline": "Workspace, AI Chat & Asset Library · AI Art Engine v8.9.1 Manual (Vol. 2)",
-            "description": "Reference for the AI Art Engine v8.9.1 workspace: dockable panels, ◈ AI Chat expandable multi-project sidebar & embedded file editor, Zero-Key Instant Demo, 24h (00:00–23:59) scheduled automations, Skill Marketplace, Canvas Wish Maiden & procedural weather, and the asset library.",
+            "headline": "Workspace, AI Chat & Asset Library · AI Art Engine v9.0.0 Manual (Vol. 2)",
+            "description": "Reference for the AI Art Engine v9.0.0 workspace: dockable panels, ◈ AI Chat in-process Pi Agent runtime (load_toolset lazy MCP loading, Craft/Plan/Ask gating, live Restricted↔Full Access toggle, up to 6 parallel lock-free sessions & embedded file editor), Zero-Key Instant Demo, 24h scheduled automations, Skill Marketplace, multi-fairy Wish Maiden & procedural weather, and the asset library.",
             "inLanguage": "en",
             "url": "https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html",
             "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
-            "dateModified": "2026-11-11",
+            "dateModified": "2026-11-13",
             "author": {
               "@type": "Organization",
               "name": "AI Art Engine",
@@ -203,10 +203,10 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Manual · Workspace</p>
+          <p class="eyebrow">Manual · Workspace · v9.0.0</p>
           <h1>Workspace, AI Chat &amp; asset library</h1>
           <p class="lede">
-            The dockable workspace layout and Canvas Wish Maiden weather system; the <code>◈ AI Chat</code> expandable multi-project sidebar, embedded workspace file editor, Zero-Key Instant Demo, and 24-hour scheduled automations; skills and the Skill Marketplace; plus the asset library.
+            The dockable workspace layout and Multi-Fairy Wish Maiden weather system; the <code>◈ AI Chat</code> in-process <strong>Pi Agent</strong> runtime, up to 6 parallel cross-project sessions, <code>load_toolset</code> lazy MCP loading, live sandbox toggle, and 24-hour scheduled automations; skills and the Skill Marketplace; plus the asset library.
           </p>
         </header>
 
@@ -320,9 +320,9 @@
             </li>
           </ul>
 
-          <h3 id="ai-chat">5.5 ◈ AI Chat panel (Multi-project sidebar · File editor · Universal control)</h3>
+          <h3 id="ai-chat">5.5 ◈ AI Chat panel (In-process Pi Agent · 6 parallel sessions · Universal control)</h3>
           <p>
-            Open <strong><code>◈ AI Chat</code></strong> on the right side of any workspace to launch the built-in AI agent hub. Powered by the DeepSeek Harness (<code>dsh</code>) runtime, it perceives your active editor surface (Node Graph, all Dive workbenches, Machinations v2 studio, 3D Director Stage, Final Timeline, Script) and calls all <strong>102 local MCP tools</strong> plus live web search —
+            Open <strong><code>◈ AI Chat</code></strong> on the right side of any workspace to launch the built-in AI agent hub. In v9.0.0 it runs an in-process <strong>Pi Agent</strong> runtime (built on <code>@earendil-works/pi-agent-core</code> &amp; <code>@earendil-works/pi-ai</code> inside <code>src/main/agent/</code>), perceiving your active editor surface (Node Graph, all Dive workbenches, Machinations v2 studio, 3D Director Stage, Final Timeline, Script) and calling all <strong>102 local MCP tools</strong>, external MCP servers, and live web search —
             <strong>anything you can adjust manually on the canvas, inside a Dive workbench, or in the Inspector can be driven conversationally in a single prompt</strong>.
           </p>
           <ul>
@@ -330,20 +330,20 @@
               <strong>⚡ Zero-Key Instant Demo (starter experience)</strong>: Even with zero API keys configured, click <strong>“⚡ Zero-Key Instant Demo”</strong> inside <code>◈ AI Chat</code> to run a live local <strong>Xianxia RPG Equipment UI decomposition + 3D Exploded Layer Split → native editable <code>TySh</code> text-layer <code>.psd</code> / Unity UGUI / Godot 4</strong> pipeline.
             </li>
             <li>
-              <strong>Expandable multi-project left sidebar &amp; embedded workspace file editor</strong>: Toggle the left sidebar inside <code>◈ AI Chat</code> to create or switch between multiple projects (<code>project.json</code>) within the active workspace (<code>workspace.json</code>), manage persistent chat sessions, browse the workspace file tree, and inspect or edit scripts, JSON configs, and Markdown skills directly in the <strong>embedded workspace file editor</strong> without leaving the app.
+              <strong>Multi-project sidebar, up to 6 parallel sessions &amp; lock-free model switching</strong>: Toggle the left sidebar inside <code>◈ AI Chat</code> to create or switch between multiple projects (<code>project.json</code>) within the active workspace (<code>workspace.json</code>), run <strong>up to 6 parallel chat sessions across projects</strong> with live status dots, and inspect or edit scripts, JSON configs, and Markdown skills in the <strong>embedded workspace file editor</strong>. Sessions persist as lock-free atomic JSON files in <code>&lt;userData&gt;/dsh-harness/pi-sessions/</code> (with project memory in <code>&lt;userData&gt;/dsh-harness/memory/</code>), allowing seamless <strong>mid-session model switching across providers</strong> without write-lock errors.
             </li>
             <li>
-              <strong>Live MCP tool orchestration</strong>: Ask the agent to install and mount marketplace bundles (<code>skill_install</code>, <code>workflow_use_installed</code>), wire or mutate DAG nodes and run queues (<code>graph_edit</code>, <code>task_run</code>), run offline UI text detection (<code>vision_local_ocr</code>), or build and Goal-Seek economy blueprints (<code>machinations_studio</code>) — every tool call streams live progress cards (running / done / failed).
+              <strong>On-demand lazy MCP toolset loading (<code>load_toolset</code>) &amp; live orchestration</strong>: Each session starts with ~24 core tools and dynamically activates Studio/Blender domain toolsets and external MCP tools (<code>ext:&lt;serverId&gt;</code>) on demand via <code>load_toolset</code> with LRU eviction (<code>&lt;= 96</code> active tools, well below the <code>128</code>-tool OpenAI/DeepSeek API ceiling — so mounting multiple external MCP servers in <strong>Settings → MCP</strong> never triggers <code>tools array too long</code> errors). Every tool call (<code>skill_install</code>, <code>workflow_use_installed</code>, <code>graph_edit</code>, <code>task_run</code>, <code>vision_local_ocr</code>, <code>machinations_studio</code>) streams live progress cards.
             </li>
             <li>
               <strong><code>@</code> asset references &amp; native web search</strong>: Type <code>@</code> to inline project images, videos, audio, or 3D models with thumbnail previews; built-in <code>web_search</code> and <code>web_fetch</code> tools query providers configured under <a href="manual-setup.en.html#web-search">Settings → Web search</a>.
             </li>
-            <li><strong>Ask / Plan / Craft modes</strong>: Switch between read-only Q&amp;A (Ask), sandboxed planning (Plan), and full execution (Craft), aligned with MCP <code>X-MCP-Mode</code> scoping.</li>
-            <li><strong>BYOK model picker</strong>: Pick any enabled text model with an API key (OpenRouter, DeepSeek, Claude, GPT, Gemini, local Ollama, …) at the bottom of the panel; your choice persists across sessions.</li>
-            <li><strong>Single-use sandbox approval (fail-closed)</strong>: Whenever an action crosses the sandbox boundary, an inline <strong>“This step needs your approval”</strong> card names the tool and reason and offers only <strong>Allow once</strong> / <strong>Reject</strong> (never “always allow”); unanswered non-interactive paths always fail closed.</li>
+            <li><strong>Craft / Plan / Ask modes (dual-layer runtime tool gating)</strong>: Switch between <strong>Craft</strong> (full execution), <strong>Plan</strong> (strictly read-only planning until you confirm via the <code>ask_user</code> card), and <strong>Ask</strong> (zero-tool Q&amp;A), enforced by dual-layer runtime tool gating and aligned with MCP <code>X-MCP-Mode</code> scoping.</li>
+            <li><strong>Seamless BYOK model picker</strong>: Pick or switch to any enabled text model with an API key (OpenRouter, DeepSeek, Claude, GPT, Gemini, local Ollama, …) idle or mid-session; your choice persists automatically.</li>
+            <li><strong>Live sandbox toggle &amp; interactive approval cards</strong>: Toggle between <strong><code>🛡️ Restricted Mode</code> (<code>workspace-write</code>) ↔ <code>🔓 Full Access</code> (<code>danger-full-access</code>)</strong> right from the chat toolbar (idle or mid-turn), paired with interactive permission approval cards offering <strong>Allow Once / Always Allow / Reject</strong> (“Always Allow” persists per project, while unanswered non-interactive paths fail closed).</li>
           </ul>
           <div class="tip">
-            <strong>Ready out of the box:</strong> Both the Node.js runtime and <code>dsh</code> harness ship bundled inside the installer. The Zero-Key Instant Demo requires no keys; cloud chat turns require at least one enabled text model.
+            <strong>Ready out of the box:</strong> The Pi Agent runtime executes directly inside the main process (with Node.js also bundled for local bridges and scripts) — no external subprocess or developer toolchain required. The Zero-Key Instant Demo requires no keys; cloud chat turns require at least one enabled text model.
           </div>
 
           <h3 id="skills">5.6 Skills</h3>
@@ -353,7 +353,7 @@
           </p>
           <ul>
             <li><strong>Built-in skills</strong>: 21-genre storyboard breakdown, 11-point continuity &amp; Vision QC audit, Game UI layer decomposition &amp; atlas composition, Machinations v2 balancing, 4-axis video forensics, plus prompt engineering, lighting, multi-angle camera, portrait retouching, and inpainting (managed automatically — do not edit manually).</li>
-            <li><strong>Custom skills</strong>: Open <strong>Skill Marketplace → Skills → Open folder</strong> and drop in a kebab-case <code>.md</code> file in <code>SKILL.md</code> format (frontmatter <code>name</code> / <code>description</code> + Markdown instructions, e.g. <code>my-skill.md</code>), or click “Create sample template”.</li>
+            <li><strong>Custom skills</strong>: Open <strong>Skill Marketplace → Skills → Open folder</strong> (located at <code>&lt;userData&gt;/dsh-harness/skills/</code>) and drop in a kebab-case <code>.md</code> file in <code>SKILL.md</code> format (frontmatter <code>name</code> / <code>description</code> + Markdown instructions, e.g. <code>my-skill.md</code>), or click “Create sample template”.</li>
             <li><strong>Skills + MCP tools</strong>: Skills are injected via <code>&lt;available_skills&gt;</code> to teach domain SOPs (<em>how</em> to structure work), while live MCP tools (<code>graph_edit</code>, <code>workflow_use_installed</code>, <code>task_run</code>) execute the actual mutations and renders.</li>
             <li><strong>Bundled workflow skills</strong>: Workflows installed from the <a href="#marketplace">Skill Marketplace</a> may bundle companion skills (badged <strong>skill bundle</strong>) whose lifecycle follows the parent workflow.</li>
           </ul>
@@ -396,7 +396,7 @@
 
           <h3 id="schedules">5.8 Scheduled automations (24-hour unattended runs)</h3>
           <p>
-            v8.9.1 ships a built-in <strong>24-hour (<code>00:00–23:59</code>) Scheduled Automations</strong> runner that wakes <code>◈ AI Chat</code> and installed workflows on your clock for unattended daily content pipelines:
+            v9.0.0 ships a built-in <strong>24-hour (<code>00:00–23:59</code>) Scheduled Automations</strong> runner that wakes <code>◈ AI Chat</code> and installed workflows on your clock for unattended daily content pipelines:
           </p>
           <ul>
             <li><strong>Full-day <code>00:00–23:59</code> scheduling</strong>: Configure daily or recurring triggers at any minute across the 24-hour clock (for example: overnight trend scraping → <code>short-drama</code> storyboard drafts, scheduled competitor video forensic breakdowns via <code>rea-video</code>, or off-peak batch localization renders).</li>
@@ -404,12 +404,12 @@
             <li><strong>Toggle, test-run &amp; audit trail</strong>: Create, pause/resume, trigger an immediate test run, or delete schedules right from the <code>◈ AI Chat</code> sidebar; every automated session, generated asset, and MCP audit log entry persists locally for review.</li>
           </ul>
 
-          <h3>5.9 Canvas Wish Maiden &amp; procedural weather</h3>
+          <h3>5.9 Multi-Fairy Wish Maiden &amp; procedural weather</h3>
           <p>
-            To bring atmosphere and companionship to long production sessions, the node canvas features an interactive <strong>Canvas Wish Maiden (<code>祈愿巫女</code>)</strong> alongside four real-time <strong>procedural weather</strong> ambiences:
+            To bring atmosphere and companionship to parallel sessions and long production runs, the node canvas features an interactive <strong>Multi-Fairy Wish Maiden (<code>祈愿巫女</code>)</strong> alongside four real-time <strong>procedural weather</strong> ambiences:
           </p>
           <ul>
-            <li><strong>Canvas Wish Maiden</strong>: An optional interactive companion tucked into the canvas corner — click to draw fortune slips for smooth renders and zero face drift, or toggle visibility anytime from canvas appearance controls.</li>
+            <li><strong>Multi-Fairy Wish Maiden accompaniment</strong>: An optional interactive companion on the canvas that scales into multi-fairy accompaniment when parallel AI Chat sessions are running — click to draw fortune slips for smooth renders and zero face drift, or toggle visibility anytime from canvas appearance controls.</li>
             <li><strong>Four procedural weather modes</strong>: Switch effortlessly between <strong>Sunny</strong>, <strong>Sakura Snow</strong>, <strong>Aurora</strong>, and <strong>Meteor Shower</strong> — lightweight procedural particle and sky shaders engineered to never obstruct node ports or wire hit-testing.</li>
           </ul>
         </section>

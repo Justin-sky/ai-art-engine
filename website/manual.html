@@ -20,14 +20,14 @@
         } catch (e) {}
       })()
     </script>
-    <title>使用手册（v8.9.1）— 游戏 UI 拆解重组、Machinations v2、五阶段 AI 漫剧与 102 工具 MCP | AI Art Engine</title>
+    <title>使用手册（v9.0.0）— 游戏 UI 拆解重组、Machinations v2、五阶段 AI 漫剧与 Pi 智能体 / 102 工具 MCP | AI Art Engine</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.1 官方完整使用手册：涵盖多工程工作区、零 Key 极速体验、102 工具 MCP 服务、24h 定时任务、游戏 UI 原生 TySh PSD 与 ui.atlasCompose 图集重组、Machinations v2 120fps 曲线反推、21 题材五阶段 AI 漫剧工作台、rea-video 四轴取证复刻及剪映 NLE 时间线。"
+      content="AI Art Engine (AIArtEngine) v9.0.0 官方完整使用手册：涵盖进程内 Pi 智能体运行时（load_toolset 按需惰性加载、6 路并发会话与实时沙箱切换）、多工程工作区、零 Key 极速体验、102 工具 MCP 服务、24h 定时任务、游戏 UI 原生 TySh PSD 与 ui.atlasCompose、Machinations v2、五阶段 AI 漫剧工作台、rea-video 复刻及剪映 NLE。"
     />
     <meta
       name="keywords"
-      content="AI Art Engine 使用手册, AIArtEngine 文档, 游戏 UI 拆层 TySh PSD, ui.atlasCompose, Machinations v2 数值仿真, AI 漫剧短剧五阶段, rea-video 爆款视频拆解复刻, 102 MCP 工具, 剪映草稿导出"
+      content="AI Art Engine 使用手册, AIArtEngine 文档, Pi 智能体 Pi Agent, load_toolset 按需惰性加载, 游戏 UI 拆层 TySh PSD, ui.atlasCompose, Machinations v2 数值仿真, AI 漫剧短剧五阶段, rea-video 爆款视频拆解复刻, 102 MCP 工具"
     />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
@@ -35,20 +35,20 @@
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:locale:alternate" content="en_US" />
-    <meta property="og:title" content="使用手册（v8.9.1）— AI Art Engine 全量操作与节点参考" />
+    <meta property="og:title" content="使用手册（v9.0.0）— AI Art Engine 全量操作与节点参考" />
     <meta
       property="og:description"
-      content="AI Art Engine v8.9.1 五卷完整手册：游戏 UI TySh PSD 与图集重组、Machinations v2 120fps 曲线反推、21 题材五阶段 AI 漫剧、双节点爆款复刻、102 工具 MCP 与 24h 定时任务。"
+      content="AI Art Engine v9.0.0 五卷完整手册：进程内 Pi 智能体与 load_toolset 惰性工具集、游戏 UI TySh PSD 与图集重组、Machinations v2 120fps 曲线反推、21 题材五阶段 AI 漫剧、双节点爆款复刻、102 工具 MCP 与 24h 定时任务。"
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="使用手册（v8.9.1）— AI Art Engine 全量操作与节点参考" />
+    <meta name="twitter:title" content="使用手册（v9.0.0）— AI Art Engine 全量操作与节点参考" />
     <meta
       name="twitter:description"
-      content="AI Art Engine v8.9.1 五卷完整手册：游戏 UI TySh PSD 与图集重组、Machinations v2 120fps 曲线反推、21 题材五阶段 AI 漫剧、双节点爆款复刻、102 工具 MCP 与 24h 定时任务。"
+      content="AI Art Engine v9.0.0 五卷完整手册：进程内 Pi 智能体与 load_toolset 惰性工具集、游戏 UI TySh PSD 与图集重组、Machinations v2 120fps 曲线反推、21 题材五阶段 AI 漫剧、双节点爆款复刻、102 工具 MCP 与 24h 定时任务。"
     />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
@@ -69,13 +69,13 @@
         "@graph": [
           {
             "@type": "TechArticle",
-            "headline": "AI Art Engine v8.9.1 使用手册 — 全模态 AI 资产引擎与工业交付总览",
-            "description": "AI Art Engine v8.9.1 官方完整参考手册总览：涵盖核心概念、多工程工作区、游戏 UI TySh PSD 与图集重组、Machinations v2 数值沙盘、21 题材五阶段 AI 漫剧工作台、rea-video 视频取证复刻、102 工具 MCP 服务与五卷章节导航。",
+            "headline": "AI Art Engine v9.0.0 使用手册 — 全模态 AI 资产引擎与工业交付总览",
+            "description": "AI Art Engine v9.0.0 官方完整参考手册总览：涵盖进程内 Pi 智能体运行时、load_toolset 惰性工具集、多工程工作区、游戏 UI TySh PSD 与图集重组、Machinations v2 数值沙盘、21 题材五阶段 AI 漫剧工作台、rea-video 视频取证复刻、102 工具 MCP 服务与五卷章节导航。",
             "inLanguage": "zh-CN",
             "url": "https://justin-sky.github.io/ai-art-engine/manual.html",
             "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/manual.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
-            "dateModified": "2026-11-11",
+            "dateModified": "2026-11-13",
             "author": {
               "@type": "Organization",
               "name": "AI Art Engine",
@@ -232,10 +232,10 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Manual · Overview</p>
+          <p class="eyebrow">Manual · Overview · v9.0.0</p>
           <h1>使用手册</h1>
           <p class="lede">
-            AI Art Engine <strong>v8.9.1</strong> 的完整操作参考，按使用路径分为本总览与五卷手册章节：本页介绍准备工作、v8.9.1 核心特性与基础概念，其余内容见下方「手册章节」或侧栏目录。文案以应用内中文界面为准；视频演示见 <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">B 站教程</a>。
+            AI Art Engine <strong>v9.0.0</strong> 的完整操作参考，按使用路径分为本总览与五卷手册章节：本页介绍准备工作、v9.0.0 核心特性与基础概念，其余内容见下方「手册章节」或侧栏目录。文案以应用内中文界面为准；视频演示见 <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">B 站教程</a>。
           </p>
         </header>
 
@@ -261,14 +261,14 @@
         <section id="intro">
           <h2>1. 概述与准备</h2>
           <p>
-            AI Art Engine（AIArtEngine）是本地优先、Agent 原生的全模态 AI 创作与工业资产桌面引擎，服务游戏研发、AI 漫剧 / 短剧、爆款视频复刻、广告与电商内容生产。在 <strong>v8.9.1</strong> 中，它不止生成单张扁平图或视频，更能把 AI 产出直接编译为引擎级生产资产：
+            AI Art Engine（AIArtEngine）是本地优先、Agent 原生的全模态 AI 创作与工业资产桌面引擎，服务游戏研发、AI 漫剧 / 短剧、爆款视频复刻、广告与电商内容生产。在 <strong>v9.0.0</strong> 中，它不止生成单张扁平图或视频，更能把 AI 产出直接编译为引擎级生产资产：
           </p>
           <ul>
             <li><strong>游戏 UI 拆层与图集重组</strong>（<code>image.layerSplit</code> + <code>ui.atlasCompose</code> + <code>ui.componentLib</code>）：16 类控件语义识别、离线/在线双模 OCR 字色描边提取、九宫格无字底板修复、3D 爆炸视图预览、真实精灵图集重排组装，一键导出<strong>含原生可编辑 <code>TySh</code> 文本图层的 <code>.psd</code></strong> 及 <strong>Unity UGUI/UXML、Godot 4 <code>.tscn</code>、HTML5</strong> 代码。</li>
             <li><strong>Machinations v2 游戏经济数值沙盘</strong>（<code>game.economy</code>）：100% Machinations 语义对齐与 59 种已验证构件、宏视图/专业蓝图无损互切、<strong>120fps 贝塞尔斜率菱形手柄（<code>◆</code>）与直接拖拽曲线反推 <code>k * pow(STEP, p)</code> 公式求解（Goal-Seek）</strong>、蒙特卡洛 P10/P50/P90 置信带、二维参数敏感度热力图与零代码可玩 HUD 卡牌原型。</li>
             <li><strong>21 题材五阶段 AI 漫剧 / 短剧工业工作台</strong>（<code>film.workbench</code>）：内置 <code>P01</code>–<code>P21</code> 题材母体，串联「① A+B 双节拍分镜拆解 → ② 11 项导演连贯性与 ≥67% 对白审核 → ③ 角色 <code>#variant</code> / 场景 / 道具 / <code>STYLE01</code> 锚点与跨集 TTS 音色绑定 → ④ <code>@1</code>–<code>@4</code> 锁定批量拍摄与视觉质检重拍 → ⑤ 封面标题宣发包与整集 <code>.mp4</code>」。</li>
             <li><strong>双节点爆款视频四轴取证与 1:1 复刻</strong>（<code>rea-video</code>：<code>semantic.analyze</code> → <code>semantic.rebuild</code>）：融合 WhisperX 逐词时间戳、PySceneDetect 切镜、Librosa 节拍、Demucs 人声伴奏分离与三帧 VLM 运镜取证，自动去字幕并输出分屏对比复刻成片（<code>compare.mp4</code>）。</li>
-            <li><strong>102 工具双向 MCP 服务与 24 小时定时自动化</strong>：暴露 <code>/mcp</code>（93 个核心工具）与 <code>/mcp/blender</code>（9 个实时建模桥工具），内置 <code>◈ AI 对话</code> 支持多工程工作区侧边栏、原生联网搜索与 <code>00:00–23:59</code> 全天候无人值守定时任务。</li>
+            <li><strong>进程内 Pi 智能体、102 工具双向 MCP 服务与 24 小时定时自动化</strong>：对外暴露 <code>/mcp</code>（93 个核心工具）与 <code>/mcp/blender</code>（9 个实时建模桥工具）；内置 <code>◈ AI 对话</code> 运行主进程内嵌 <strong>Pi 智能体（Pi Agent）</strong>，支持 <code>load_toolset</code> 按需惰性激活领域与外部 MCP 工具（活跃工具数 <code>&lt;= 96</code>，挂载再多外部 MCP 也绝不触发 <code>128</code> 工具上限报错）、<code>Craft</code> / <code>Plan</code> / <code>Ask</code> 双层工具门禁、工具栏实时 <code>🛡️ 受限模式</code> ↔ <code>🔓 完全访问</code> 切换、跨工程最多 6 路并发会话（配多精灵祈愿巫女伴随）与 <code>00:00–23:59</code> 定时任务。</li>
             <li><strong>剪映级 6 栏 NLE 时间线、2D Spine 骨骼与专业人像调色</strong>：120+ GPU/FFmpeg 特效转场滤镜、剪映草稿工程直出、AI 姿态对齐 Spine 2D 导出、4 频段小波磨皮与 3D 导演台 56 骨骼运镜白模预演。</li>
           </ul>
           <p>
@@ -305,7 +305,7 @@
         <section id="concepts">
           <h2>2. 核心概念</h2>
           <p>
-            先花两分钟认识下面这些词，后面所有界面都能看懂。v8.9.1 的数据组织层级为
+            先花两分钟认识下面这些词，后面所有界面都能看懂。v9.0.0 的数据组织层级为
             <strong>工作区（Workspace）→ 多工程（Project）→ 宿主资产 / 节点图 → 资产</strong>：工作区与工程是本地目录容器，节点图是生产车间，资产是工业交付物。
           </p>
 
@@ -405,7 +405,7 @@
           </div>
 
           <h3>2.1 一条五阶段 AI 漫剧 / 短剧是怎么跑出来的</h3>
-          <p>理解了上面的概念，就能看懂 v8.9.1 短剧 / AI 漫剧流水线的五阶段闭环数据流：</p>
+          <p>理解了上面的概念，就能看懂 v9.0.0 短剧 / AI 漫剧流水线的五阶段闭环数据流：</p>
           <ol>
             <li><strong>剧本输入</strong>（<code>text.plain</code>）→ 连入<strong>影视工作台</strong>（<code>film.workbench</code>），选定 <code>P01</code>–<code>P21</code> 题材母体。</li>
             <li><strong>① A+B 双节拍分镜拆解</strong>：文本模型按剧情拆出结构化镜头列表（A 叙事拍 + B 情绪反应拍、景别、运镜、单镜时长、台词与分段提示词）及角色 / 场景 / 道具实体表。</li>
@@ -430,7 +430,7 @@
             </a>
             <a class="entry-card" href="manual-workspace.html">
               <strong>第 2 卷 · §5–6 工作区、AI 对话与资产库</strong>
-              <span>◈ AI 对话多工程侧栏与内置编辑器、24h 定时任务、技能市场、画布祈愿巫女与天气系统、资产库</span>
+              <span>◈ AI 对话（进程内 Pi 智能体、6 路并发会话、受限↔完全访问切换）、24h 定时任务、技能市场、多精灵祈愿巫女与资产库</span>
             </a>
             <a class="entry-card" href="manual-workflow.html">
               <strong>第 3 卷 · §7–8 一键工作流与核心节点图</strong>

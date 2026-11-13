@@ -22,11 +22,11 @@
     <title>MCP 接入教程（102 工具全量参考）— Claude Code / Cursor / Codex 驱动 AI Art Engine</title>
     <meta
       name="description"
-      content="AI Art Engine (AIArtEngine) v8.9.1 MCP 接入教程：通过 stdio 桥或 Streamable HTTP 将桌面端接入 Claude Code、Cursor、Codex，完整调用 102 个本地 MCP 工具（93 主工具 + 9 Blender 实时桥），编排类型化 DAG 节点图、技能市场工作流、视频取证、游戏 UI 与 Machinations 数值仿真。"
+      content="AI Art Engine (AIArtEngine) v9.0.0 MCP 接入教程：通过 npx -y ai-art-engine-mcp 零依赖 stdio 桥或 127.0.0.1:43110 Streamable HTTP 将桌面端接入 Claude Code、Cursor、Codex、Windsurf，完整调用 102 个本地 MCP 工具（93 主工具 + 9 Blender 实时桥），并详解内置进程内 Pi Agent 的 load_toolset 按需懒加载工具引擎（突破 128 工具上限）与双层权限隔离。"
     />
     <meta
       name="keywords"
-      content="AI Art Engine MCP, AIArtEngine MCP Server, Claude Code MCP 接入, Cursor MCP 配置, Codex MCP, Blender MCP 桥, AI 工作流 Agent 工具, DAG 节点图编排, X-MCP-Mode, 本地 AIGC 工具服务"
+      content="AI Art Engine MCP, AIArtEngine MCP Server, ai-art-engine-mcp, Pi Agent, load_toolset, Claude Code MCP 接入, Cursor MCP 配置, Codex MCP, Windsurf MCP, Blender MCP 桥, DAG 节点图编排, X-MCP-Mode"
     />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
@@ -34,20 +34,20 @@
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:locale:alternate" content="en_US" />
-    <meta property="og:title" content="MCP 接入教程（102 工具全量参考）— AI Art Engine v8.9.1" />
+    <meta property="og:title" content="MCP 接入教程（102 工具全量参考）— AI Art Engine v9.0.0" />
     <meta
       property="og:description"
-      content="将 AI Art Engine 接入 Claude Code / Cursor / Codex：93 个 /mcp 核心工具 + 9 个 /mcp/blender 实时建模工具、请求级 Agent/Plan/Ask 权限隔离与双向 stdio 桥完整指南。"
+      content="一行 npx -y ai-art-engine-mcp 将 AI Art Engine 接入 Claude Code / Cursor / Codex / Windsurf：93 个 /mcp 核心工具 + 9 个 /mcp/blender 实时建模工具、Pi Agent 按需懒加载工具集引擎与 Craft/Plan/Ask 权限护栏完整指南。"
     />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta property="og:image:width" content="1600" />
     <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="MCP 接入教程（102 工具全量参考）— AI Art Engine v8.9.1" />
+    <meta name="twitter:title" content="MCP 接入教程（102 工具全量参考）— AI Art Engine v9.0.0" />
     <meta
       name="twitter:description"
-      content="将 AI Art Engine 接入 Claude Code / Cursor / Codex：93 个 /mcp 核心工具 + 9 个 /mcp/blender 实时建模工具、请求级 Agent/Plan/Ask 权限隔离与双向 stdio 桥完整指南。"
+      content="一行 npx -y ai-art-engine-mcp 将 AI Art Engine 接入 Claude Code / Cursor / Codex / Windsurf：93 个 /mcp 核心工具 + 9 个 /mcp/blender 实时建模工具、Pi Agent 按需懒加载工具集引擎与 Craft/Plan/Ask 权限护栏完整指南。"
     />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
@@ -69,12 +69,12 @@
           {
             "@type": "TechArticle",
             "headline": "MCP 接入教程（102 工具全量参考）— Claude Code / Cursor / Codex 驱动 AI Art Engine",
-            "description": "AI Art Engine v8.9.1 本地双向 MCP 服务接入指南：涵盖 stdio 桥与 HTTP 直连配置、93 个 /mcp 主工具与 9 个 /mcp/blender 工具全集、DAG 节点图编排及 Agent/Plan/Ask 请求级模式权限隔离。",
+            "description": "AI Art Engine v9.0.0 本地双向 MCP 服务接入指南：涵盖 npx -y ai-art-engine-mcp 零依赖 stdio 桥与 127.0.0.1:43110 HTTP 直连配置、93 个 /mcp 主工具与 9 个 /mcp/blender 工具全集、进程内 Pi Agent 按需懒加载工具集引擎（load_toolset）及 Craft/Plan/Ask 权限护栏。",
             "inLanguage": "zh-CN",
             "url": "https://justin-sky.github.io/ai-art-engine/guide-mcp.html",
             "mainEntityOfPage": "https://justin-sky.github.io/ai-art-engine/guide-mcp.html",
             "image": "https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp",
-            "dateModified": "2026-11-11",
+            "dateModified": "2026-11-13",
             "author": {
               "@type": "Organization",
               "name": "AI Art Engine",
@@ -197,7 +197,7 @@
           <li><a href="#examples">场景示例</a></li>
           <li><a href="#env">配置与环境变量</a></li>
           <li><a href="#settings-bridge">stdio 桥可视化设置</a></li>
-          <li><a href="#reverse-bridge">反向桥：dsh 直连 stdio server</a></li>
+          <li><a href="#reverse-bridge">外部 MCP 挂载与按需懒加载引擎</a></li>
           <li><a href="#security">模式隔离与安全护栏</a></li>
           <li><a href="#blender">Blender 工具集（进阶）</a></li>
         </ol>
@@ -208,12 +208,11 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · MCP · v8.9.1</p>
+          <p class="eyebrow">Guide · MCP · v9.0.0</p>
           <h1>MCP 接入教程（102 工具全量参考）</h1>
           <p class="lede">
-            把 AI Art Engine 接入 <strong>Claude Code、Cursor、Codex</strong> 等 AI Agent：应用启动后自带本地双向
-            MCP 工具服务（<strong>93 个 <code>/mcp</code> 主工具 + 9 个 <code>/mcp/blender</code> 实时桥工具，共 102 个</strong>），Agent 可以直接<strong>编排类型化 DAG 节点图、检索与安装技能市场工作流、执行视频四轴取证与时间线精剪、生成游戏 UI / Machinations 数值沙盘 / 可玩 HTML5 游戏</strong>——完全本地化，无需云账号授权。
-            应用内置的 <strong>AI 对话面板</strong>（工作区「◈」）也走这同一套工具面：在聊天里 <code>@</code> 引用资产，即可直接驱动整套引擎。
+            把 AI Art Engine 接入 <strong>Claude Code、Cursor、Codex、Windsurf</strong> 等外部 AI Agent：应用启动后在 <code>127.0.0.1:43110</code> 提供本地 Streamable HTTP MCP 工具服务（<strong>93 个 <code>/mcp</code> 主工具 + 9 个 <code>/mcp/blender</code> 实时桥工具，共 102 个</strong>），支持一行 <code>npx -y ai-art-engine-mcp</code> 零依赖桥接直连，直接<strong>编排类型化 DAG 节点图、检索与安装技能市场工作流、执行视频四轴取证与时间线精剪、生成游戏 UI / Machinations 数值沙盘 / 可玩 HTML5 游戏</strong>——完全本地化，无需云账号授权。
+            应用内置的 <strong>◈ AI 对话面板</strong>（v9.0 <strong>进程内 Pi Agent 运行时</strong>）则在主进程内零 HTTP 回环开销直接调用同一套工具面，并通过 <code>load_toolset</code> 按需懒加载引擎彻底根治 128 工具上限限制。
           </p>
         </header>
 
@@ -223,36 +222,41 @@
             MCP（Model Context Protocol）是 AI Agent 调用外部工具的标准协议。接入后，你的编码
             Agent 多了一组「AI Art Engine 工业资产工具」，对话即可驱动桌面端：
           </p>
-          <pre class="mcp-code"><code>Claude Code / Cursor / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AI Art Engine（127.0.0.1 工具服务）</code></pre>
+          <pre class="mcp-code"><code>Claude Code / Cursor / Codex / Windsurf ──stdio(MCP)──▶ npx ai-art-engine-mcp (或 mcp-bridge.mjs) ──HTTP──▶ AI Art Engine（127.0.0.1:43110）
+应用内置 ◈ AI 对话面板（进程内 Pi Agent） ──────────────主进程内存直调（零 HTTP 回环开销 + load_toolset 按需挂载）──────────▶ 102 工具底座</code></pre>
           <ul>
-            <li>应用每次启动会在 <code>127.0.0.1</code> 起一个带 Bearer token 的本地工具服务，连接信息写入 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS / Linux 路径见下文）。文件跨重启保留，<strong>token 稳定不变</strong>，客户端配置一次即可；也可在应用「设置 → MCP 接入」中编辑 Token。</li>
-            <li>桥脚本 <code>scripts/mcp-bridge.mjs</code> 零依赖，由 Agent 客户端拉起，负责协议转换与转发。</li>
-            <li>通信仅限本机回环地址；除健康检查外全部需要 token 鉴权，并支持基于请求头的 <strong>Agent / Plan / Ask</strong> 模式权限隔离（<code>X-MCP-Mode</code> / <code>X-AIArt-Mode</code>）。</li>
+            <li>应用每次启动会在 <code>127.0.0.1:43110</code>（占用自动顺延）起一个带 Bearer token 的本地 Streamable HTTP 工具服务，连接信息写入 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS / Linux 路径见下文）。文件跨重启保留，<strong>token 稳定不变</strong>，客户端配置一次即可；也可在应用「设置 → MCP 接入」中查看或编辑 Token。</li>
+            <li>零依赖桥接包 <code>npx -y ai-art-engine-mcp</code>（以及安装包内置 <code>resources/mcp-bridge.mjs</code> / 仓库内 <code>scripts/mcp-bridge.mjs</code>）由外部 Agent 客户端按需拉起，自动读取本机 <code>mcp.json</code> 完成 stdio ↔ HTTP 协议转换。</li>
+            <li>通信仅限本机回环地址；除健康检查外全部需要 token 鉴权，并支持基于请求头的 <strong>Craft (Agent) / Plan / Ask</strong> 模式权限隔离（<code>X-MCP-Mode</code> / <code>X-AIArt-Mode</code>）。</li>
           </ul>
           <div class="tip">
-            前置条件：AI Art Engine 桌面应用处于运行状态；使用 stdio 桥脚本需本机装有 Node.js 18+（HTTP 直连方式无需 Node.js）；驱动画布节点运行生成任务时，对应模态的模型需已在「设置 → 模型」中配置启用。
+            前置条件：AI Art Engine 桌面应用处于运行状态；使用 stdio 桥（<code>npx -y ai-art-engine-mcp</code> 或 <code>mcp-bridge.mjs</code>）需本机装有 Node.js 18+（HTTP 直连方式无需 Node.js）；驱动画布节点运行生成任务时，对应模态的模型需已在「设置 → 模型」中配置启用。
           </div>
         </section>
 
         <section id="setup">
           <h2>2. 三步接入 Claude Code（两种方式任选其一）</h2>
-          <h3>方式 A：stdio 桥（推荐）</h3>
+          <h3>方式 A：stdio 桥（推荐 · 一行 npx 零配置）</h3>
           <ol>
             <li>启动 AI Art Engine 桌面应用。</li>
             <li>
-              注册 MCP server（桥脚本在仓库内，把路径换成你的实际仓库或安装目录位置）：
-              <pre class="mcp-code"><code>claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code></pre>
-              或手动写入 MCP 配置文件：
+              注册 MCP server（直接运行零依赖 npm 桥接包，或指向安装包 <code>resources/mcp-bridge.mjs</code> / 仓库 <code>scripts/mcp-bridge.mjs</code>）：
+              <pre class="mcp-code"><code># 方式 A1：零路径依赖 npx 直连（推荐）
+claude mcp add aiartengine -- npx -y ai-art-engine-mcp
+
+# 方式 A2：使用本地桥脚本（无需联网拉包）
+claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code></pre>
+              或手动写入 MCP 配置文件（适用于 Cursor、Codex、Windsurf、Trae 等客户端）：
               <pre class="mcp-code"><code>{
   "mcpServers": {
     "aiartengine": {
-      "command": "node",
-      "args": ["C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs"]
+      "command": "npx",
+      "args": ["-y", "ai-art-engine-mcp"]
     }
   }
 }</code></pre>
             </li>
-            <li>重启 Agent 会话，工具即可使用。其他支持 MCP 的客户端（Cursor、Codex、Trae 等）按同样的「command + args」方式配置。</li>
+            <li>重启外部 Agent 会话，102 工具即可就绪。</li>
           </ol>
           <h3>方式 B：HTTP 直连（无需 Node.js）</h3>
           <p>
@@ -268,18 +272,15 @@
           </p>
           <div class="tip">
             单人使用不需要建这个文件：直接执行
-            <code>claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code>，
+            <code>claude mcp add aiartengine -- npx -y ai-art-engine-mcp</code>，
             Claude Code 会自动写入本机配置（<code>~/.claude.json</code>）。两种方式二选一，无需同时做。
           </div>
-          <p>stdio 桥版（路径换成实际仓库位置）：</p>
+          <p>stdio 桥版（团队共享免路径依赖推荐用 <code>npx</code>，也可改为本地 <code>scripts/mcp-bridge.mjs</code>）：</p>
           <pre class="mcp-code"><code>{
   "mcpServers": {
     "aiartengine": {
-      "command": "node",
-      "args": ["C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs"],
-      "env": {
-        "AIAE_MCP_CONFIG": "C:/Users/&lt;你&gt;/AppData/Roaming/aiartengine/mcp.json"
-      }
+      "command": "npx",
+      "args": ["-y", "ai-art-engine-mcp"]
     }
   }
 }</code></pre>
@@ -305,7 +306,7 @@
         <section id="tools">
           <h2 id="catalog">3. 102 个实时 MCP 工具全集（93 主工具 + 9 Blender 工具）</h2>
           <div class="tip">
-            <strong>架构演进说明（v8.9.1）：</strong>早期版本中的独立媒体直生与旧版预设规划命令已全部下线，统一收归为<strong>类型化有向无环图（DAG）节点与技能市场工作流</strong>。现在无论是图像/视频/语音/音效/音乐生成、3D 模型生成与绑骨切分，还是 World Labs 3D 高斯泼溅空间世界，均通过两种标准范式驱动：
+            <strong>架构演进说明（v9.0.0）：</strong>所有多模态生成统一收归为<strong>类型化有向无环图（DAG）节点与技能市场工作流</strong>；在应用内置 Pi Agent 中，这 102 个工具按领域切分为常驻核心组 <code>studio_core</code>（12 个 MCP 核心工具 + 12 个原生编程/文件/终端工具 ≈ 24 个初始工具）与 6 个按需挂载工具集（<code>project_assets</code>、<code>video_timeline_audio</code>、<code>director_3d_blender</code>、<code>game_production</code>、<code>tutorial_recording</code>、<code>skills_web_vision</code>），通过 <code>load_toolset</code> 动态挂载；而外部 Agent 连接 <code>/mcp</code> 与 <code>/mcp/blender</code> 时可直接获取全量工具表：
             <br />① <strong>节点图精细编排</strong>：先查 <code>graph_node_types</code>（获取节点端口、参数 Schema 与原生能力）→ 用 <code>graph_edit</code> 增改节点/连线/预设 → 调 <code>task_run</code> 与 <code>task_status</code> 执行并追踪；
             <br />② <strong>技能市场工作流直装复用</strong>：调 <code>skill_search</code> 检索领域包 → <code>skill_install</code> 原子安装 → <code>workflow_use_installed</code> 物化为宿主画布资产后运行。
           </div>
@@ -466,63 +467,59 @@
             Agent 重连即生效，不需要重启应用。
           </p>
           <div class="tip">
-            开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>；正式安装包内置在
-            <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>。同一面板可加多组外部 stdio
-            server 入口（见 <a href="#reverse-bridge">§5.2 反向桥</a>），与 Blender stdio 桥共用一份
-            配置存储。
+            无网或本地开发场景可用仓库内 <code>scripts/mcp-bridge.mjs</code>（正式安装包内置在
+            <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>）；联网环境直接使用零依赖
+            <code>npx -y ai-art-engine-mcp</code> 免填路径。同时，你还可以在技能市场或设置页接入任意第三方外部
+            stdio / HTTP MCP 服务（见 <a href="#reverse-bridge">§5.2 外部 MCP 与按需懒加载引擎</a>）。
           </div>
         </section>
 
         <section id="reverse-bridge">
-          <h2>5.2 反向桥：让 dsh（应用内对话面板）直连 stdio MCP server</h2>
+          <h2>5.2 外部 MCP 挂载与按需懒加载引擎（内置 Pi Agent 9.0）</h2>
           <p>
-            「正向桥」是把 Claude Code 等外部 Agent 通过 stdio 桥 / HTTP 连进来；<strong
-              >反向桥</strong
-            >反过来 —— 应用内 ◈ AI 对话面板（DeepSeek Harness / dsh）也能注册并消费
-            <strong>任意外部 stdio MCP server</strong>（不再局限于连回应用自己的
-            <code>/mcp</code>）。
+            除了把 AI Art Engine 暴露给外部 Claude Code / Cursor 调用外，应用内置的 <strong>◈ AI 对话面板</strong>（基于
+            <code>@earendil-works/pi-agent-core</code> 与 <code>@earendil-works/pi-ai</code> 构建的<strong>进程内 Pi Agent 运行时</strong>，代码位于
+            <code>src/main/agent/</code>）不仅在主进程内零 HTTP 回环开销直调本机 102 个工作台工具，还能直接连接并消费你添加的<strong>任意第三方 stdio / HTTP MCP 服务</strong>。
           </p>
           <p>
-            典型场景：Blender addon 等只暴露 stdio 协议的 MCP server，不再需要先开 socket 端口；dsh
-            注册一条 <code>claude mcp add --transport stdio ...</code> 之类的命令后，AI 对话里说
-            「在 Blender 里把…做完截张图」即可直接驱动。配置入口在设置面板
-            <strong>MCP 工具服务 → stdio 桥</strong> Tab 同一区域，可加多组外部 stdio server
-            （每组：名称 / 启动命令 / 工作目录 / 环境变量），与 Blender stdio 桥共用一份配置存储。
+            传统 Agent 一旦同时挂载上百个内置工具与多个外部 MCP Server，就会立刻撞上 OpenAI / DeepSeek 等兼容接口的
+            <strong><code>tools &gt; 128</code> 硬上限报错</strong>，并拖慢首字延迟。v9.0.0 通过<strong>按需懒加载工具集引擎（<code>load_toolset</code>）</strong>从根源解决了这一难题：
           </p>
-          <p>协议层细节：</p>
           <ul>
             <li>
-              反向桥在 dsh 进程内 fork stdio 子进程、转 MCP 帧、复用既有 mcp-client 实例 —— 不再
-              单独起桥进程
+              <strong>精简常驻启动（~24 工具）</strong>：每个新会话启动时仅挂载 <code>12</code> 个 Pi Agent 原生工具（文件读写编辑、跨平台终端、<code>skill</code>、<code>load_toolset</code> 等）+ <code>12</code> 个 <code>studio_core</code> 核心 MCP 工具。
             </li>
             <li>
-              协议错误 / 子进程崩溃与正向桥共用同一套日志（<code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>）
+              <strong>6 大领域工具集 + 外部 MCP 动态按需挂载</strong>：其余工作台与 Blender 工具划分为 6 个领域工具集（<code>project_assets</code>、<code>video_timeline_audio</code>、<code>director_3d_blender</code>、<code>game_production</code>、<code>tutorial_recording</code>、<code>skills_web_vision</code>），第三方外部 MCP 服务按 <code>ext:&lt;serverId&gt;</code> 封装（单服超长时按关键词相关性智能筛选 Top 32 工具）。
             </li>
             <li>
-              仅限本机 + token 鉴权；外部 stdio server 不会自动获得应用侧 <code>/mcp</code> 的写权限
+              <strong>零回合意图预热 + LRU 淘汰（<code>MAX_ACTIVE_TOOLS = 96 &lt; 128</code>）</strong>：发消息前根据用户提示词意图零回合自动预热匹配领域组，对话中模型也可随时调用 <code>load_toolset</code> 自助加载；活跃工具上限严格锁定在 <code>96 &lt; 128</code>（超出按 LRU 自动卸载低频组），并保持回合内工具列表稳定（<code>supportsMidConvoToolAdditions: false</code>），<strong>既彻底消灭 128 工具报错，又完整保留大模型 Prompt Prefix Cache 命中率</strong>。
             </li>
             <li>
-              Ask / Plan 模式对反向桥的工具同样只读 —— 它不是绕过面板模式的侧门
+              <strong>统一模式与审计约束</strong>：外部 MCP 工具同样追加记录至 <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>，不会自动获得应用侧 <code>/mcp</code> 写权限，且严格受下节 <code>Craft / Plan / Ask</code> 双层权限闸门管控（Ask / Plan 下绝不放行越权调用）。
             </li>
           </ul>
         </section>
 
         <section id="security">
-          <h2>6. 请求级模式隔离（Agent / Plan / Ask）与安全护栏</h2>
+          <h2>6. 双层模式治理（Craft / Plan / Ask）、实时沙箱与安全护栏</h2>
           <ul>
             <li>
-              <strong>请求级模式权限隔离（<code>X-MCP-Mode</code> / <code>X-AIArt-Mode</code>，实现见 <code>src/shared/mcpModeAccess.ts</code>）</strong>：模式不做成全局开关，而是按单次请求头分级裁剪 <code>tools/list</code> 并在 <code>tools/call</code> 上硬拦截越权调用：
+              <strong>双层模式权限隔离（<code>agent.state.tools</code> + <code>beforeToolCall</code> + <code>src/shared/mcpModeAccess.ts</code>）</strong>：内置 Pi Agent 在工具列表裁剪与执行前钩子双层拦截，外部 MCP 服务按单次请求头（<code>X-MCP-Mode</code> / <code>X-AIArt-Mode</code>）分级裁剪 <code>tools/list</code> 并在 <code>tools/call</code> 上硬拦截越权调用：
               <ul>
-                <li><strong>Agent（Craft）模式</strong>：开放全部读 / 写 / 生成类工具（外部 Claude Code / Cursor 客户端不带模式头时默认等同此级别）。</li>
-                <li><strong>Plan 模式</strong>：在用户通过 <code>ask_user</code> 确认分步方案之前，仅暴露只读工具（如 <code>app_status</code>、<code>graph_read</code>、<code>graph_node_types</code>、<code>asset_qc</code>、<code>skill_search</code>、<code>vision_local_ocr</code> 等），任何改写工程或消耗模型额度的调用均被服务端拒绝；用户点击确认后同轮自动解锁写与生成权限。</li>
-                <li><strong>Ask 模式</strong>：<code>tools/list</code> 返回空集并拒绝一切工具调用，严格限定为纯问答咨询。</li>
+                <li><strong>Craft（Agent）模式</strong>：开放全部读 / 写 / 生成类工具（外部 Claude Code / Cursor / Codex / Windsurf 客户端不带模式头时默认等同此级别）。</li>
+                <li><strong>Plan 模式</strong>：在用户通过交互式 <code>ask_user</code> 确认卡批准分步方案之前，仅暴露只读探查工具（如 <code>app_status</code>、<code>graph_read</code>、<code>graph_node_types</code>、<code>asset_qc</code>、<code>skill_search</code>、<code>vision_local_ocr</code> 等），任何改写工程或消耗模型额度的调用均被双层拒绝；用户点击确认后自动解锁执行。</li>
+                <li><strong>Ask 模式</strong>：外部 MCP <code>tools/list</code> 返回空集并拒绝一切工具调用（内置对话仅保留只读探查，严禁任何写盘或命令执行），限定为纯问答咨询。</li>
               </ul>
+            </li>
+            <li>
+              <strong>实时沙箱切换与单次失效关闭审批卡（内置 Pi Agent）</strong>：对话底栏支持在回合中途实时切换 <strong><code>🛡️ 受限模式</code>（<code>workspace-write</code>）</strong>与 <strong><code>🔓 完全访问</code>（<code>danger-full-access</code>）</strong>；受限模式下越界命令或高危操作会弹出<strong>单次失效关闭（fail-closed）权限审批卡</strong>（支持 <code>允许一次 Allow Once</code> / 项目级 <code>始终允许 Always Allow</code> / <code>拒绝 Reject</code>，超时或异常一律拒绝绝不放行）；会话数据以无锁原子 JSON 存储于 <code>&lt;userData&gt;/dsh-harness/pi-sessions/&lt;sessionId&gt;.json</code>，支持 6 路多工程并行、跨厂商无锁秒切模型、消息回滚分叉与 <code>.zip</code> 导出。
             </li>
             <li>服务只监听 <code>127.0.0.1</code>，Bearer token 鉴权；文件读写被严格限制在工程根目录内（唯一例外是 <code>asset_import</code>：按显式传入的绝对路径读取本机素材并复制入库）；API 密钥绝不对外暴露。</li>
             <li>并发闸门：长耗时或消耗额度的同步工具（如 <code>decide</code>、<code>transcribe_audio</code>、<code>semantic_analyze_video</code>、<code>tutorial_compose</code>、<code>gameplay_build</code> 等）同时最多并发 3 个（<code>AIAE_MCP_GEN_LIMIT</code> 可调），超出立即友好报错，防止 Agent 循环失控消耗额度。</li>
             <li>操作审计：每次工具调用追加写 <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（参数截断、5MB 滚动），生成与写入全程可回溯。</li>
             <li><code>graph_edit</code> / <code>graph_icon_refine</code> 对正在画布编辑器中打开的图会协同保护或拒绝冲突覆盖；画布工作流执行为异步任务，统一用 <code>task_run</code> + <code>task_status</code>（或视频作业 <code>video_job_list</code> / <code>video_job_get</code>）轮询追踪。</li>
-            <li>接入方式两选一：<strong>stdio 桥</strong>（安装包内置在 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>；开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>，需 Node.js 18+）或 <strong>HTTP 直连</strong>（无需 Node.js）。</li>
+            <li>外部接入方式两选一：<strong>stdio 桥</strong>（零依赖 <code>npx -y ai-art-engine-mcp</code>，或安装包内置 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code> / 仓库内 <code>scripts/mcp-bridge.mjs</code>，需 Node.js 18+）或 <strong>HTTP 直连</strong>（无需 Node.js）。</li>
           </ul>
         </section>
 
@@ -566,7 +563,7 @@
             <li>外部 Agent 想拿到这组工具，需要再注册一个 MCP server（<code>&lt;token&gt;</code> 取自应用侧 <code>mcp.json</code>）：
               <pre class="mcp-code"><code>claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender --header "Authorization: Bearer &lt;token&gt;"</code></pre>
               <p style="margin: 0.25rem 0 0">
-                应用内的 ◈ AI 对话面板自动带上（内部为 dsh 注册第二个 mcp-client 实例），你在对话里说「用 Blender……」即可。
+                应用内的 ◈ AI 对话面板自动带上（内置 Pi Agent 通过 <code>director_3d_blender</code> 工具集进程内直调或零回合意图预热自动挂载），你在对话里说「用 Blender……」即可。
               </p>
             </li>
           </ul>
