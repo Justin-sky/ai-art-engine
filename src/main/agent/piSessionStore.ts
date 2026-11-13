@@ -417,3 +417,260 @@ export async function buildPiSessionExportZip(
   const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
   return { buffer, fileCount: 2 }
 }
+
+const CHARS_PER_TOKEN_ESTIMATE = 3.5
+const IMAGE_BLOCK_CHARS_ESTIMATE = 4_800
+
+function estimateSingleMessageChars(msg: AgentMessage): number {
+  if (!msg || typeof msg !== 'object') return 0
+  if (msg.role === 'system') {
+    const sys = msg as unknown as {
+      content?: unknown
+      toolsAdded?: unknown[]
+      toolsRemoved?: unknown[]
+    }
+    const textLen = typeof sys.content === 'string' ? sys.content.length : 0
+    const addedLen = Array.isArray(sys.toolsAdded) ? JSON.stringify(sys.toolsAdded).length : 0
+    const removedLen = Array.isArray(sys.toolsRemoved) ? JSON.stringify(sys.toolsRemoved).length : 0
+    return textLen + addedLen + removedLen
+  }
+  if (msg.role === 'user' || msg.role === 'toolResult') {
+    const content = msg.content
+    if (typeof content === 'string') return content.length
+    if (!Array.isArray(content)) return 0
+    let chars = 0
+    for (const b of content) {
+      if (b.type === 'text') chars += b.text.length
+      else chars += IMAGE_BLOCK_CHARS_ESTIMATE
+    }
+    return chars
+  }
+  if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+    let chars = 0
+    for (const b of msg.content) {
+      if (b.type === 'text') chars += b.text.length
+      else if (b.type === 'thinking') chars += b.thinking.length
+      else if (b.type === 'toolCall') {
+        chars += b.name.length + JSON.stringify(b.arguments ?? {}).length
+      }
+    }
+    return chars
+  }
+  return 0
+}
+
+function estimateCharOnlyTokens(messages: ReadonlyArray<AgentMessage>): number {
+  let tokens = 0
+  for (const m of messages) {
+    tokens += Math.ceil(estimateSingleMessageChars(m) / CHARS_PER_TOKEN_ESTIMATE)
+  }
+  return tokens
+}
+
+/**
+ * 估算当前消息队列占用的上下文 Token 数（对齐 `@earendil-works/pi-ai` 的 `estimateContextTokens` 口径）：
+ * 若存在未被前缀压缩失效的最近一轮 `assistant.usage`，优先以其真实 Token 用量为基准叠加后续增量；否则按字符数估算。
+ */
+export function estimatePiMessagesTokens(messages: ReadonlyArray<AgentMessage>): number {
+  let latestPrefixTs = Number.NEGATIVE_INFINITY
+  let usageInfo: { tokens: number; index: number } | null = null
+
+  for (let i = 0; i < messages.length; i += 1) {
+    const m = messages[i]
+    const ts = typeof (m as { timestamp?: number }).timestamp === 'number' ? m.timestamp : 0
+    if (m.role === 'assistant') {
+      const u = m.usage
+      const total = u ? u.totalTokens || u.input + u.output + u.cacheRead + u.cacheWrite : 0
+      if (
+        ts >= latestPrefixTs &&
+        m.stopReason !== 'aborted' &&
+        m.stopReason !== 'error' &&
+        total > 0
+      ) {
+        usageInfo = { tokens: total, index: i }
+      }
+    }
+    if (ts > latestPrefixTs) latestPrefixTs = ts
+  }
+
+  if (usageInfo) {
+    let trailing = 0
+    for (let i = usageInfo.index + 1; i < messages.length; i += 1) {
+      trailing += Math.ceil(estimateSingleMessageChars(messages[i]) / CHARS_PER_TOKEN_ESTIMATE)
+    }
+    return usageInfo.tokens + trailing
+  }
+
+  return estimateCharOnlyTokens(messages)
+}
+
+export interface CompactPiContextOptions {
+  /** 当前模型上下文窗口大小（token） */
+  contextWindow: number
+  /** 触发自动软压缩的水位比例（默认 0.78） */
+  triggerRatio?: number
+  /** 软压缩时完整保留末尾多少条非 system 消息不折叠（默认 10） */
+  keepRecentMessages?: number
+  /** 强制压缩（用于用户主动执行 `/compact` 或上游返回上下文超限错误后的重试） */
+  force?: boolean
+}
+
+/**
+ * 结构化无损配对的上下文自动压缩器：
+ * 1) 始终保留 `role === 'system'` 消息不动（维护 `pi-agent-core` 的 `declareToolChanges` 工具差集一致性）；
+ * 2) 第一阶段（原位折叠）：保留最近 N 条消息完整不动，将更早历史中的超大 `toolResult`（如 `bash` / `graph_read` 数万字符输出）
+ *    与未签名的长思维链原位折叠为摘要，保持全部 `toolCall <-> toolResult` ID 一一配对，绝不触发 400 孤立 tool 错误；
+ * 3) 第二阶段（整轮裁剪）：若仍超水位或用户执行 `/compact`，严格按完整 `user` 轮次边界裁剪最早轮次；
+ * 4) 自动推进被折叠前缀消息的 `timestamp`，使 `pi-ai` 的 `estimateContextTokens` 立即感知释放出的窗口空间。
+ */
+export function compactPiContextMessages(
+  messages: ReadonlyArray<AgentMessage>,
+  opts: CompactPiContextOptions
+): AgentMessage[] {
+  const contextWindow = Math.max(8_192, opts.contextWindow || 131_072)
+  const triggerRatio = opts.triggerRatio ?? 0.78
+  const force = Boolean(opts.force)
+  const estimated = estimatePiMessagesTokens(messages)
+
+  if (!force && estimated <= Math.floor(contextWindow * triggerRatio)) {
+    return [...messages]
+  }
+
+  let maxTs = Date.now()
+  for (const m of messages) {
+    const ts = typeof (m as { timestamp?: number }).timestamp === 'number' ? m.timestamp : 0
+    if (ts > maxTs) maxTs = ts
+  }
+  const bumpTs = maxTs + 1
+
+  const nonSystemIndices: number[] = []
+  for (let i = 0; i < messages.length; i += 1) {
+    if (messages[i].role !== 'system') nonSystemIndices.push(i)
+  }
+
+  const keepRecent = force ? 6 : (opts.keepRecentMessages ?? 10)
+  const protectedStartRank = Math.max(0, nonSystemIndices.length - keepRecent)
+  const protectedIndexSet = new Set(nonSystemIndices.slice(protectedStartRank))
+
+  let compactedAny = false
+  const working: AgentMessage[] = messages.map((msg, idx) => {
+    if (msg.role === 'system' || protectedIndexSet.has(idx)) return msg
+
+    if (msg.role === 'toolResult' && Array.isArray(msg.content)) {
+      let localChanged = false
+      const nextContent = msg.content.map((block) => {
+        if (block.type === 'image') {
+          localChanged = true
+          return { type: 'text' as const, text: '[历史工具图片已自动折叠]' }
+        }
+        if (block.type === 'text' && block.text.length > 1_200) {
+          localChanged = true
+          const omitted = block.text.length - 1_000
+          return {
+            type: 'text' as const,
+            text: `${block.text.slice(0, 600)}\n...[历史工具输出已自动折叠 ${omitted} 字符]...\n${block.text.slice(-400)}`
+          }
+        }
+        return block
+      })
+      if (localChanged) {
+        compactedAny = true
+        return { ...msg, content: nextContent, timestamp: bumpTs }
+      }
+      return msg
+    }
+
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      let localChanged = false
+      const nextContent = msg.content.map((block) => {
+        if (block.type === 'thinking' && !block.thinkingSignature && block.thinking.length > 600) {
+          localChanged = true
+          return { ...block, thinking: `${block.thinking.slice(0, 300)}...` }
+        }
+        return block
+      })
+      if (localChanged) {
+        compactedAny = true
+        return { ...msg, content: nextContent }
+      }
+    }
+
+    return msg
+  })
+
+  // 若单轮包含极大量连续工具调用，做二次紧凑折叠（压缩至 220 字符摘要）
+  if (!force && estimateCharOnlyTokens(working) > Math.floor(contextWindow * 0.84)) {
+    for (let i = 0; i < working.length; i += 1) {
+      if (protectedIndexSet.has(i)) continue
+      const msg = working[i]
+      if (msg.role === 'toolResult' && Array.isArray(msg.content)) {
+        const combined = extractMessageText(msg)
+        if (combined.length > 260) {
+          compactedAny = true
+          working[i] = {
+            ...msg,
+            content: [
+              {
+                type: 'text',
+                text: `[历史工具输出已深度折叠 (${combined.length} 字符)] ${combined.slice(0, 200)}...`
+              }
+            ],
+            timestamp: bumpTs
+          }
+        }
+      }
+    }
+  }
+
+  // 若强制 /compact 或仍超硬水位，按完整 user 轮次边界整组淘汰最早对话（绝不拆散 assistant.toolCall 与 toolResult）
+  const hardCeiling = Math.floor(contextWindow * 0.85)
+  if (force || estimateCharOnlyTokens(working) > hardCeiling) {
+    const groups: number[][] = []
+    let currentGroup: number[] = []
+    for (let i = 0; i < working.length; i += 1) {
+      if (working[i].role === 'system') continue
+      if (working[i].role === 'user') {
+        if (currentGroup.length > 0) groups.push(currentGroup)
+        currentGroup = [i]
+      } else {
+        currentGroup.push(i)
+      }
+    }
+    if (currentGroup.length > 0) groups.push(currentGroup)
+
+    const droppedIndices = new Set<number>()
+    // 清理可能残留在首条 user 之前的孤立非 user 片段
+    if (groups.length > 1 && working[groups[0][0]]?.role !== 'user') {
+      for (const idx of groups.shift()!) droppedIndices.add(idx)
+    }
+
+    const minKeepGroups = force ? 3 : 2
+    while (groups.length > minKeepGroups) {
+      const remainingChars = working.reduce(
+        (acc, m, idx) => (droppedIndices.has(idx) ? acc : acc + estimateSingleMessageChars(m)),
+        0
+      )
+      const remainingTokens = Math.ceil(remainingChars / CHARS_PER_TOKEN_ESTIMATE)
+      if (!force && remainingTokens <= Math.floor(contextWindow * 0.78)) break
+      const oldest = groups.shift()!
+      for (const idx of oldest) droppedIndices.add(idx)
+    }
+
+    if (droppedIndices.size > 0) {
+      compactedAny = true
+      const pruned = working.filter((_, idx) => !droppedIndices.has(idx))
+      if (pruned.length > 0) {
+        pruned[0] = { ...pruned[0], timestamp: bumpTs }
+      }
+      return pruned
+    }
+  }
+
+  // 一旦发生任何前缀压缩，必须推进队列首条消息（index 0）的 timestamp，
+  // 使 pi-ai 的 getLastAssistantUsageInfo 从 i=0 起就识别到前缀已更新，避免沿用压缩前的旧 totalTokens
+  if (compactedAny && working.length > 0) {
+    working[0] = { ...working[0], timestamp: bumpTs }
+  }
+
+  return working
+}

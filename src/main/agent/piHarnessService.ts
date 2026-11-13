@@ -110,6 +110,7 @@ import {
 } from './piPersona'
 import {
   buildPiSessionExportZip,
+  compactPiContextMessages,
   deletePiSession,
   loadPiSession,
   rewindPiSession,
@@ -123,6 +124,10 @@ export { listStudioDomainSubagents }
 
 const MAX_PARALLEL_SESSIONS = 6
 const DSH_SKILLS_TEMPLATE_FILE = 'my-skill.example'
+/** 单次运行内遇到 finish_reason="length" 且未发出工具调用时的最大自动续写轮数 */
+const MAX_LENGTH_CONTINUATIONS = 3
+const LENGTH_CONTINUATION_PROMPT =
+  '[System: Your previous response hit the output token limit before completing. Continue directly from where you stopped; keep internal reasoning brief and immediately emit the next tool call or final answer.]'
 
 interface QueuedRunItem {
   input: HarnessRunInput
@@ -958,6 +963,7 @@ function buildNativeCoordinationTools(opts: {
           updatedAt: Date.now()
         }
 
+        let subLengthContinuations = 0
         const childAgent = new Agent({
           initialState: {
             systemPrompt: subSystemPrompt,
@@ -970,10 +976,28 @@ function buildNativeCoordinationTools(opts: {
           beforeToolCall: (ctx, sig) => subGovernance.beforeToolCall(ctx, sig),
           prepareNextTurnWithContext: (turn) => ({
             context: {
-              messages: turn.context.messages,
+              messages: compactPiContextMessages(turn.context.messages, {
+                contextWindow: resolvedModel.model.contextWindow
+              }),
               tools: subLazy.buildActiveTools()
             }
-          })
+          }),
+          finishTurn: (turn) => {
+            if (turn.message.stopReason === 'length' && turn.toolResults.length === 0) {
+              if (subLengthContinuations < MAX_LENGTH_CONTINUATIONS) {
+                subLengthContinuations += 1
+                childAgent.steer({
+                  role: 'user',
+                  content: LENGTH_CONTINUATION_PROMPT,
+                  timestamp: Date.now()
+                })
+                return { action: 'continue' }
+              }
+            } else if (turn.message.stopReason !== 'length') {
+              subLengthContinuations = 0
+            }
+            return undefined
+          }
         })
         childAgentRef = childAgent
 
@@ -1205,12 +1229,15 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
     return
   }
 
-  // 3) 原生斜杠指令：/compact（裁剪较早历史轮次，保留最近 6 条核心消息，释放上下文窗口）
+  // 3) 原生斜杠指令：/compact（按完整 user 轮次边界安全压缩早期历史并折叠超大工具输出，绝不破坏 toolCall 配对）
   if (/^\/compact(?=$|\s)/i.test(rawTask)) {
     emitHarnessEvent(publicSessionId, runId, { type: 'tool', name: 'pi-agent', state: 'start' })
     const persisted = publicSessionId ? loadPiSession(dshHome(), publicSessionId) : null
-    if (persisted && publicSessionId && persisted.messages.length > 6) {
-      const kept = persisted.messages.slice(-6)
+    if (persisted && publicSessionId && persisted.messages.length > 0) {
+      const kept = compactPiContextMessages(persisted.messages, {
+        contextWindow: 131_072,
+        force: true
+      })
       savePiSession(dshHome(), {
         sessionId: publicSessionId,
         cwd: workspace,
@@ -1427,8 +1454,12 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
   })
 
   const priorMessages: AgentMessage[] = persisted?.messages
-    ? stripRuntimeSystemMessages(persisted.messages)
+    ? compactPiContextMessages(stripRuntimeSystemMessages(persisted.messages), {
+        contextWindow: resolvedModel.model.contextWindow
+      })
     : []
+
+  let lengthContinuationCount = 0
 
   const agent = new Agent({
     initialState: {
@@ -1454,12 +1485,29 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
     },
     prepareNextTurnWithContext: (turn) => ({
       context: {
-        messages: turn.context.messages,
+        messages: compactPiContextMessages(turn.context.messages, {
+          contextWindow: resolvedModel.model.contextWindow
+        }),
         tools: lazyManager.buildActiveTools()
       }
     }),
     finishTurn: (turn) => {
       runner.turnSeq += 1
+      // 当输出因达到单次 max_tokens 截断且尚未发出工具调用（例如卡在思维链或长报告半途）时自动续写，防止会话无结果静默退出
+      if (turn.message.stopReason === 'length' && turn.toolResults.length === 0) {
+        if (lengthContinuationCount < MAX_LENGTH_CONTINUATIONS) {
+          lengthContinuationCount += 1
+          agent.steer({
+            role: 'user',
+            content: LENGTH_CONTINUATION_PROMPT,
+            timestamp: Date.now()
+          })
+          return { action: 'continue' }
+        }
+      } else if (turn.message.stopReason !== 'length') {
+        lengthContinuationCount = 0
+      }
+
       // 多轮自主目标续跑（当 goal 仍处于 active 且本轮无待执行 toolCall 时自动推进下一轮）
       if (
         runner.goal &&
@@ -1609,7 +1657,15 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
       })
     }
 
-    const errMessage = agent.state.errorMessage
+    const lastAssistant = [...agent.state.messages].reverse().find((m) => m.role === 'assistant')
+    const errMessage =
+      agent.state.errorMessage ||
+      (!runner.abortRequested &&
+      lastAssistant?.role === 'assistant' &&
+      lastAssistant.stopReason === 'length' &&
+      !accumulatedText.trim()
+        ? '模型连续达到单次输出 Token 上限且未生成正文结果（可能因思维链或上下文过长）。请发送 /compact 压缩历史上下文，或发送“继续”接着执行。'
+        : undefined)
     emitHarnessEvent(publicSessionId, runId, { type: 'tool', name: 'pi-agent', state: 'done' })
 
     if (errMessage && !runner.abortRequested) {

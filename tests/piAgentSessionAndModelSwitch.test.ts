@@ -1,18 +1,28 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Model } from '@earendil-works/pi-ai'
+import { Agent, type AgentMessage } from '@earendil-works/pi-agent-core'
+import {
+  createAssistantMessageEventStream,
+  type AssistantMessage,
+  type Model
+} from '@earendil-works/pi-ai'
 import JSZip from 'jszip'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  MIN_SAFE_OUTPUT_TOKENS,
+  enforceOpenAiToolsLimitPayload,
   inferChatModelInputModalities,
   inferChatModelReasoning,
   isPiQuotaError,
+  resolveChatModelContextWindow,
   resolvePiModelFromProviders
 } from '../src/main/agent/piModelResolver'
 import {
   buildPiSessionExportZip,
+  compactPiContextMessages,
   deletePiSession,
+  estimatePiMessagesTokens,
   loadPiSession,
   rewindPiSession,
   savePiSession,
@@ -239,5 +249,305 @@ describe('Pi 无锁会话持久化、回退分叉、全文检索与多供应商�
     expect(isPiQuotaError('API Key 已欠费，请联系管理员')).toBe(true)
     expect(isPiQuotaError('rate limit exceeded, retry after 30s')).toBe(false)
     expect(isPiQuotaError('network timeout')).toBe(false)
+  })
+
+  it('4. 真实上下文窗口读取（OpenRouter catalog + 模型家族兜底）与 onPayload 最小输出 Token 保护（根治 284K 时 max_completion_tokens=1 静默退出）', () => {
+    const openRouterProv = makeProvider({
+      id: 'or-1',
+      name: 'OpenRouter',
+      providerKind: 'openrouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      modalities: {
+        text: {
+          selectedModelIds: ['deepseek/deepseek-v4.1-flash'],
+          defaultModelId: 'deepseek/deepseek-v4.1-flash',
+          catalog: {
+            'deepseek/deepseek-v4.1-flash': {
+              id: 'deepseek/deepseek-v4.1-flash',
+              name: 'DeepSeek V4.1 Flash',
+              capabilities: {
+                context_length: 1_000_000,
+                top_provider: { max_completion_tokens: 65_536 }
+              }
+            }
+          }
+        }
+      } as ModelProviderInstance['modalities']
+    })
+
+    const resolved = resolvePiModelFromProviders([openRouterProv], {
+      providerId: 'or-1',
+      modelId: 'deepseek/deepseek-v4.1-flash'
+    })
+    expect(resolved).not.toBeNull()
+    expect(resolved!.model.contextWindow).toBe(1_000_000)
+    expect(resolved!.model.maxTokens).toBe(65_536)
+    expect(resolved!.model.reasoning).toBe(true)
+
+    // 即使没有 catalog 缓存，deepseek/deepseek-v4.1-flash 也会命中 1M 家族兜底而非被误压成 128K
+    expect(resolveChatModelContextWindow('deepseek/deepseek-v4.1-flash')).toBe(1_048_576)
+    expect(resolveChatModelContextWindow('gpt-5.2')).toBe(400_000)
+
+    // 本地 Ollama 允许空 API Key
+    const ollama = makeProvider({
+      id: 'local-ollama',
+      providerKind: 'ollama',
+      apiKey: '',
+      baseUrl: 'http://localhost:11434/v1',
+      modalities: {
+        text: {
+          selectedModelIds: ['qwen3:14b'],
+          defaultModelId: 'qwen3:14b'
+        }
+      } as ModelProviderInstance['modalities']
+    })
+    const resolvedLocal = resolvePiModelFromProviders([ollama], { providerId: 'local-ollama' })
+    expect(resolvedLocal?.apiKey).toBe('local')
+
+    // onPayload 保护：当 pi-ai 把 max_completion_tokens / max_tokens 压成 1 时自动抬升回 >= 4096
+    const chokedPayload = enforceOpenAiToolsLimitPayload({
+      model: 'deepseek/deepseek-v4.1-flash',
+      max_completion_tokens: 1,
+      max_tokens: 12
+    }) as { max_completion_tokens: number; max_tokens: number }
+    expect(chokedPayload.max_completion_tokens).toBe(MIN_SAFE_OUTPUT_TOKENS)
+    expect(chokedPayload.max_tokens).toBe(MIN_SAFE_OUTPUT_TOKENS)
+
+    const healthyPayload = { model: 'gpt-6.1-sol', max_completion_tokens: 16_384 }
+    expect(enforceOpenAiToolsLimitPayload(healthyPayload)).toBe(healthyPayload)
+  })
+
+  it('5. compactPiContextMessages 原位折叠早期超大工具输出并对齐 user 轮次边界，保持 toolCallId 100% 成对且立即刷新 Token 水位', () => {
+    const hugeDump = 'L'.repeat(45_000)
+    const messages: AgentMessage[] = [
+      {
+        role: 'system',
+        content: 'studio system prompt',
+        toolsAdded: [{ name: 'bash' }, { name: 'graph_read' }],
+        timestamp: 10
+      } as unknown as AgentMessage,
+      { role: 'user', content: '逆向解包并还原画布', timestamp: 20 },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'toolCall', id: 'call_bash_1', name: 'bash', arguments: { command: 'ls' } }
+        ],
+        api: 'openai-completions',
+        provider: 'openrouter',
+        model: 'deepseek/deepseek-v4.1-flash',
+        usage: {
+          input: 110_000,
+          output: 100,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 110_100,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+        },
+        stopReason: 'toolUse',
+        timestamp: 30
+      },
+      {
+        role: 'toolResult',
+        toolCallId: 'call_bash_1',
+        toolName: 'bash',
+        content: [{ type: 'text', text: hugeDump }],
+        isError: false,
+        timestamp: 40
+      }
+    ]
+
+    // 再追加 12 条近期消息以构成受保护尾部窗口
+    for (let i = 0; i < 6; i += 1) {
+      messages.push({
+        role: 'assistant',
+        content: [{ type: 'toolCall', id: `recent_${i}`, name: 'graph_read', arguments: {} }],
+        api: 'openai-completions',
+        provider: 'openrouter',
+        model: 'deepseek/deepseek-v4.1-flash',
+        usage: {
+          input: 115_000,
+          output: 50,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 115_050,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+        },
+        stopReason: 'toolUse',
+        timestamp: 100 + i * 2
+      })
+      messages.push({
+        role: 'toolResult',
+        toolCallId: `recent_${i}`,
+        toolName: 'graph_read',
+        content: [{ type: 'text', text: `recent output ${i}` }],
+        isError: false,
+        timestamp: 101 + i * 2
+      })
+    }
+
+    const beforeTokens = estimatePiMessagesTokens(messages)
+    expect(beforeTokens).toBeGreaterThan(110_000)
+
+    const compacted = compactPiContextMessages(messages, {
+      contextWindow: 128_000,
+      keepRecentMessages: 10
+    })
+
+    // system 消息与所有 toolCall <-> toolResult 配对完整保留
+    expect(compacted[0]?.role).toBe('system')
+    expect(compacted).toHaveLength(messages.length)
+    const firstToolResult = compacted[3] as Extract<AgentMessage, { role: 'toolResult' }>
+    expect(firstToolResult.toolCallId).toBe('call_bash_1')
+    const firstToolText = (firstToolResult.content[0] as { type: 'text'; text: string }).text
+    expect(firstToolText.length).toBeLessThan(2_000)
+    expect(firstToolText).toContain('历史工具输出已自动折叠')
+
+    // 压缩后最新前缀 timestamp 已推进，估算水位回落到真实字符量级（远低于 10K）
+    expect(estimatePiMessagesTokens(compacted)).toBeLessThan(10_000)
+
+    // 强制 /compact 时严格在 user 轮次边界裁剪，首条非 system 消息绝不会是孤立 toolResult
+    const multiTurn: AgentMessage[] = []
+    for (let t = 1; t <= 5; t += 1) {
+      multiTurn.push({ role: 'user', content: `turn ${t}`, timestamp: t * 10 })
+      multiTurn.push({
+        role: 'assistant',
+        content: [{ type: 'toolCall', id: `tc_${t}`, name: 'bash', arguments: {} }],
+        api: 'openai-completions',
+        provider: 'openai',
+        model: 'gpt-4o',
+        usage: {
+          input: 10,
+          output: 10,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 20,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+        },
+        stopReason: 'toolUse',
+        timestamp: t * 10 + 1
+      })
+      multiTurn.push({
+        role: 'toolResult',
+        toolCallId: `tc_${t}`,
+        toolName: 'bash',
+        content: [{ type: 'text', text: `res ${t}` }],
+        isError: false,
+        timestamp: t * 10 + 2
+      })
+    }
+    const forcePruned = compactPiContextMessages(multiTurn, {
+      contextWindow: 128_000,
+      force: true
+    })
+    expect(forcePruned[0]?.role).toBe('user')
+    expect(forcePruned).toHaveLength(9) // 精确保留最后 3 个完整 user 轮次（每轮 3 条）
+  })
+
+  it('6. 当模型在思维链阶段触发 stopReason="length"（0 工具调用、0 正文）时，finishTurn 自动续写并产出最终答复', async () => {
+    const testModel: Model<'openai-completions'> = {
+      id: 'deepseek/deepseek-v4.1-flash',
+      name: 'DeepSeek V4.1 Flash',
+      api: 'openai-completions',
+      provider: 'openrouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      input: ['text'],
+      reasoning: true,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 1_000_000,
+      maxTokens: 32_768
+    }
+
+    let callIdx = 0
+    let lengthContinuations = 0
+    let collectedText = ''
+
+    const agent = new Agent({
+      initialState: {
+        systemPrompt: 'Test agent',
+        model: testModel,
+        tools: []
+      },
+      streamFn: () => {
+        callIdx += 1
+        const stream = createAssistantMessageEventStream()
+        queueMicrotask(() => {
+          if (callIdx === 1) {
+            // 复现 s_mwcye014_16jfwv.json 第 88 条消息：仅吐出 1 个 thinking 块即因 length 截断，无 text、无 toolCall
+            const truncatedMsg: AssistantMessage = {
+              role: 'assistant',
+              content: [{ type: 'thinking', thinking: 'That' }],
+              api: 'openai-completions',
+              provider: 'openrouter',
+              model: testModel.id,
+              usage: {
+                input: 165_659,
+                output: 1,
+                cacheRead: 118_400,
+                cacheWrite: 0,
+                totalTokens: 284_060,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+              },
+              stopReason: 'length',
+              timestamp: Date.now()
+            }
+            stream.push({ type: 'done', reason: 'length', message: truncatedMsg })
+            stream.end(truncatedMsg)
+          } else {
+            const finalMsg: AssistantMessage = {
+              role: 'assistant',
+              content: [{ type: 'text', text: '已完成画布节点与逆向逻辑汇总。' }],
+              api: 'openai-completions',
+              provider: 'openrouter',
+              model: testModel.id,
+              usage: {
+                input: 165_700,
+                output: 24,
+                cacheRead: 118_400,
+                cacheWrite: 0,
+                totalTokens: 284_124,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+              },
+              stopReason: 'stop',
+              timestamp: Date.now()
+            }
+            stream.push({ type: 'start', partial: finalMsg })
+            stream.push({
+              type: 'text_delta',
+              contentIndex: 0,
+              delta: '已完成画布节点与逆向逻辑汇总。',
+              partial: finalMsg
+            })
+            stream.push({ type: 'done', reason: 'stop', message: finalMsg })
+            stream.end(finalMsg)
+          }
+        })
+        return stream
+      },
+      finishTurn: (turn) => {
+        if (turn.message.stopReason === 'length' && turn.toolResults.length === 0) {
+          if (lengthContinuations < 3) {
+            lengthContinuations += 1
+            agent.steer({
+              role: 'user',
+              content: '[System: Continue directly from where you stopped.]',
+              timestamp: Date.now()
+            })
+            return { action: 'continue' }
+          }
+        }
+        return undefined
+      }
+    })
+
+    agent.subscribe((ev) => {
+      if (ev.type === 'message_update' && ev.assistantMessageEvent.type === 'text_delta') {
+        collectedText += ev.assistantMessageEvent.delta
+      }
+    })
+
+    await agent.prompt('请根据 graph_read 结果给出完整分析')
+    expect(callIdx).toBe(2)
+    expect(lengthContinuations).toBe(1)
+    expect(collectedText).toBe('已完成画布节点与逆向逻辑汇总。')
   })
 })

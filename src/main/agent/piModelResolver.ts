@@ -16,6 +16,7 @@ import {
   DEEPSEEK_DEFAULT_BASE_URL,
   MODEL_PROVIDER_KINDS,
   OPENAI_DEFAULT_BASE_URL,
+  allowsEmptyApiKey,
   isCustomProvider,
   modalityConfig,
   resolveCustomApiStyle,
@@ -29,6 +30,13 @@ import { normalizeOpenAiTextModelId } from '@shared/modelProviders/openai/modelC
 
 /** OpenAI 兼容网关对单次请求 tools 数组长度的硬上限 */
 export const OPENAI_HARD_MAX_TOOLS = 128
+
+/**
+ * 底层请求体最小安全输出 Token 预算：
+ * 防止 pi-ai 的 clampMaxTokensToContext 在上下文估算偏高或窗口未知时把 max_completion_tokens 压到 1，
+ * 导致模型只吐出 1 个思维链 Token 就因 finish_reason="length" 静默退出。
+ */
+export const MIN_SAFE_OUTPUT_TOKENS = 4_096
 
 /** 进程内 Pi Agent 工具与返回结果类型（对齐 AgentState['tools']，避免显式 any） */
 export type RuntimeAgentTool = AgentState['tools'][number]
@@ -47,15 +55,28 @@ export interface ResolvedPiChatModel {
  */
 export function inferChatModelInputModalities(
   modelId: string,
-  provider?: Pick<ModelProviderInstance, 'providerKind' | 'baseUrl'>
+  provider?: Pick<ModelProviderInstance, 'providerKind' | 'baseUrl'>,
+  capabilities?: Record<string, unknown>
 ): ModelInputModality[] {
   const id = modelId.trim().toLowerCase()
   if (!id) return ['text']
 
-  // DeepSeek 官方 V3 / R1 目前仅支持纯文本对话
+  // 优先读取目录显式声明的多模态输入能力（如 OpenRouter architecture.input_modalities）
+  const arch = capabilities?.architecture as Record<string, unknown> | undefined
+  const declaredInputs = Array.isArray(capabilities?.input_modalities)
+    ? capabilities.input_modalities
+    : Array.isArray(arch?.input_modalities)
+      ? arch.input_modalities
+      : null
+  if (declaredInputs && declaredInputs.length > 0) {
+    const normalized = declaredInputs.map((x) => String(x).toLowerCase())
+    return normalized.includes('image') ? ['text', 'image'] : ['text']
+  }
+
+  // DeepSeek 官方 V3 / R1 / 纯文本 V4 目前仅支持纯文本对话（带 vl / vision / janus 除外）
   if (
     provider?.providerKind === 'deepseek' ||
-    /\bdeepseek-(chat|reasoner|coder|v2|v3|r1)\b/i.test(id)
+    /\bdeepseek-(chat|reasoner|coder|v2|v3|v4|flash|r1)\b/i.test(id)
   ) {
     if (!/\bvl\b|vision|janus/i.test(id)) {
       return ['text']
@@ -88,14 +109,131 @@ export function inferChatModelInputModalities(
 }
 
 /** 推断模型是否支持思维链（reasoning / extended thinking） */
-export function inferChatModelReasoning(modelId: string): boolean {
+export function inferChatModelReasoning(
+  modelId: string,
+  capabilities?: Record<string, unknown>
+): boolean {
+  const supportedParams = Array.isArray(capabilities?.supported_parameters)
+    ? capabilities.supported_parameters.map((x) => String(x).toLowerCase())
+    : []
+  if (supportedParams.includes('reasoning') || supportedParams.includes('include_reasoning')) {
+    return true
+  }
   const id = modelId.trim().toLowerCase()
   return (
-    /\b(reasoner|r1|qwq|qvq|o1|o3|o4|gpt-5|gpt-6|thinking)\b/i.test(id) ||
+    /\b(reasoner|r1|qwq|qvq|o1|o3|o4|gpt-5|gpt-6|thinking|deepseek-v4|deepseek-flash)\b/i.test(
+      id
+    ) ||
     /\bclaude-(3-7|sonnet-4|opus-4|4)/i.test(id) ||
     /\bgemini-(2\.5|3)/i.test(id) ||
     /\b(glm-z1|qwen3|deepseek-r1|seed-thinking)\b/i.test(id)
   )
+}
+
+function positiveFiniteInt(value: unknown): number | null {
+  const num = typeof value === 'number' ? value : Number.NaN
+  return Number.isFinite(num) && num >= 4_096 ? Math.round(num) : null
+}
+
+/**
+ * 解析文本模型真实上下文窗口（contextWindow）：
+ * 1) 优先读取供应商目录缓存中的 `capabilities.context_length`（如 OpenRouter 下 `deepseek/deepseek-v4.1-flash` 为 ~1M）；
+ * 2) 未缓存目录元数据时按主流模型 ID 家族精准匹配（对齐渲染进程 `ChatPanel.vue` 的窗口表）；
+ * 3) 彻底消除把 1M 窗口模型硬编码成 128K 导致会话进行到 ~130K–280K 时被 `clampMaxTokensToContext` 扼杀到 `max_completion_tokens: 1` 的缺陷。
+ */
+export function resolveChatModelContextWindow(
+  modelId: string,
+  provider?: Pick<ModelProviderInstance, 'providerKind'>,
+  capabilities?: Record<string, unknown>
+): number {
+  const topProvider = capabilities?.top_provider as Record<string, unknown> | undefined
+  const fromCatalog =
+    positiveFiniteInt(capabilities?.context_length) ??
+    positiveFiniteInt(topProvider?.context_length) ??
+    positiveFiniteInt(capabilities?.max_input_tokens)
+  if (fromCatalog) return fromCatalog
+
+  const raw = modelId.trim().toLowerCase()
+  // 剥离 OpenRouter / 聚合网关常见前缀（如 `deepseek/deepseek-v4.1-flash` -> `deepseek-v4.1-flash`）
+  const bare = raw.includes('/') ? raw.slice(raw.lastIndexOf('/') + 1) : raw
+
+  if (bare === 'qwen-long' || /\bqwen-long\b/.test(bare)) return 10_000_000
+  if (bare === 'moonshot-v1-8k') return 8_192
+  if (bare === 'moonshot-v1-32k' || bare === 'qwen-max') return 32_768
+
+  // 1M 级超长上下文家族
+  if (
+    /\b(deepseek-v4|deepseek-flash|gemini-|gpt-4\.1|gpt-5\.[4-9]|gpt-6|qwen3\.7|qwen-turbo)\b/.test(
+      bare
+    ) ||
+    /\bclaude-(?:opus|sonnet)-4-6\b/.test(bare)
+  ) {
+    return 1_048_576
+  }
+
+  // 400K 级（GPT-5 / 5.1 / 5.2 / 5.3 系列）
+  if (/\bgpt-5(?:\.[0-3])?(?:$|[-_])/.test(bare)) {
+    return 400_000
+  }
+
+  // 256K 级
+  if (/\b(kimi-k2\.5|doubao-|seed-|qwen3-coder|qwen3-max)\b/.test(bare)) {
+    return 262_144
+  }
+
+  // 200K 级（Claude 3/4/4.5、GLM-5、OpenAI o1/o3/o4、MiniMax）
+  if (/\b(claude-|glm-5|o1|o3|o4|codex-mini|minimax)\b/.test(bare)) {
+    return 200_000
+  }
+
+  // 128K 级明确匹配（DeepSeek V3/R1、GPT-4o、Kimi K2、GLM-4、Grok 3/4、Qwen Plus）
+  if (/\b(deepseek-|gpt-4o|chatgpt-4o|kimi-|moonshot-v1-128k|glm-4|grok-|qwen-plus)\b/.test(bare)) {
+    return 131_072
+  }
+
+  // 未知自定义模型 ID 按供应商类型保守给足窗口
+  if (provider?.providerKind === 'google') return 1_048_576
+  if (provider?.providerKind === 'openrouter') return 262_144
+  if (provider?.providerKind === 'anthropic') return 200_000
+  return 131_072
+}
+
+/**
+ * 解析单次回复最大生成 Token 上限（maxTokens）：
+ * 既为思维链 + 大工具调用留足空间（主流推理/长窗口模型 32K），又严格尊重 `deepseek-chat` (8K) 与 `gpt-4o` (16K) 等官方硬上限以防 HTTP 400。
+ */
+export function resolveChatModelMaxTokens(
+  modelId: string,
+  contextWindow: number,
+  capabilities?: Record<string, unknown>
+): number {
+  const halfWindow = Math.max(MIN_SAFE_OUTPUT_TOKENS, Math.floor(contextWindow / 2))
+  const topProvider = capabilities?.top_provider as Record<string, unknown> | undefined
+  const fromCatalog =
+    positiveFiniteInt(topProvider?.max_completion_tokens) ??
+    positiveFiniteInt(capabilities?.max_completion_tokens) ??
+    positiveFiniteInt(capabilities?.max_output_tokens)
+  if (fromCatalog) {
+    return Math.min(halfWindow, Math.min(65_536, Math.max(8_192, fromCatalog)))
+  }
+
+  const raw = modelId.trim().toLowerCase()
+  const bare = raw.includes('/') ? raw.slice(raw.lastIndexOf('/') + 1) : raw
+
+  if (bare === 'deepseek-chat' || bare === 'deepseek-coder' || bare === 'moonshot-v1-8k') {
+    return Math.min(halfWindow, 8_192)
+  }
+  if (/\b(gpt-4o|chatgpt-4o)\b/.test(bare)) {
+    return Math.min(halfWindow, 16_384)
+  }
+  if (
+    /\b(deepseek-v4|deepseek-flash|deepseek-reasoner|deepseek-r1|gpt-4\.1|gpt-5|gpt-6|o1|o3|o4|claude-|gemini-|qwen3|glm-5|kimi-k2)\b/.test(
+      bare
+    )
+  ) {
+    return Math.min(halfWindow, 32_768)
+  }
+  return Math.min(halfWindow, 16_384)
 }
 
 function normalizeAnthropicBaseUrl(rawBaseUrl: string): string {
@@ -137,8 +275,9 @@ export function resolvePiModelFromProviders(
     p: ModelProviderInstance,
     explicitModelId?: string
   ): ResolvedPiChatModel | null => {
-    const apiKey = p.apiKey?.trim() ?? ''
-    if (!apiKey) return null
+    const rawKey = p.apiKey?.trim() ?? ''
+    if (!rawKey && !allowsEmptyApiKey(p)) return null
+    const apiKey = rawKey || 'local'
     const textCfg = modalityConfig(p, 'text')
     const rawModelId =
       explicitModelId?.trim() ||
@@ -158,22 +297,23 @@ export function resolvePiModelFromProviders(
       (isCustomProvider(p) && resolveCustomApiStyle(p) === 'anthropic') ||
       /\/anthropic\/?$/i.test(rawBaseUrl)
 
-    const input = inferChatModelInputModalities(rawModelId, p)
-    const reasoning = inferChatModelReasoning(rawModelId)
+    const rawCapabilities = textCfg.catalog?.[rawModelId]?.capabilities
 
     if (isAnthropicProtocol) {
       const baseUrl = normalizeAnthropicBaseUrl(rawBaseUrl)
+      const contextWindow = resolveChatModelContextWindow(rawModelId, p, rawCapabilities)
+      const maxTokens = resolveChatModelMaxTokens(rawModelId, contextWindow, rawCapabilities)
       const model: Model<'anthropic-messages'> = {
         id: rawModelId,
         name: rawModelId,
         api: 'anthropic-messages',
         provider: p.providerKind === 'anthropic' ? 'anthropic' : p.id || 'anthropic',
         baseUrl,
-        input,
-        reasoning,
+        input: inferChatModelInputModalities(rawModelId, p, rawCapabilities),
+        reasoning: inferChatModelReasoning(rawModelId, rawCapabilities),
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 200_000,
-        maxTokens: 16_384
+        contextWindow,
+        maxTokens
       }
       return { model, apiKey, provider: p }
     }
@@ -188,7 +328,10 @@ export function resolvePiModelFromProviders(
       : isOfficialOpenAi
         ? normalizeOpenAiTextModelId(rawModelId, { hasTools: true })
         : rawModelId
+    const capabilities = rawCapabilities ?? textCfg.catalog?.[resolvedModelId]?.capabilities
     const baseUrl = normalizeOpenAiBaseUrl(p, rawBaseUrl)
+    const contextWindow = resolveChatModelContextWindow(resolvedModelId, p, capabilities)
+    const maxTokens = resolveChatModelMaxTokens(resolvedModelId, contextWindow, capabilities)
 
     const model: Model<'openai-completions'> = {
       id: resolvedModelId,
@@ -202,11 +345,11 @@ export function resolvePiModelFromProviders(
             ? 'deepseek'
             : p.id || p.providerKind,
       baseUrl,
-      input: inferChatModelInputModalities(resolvedModelId, p),
-      reasoning: inferChatModelReasoning(resolvedModelId),
+      input: inferChatModelInputModalities(resolvedModelId, p, capabilities),
+      reasoning: inferChatModelReasoning(resolvedModelId, capabilities),
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 128_000,
-      maxTokens: 16_384,
+      contextWindow,
+      maxTokens,
       compat: {
         // 禁用第三方网关常拒绝的 store / developer role 字段，并强制每次请求只发送当前激活工具集
         supportsStore: false,
@@ -218,7 +361,9 @@ export function resolvePiModelFromProviders(
     return { model, apiKey, provider: p }
   }
 
-  const enabledPool = providers.filter((p) => p.enabled && Boolean(p.apiKey?.trim()))
+  const enabledPool = providers.filter(
+    (p) => p.enabled && (Boolean(p.apiKey?.trim()) || allowsEmptyApiKey(p))
+  )
   const requestedProviderId = opts?.providerId?.trim()
   const requestedModelId = opts?.modelId?.trim()
 
@@ -491,19 +636,44 @@ export const piMultiApiStreamFn: StreamFn = (model, context, options) => {
 
 /**
  * 最后一道底层请求体安全阀（onPayload）：
- * 即使调用侧出现异常配置，也确保发往 OpenAI 兼容端点的 `tools` 数组永远 <= 128。
+ * 1) 即使调用侧出现异常配置，也确保发往 OpenAI 兼容端点的 `tools` 数组永远 <= 128；
+ * 2) 若 `pi-ai` 的 `clampMaxTokensToContext` 因估算偏高将 `max_completion_tokens` / `max_tokens` 扼杀至 `< 4096`（如 `1`），
+ *    自动抬升至 `MIN_SAFE_OUTPUT_TOKENS`（4096），杜绝只生成 1 个思维链 Token 就因 `finish_reason="length"` 静默退出的问题。
  */
 export function enforceOpenAiToolsLimitPayload(
   payload: unknown,
-  maxTools = OPENAI_HARD_MAX_TOOLS
+  maxTools = OPENAI_HARD_MAX_TOOLS,
+  minOutputTokens = MIN_SAFE_OUTPUT_TOKENS
 ): unknown {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload
   const record = payload as Record<string, unknown>
-  if (!Array.isArray(record.tools) || record.tools.length <= maxTools) return payload
-  return {
-    ...record,
-    tools: record.tools.slice(0, maxTools)
+  let changed = false
+  const next: Record<string, unknown> = { ...record }
+
+  if (Array.isArray(record.tools) && record.tools.length > maxTools) {
+    next.tools = record.tools.slice(0, maxTools)
+    changed = true
   }
+
+  if (
+    typeof record.max_completion_tokens === 'number' &&
+    record.max_completion_tokens > 0 &&
+    record.max_completion_tokens < minOutputTokens
+  ) {
+    next.max_completion_tokens = minOutputTokens
+    changed = true
+  }
+
+  if (
+    typeof record.max_tokens === 'number' &&
+    record.max_tokens > 0 &&
+    record.max_tokens < minOutputTokens
+  ) {
+    next.max_tokens = minOutputTokens
+    changed = true
+  }
+
+  return changed ? next : payload
 }
 
 function nextNonWsIndex(str: string, from: number): number {
