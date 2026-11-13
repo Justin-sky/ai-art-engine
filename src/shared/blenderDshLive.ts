@@ -83,13 +83,19 @@ export function phaseFromHarnessEvent(event: HarnessEvent): BlenderDshLivePhase 
     if (text.includes('排队') || text.includes('queue')) return 'queued' // cjk-ok（匹配 dsh 状态）
     if (text.includes('export') || text.includes('导出')) return 'export' // cjk-ok（匹配 dsh 状态）
     if (text.includes('screenshot') || text.includes('截图')) return 'screenshot' // cjk-ok（匹配 dsh 状态）
-    if (text.includes('启动') || text.includes('harness') || text.includes('dsh')) return 'start' // cjk-ok（匹配 dsh 状态）
+    if (
+      text.includes('启动') || // cjk-ok（匹配 Agent 状态）
+      text.includes('harness') ||
+      text.includes('pi') ||
+      text.includes('dsh')
+    )
+      return 'start'
     return null
   }
   if (event.type !== 'tool') return null
 
   const name = event.name.toLowerCase()
-  if (name === 'dsh-agent') return event.state === 'start' ? 'start' : null
+  if (name === 'pi-agent' || name === 'dsh-agent') return event.state === 'start' ? 'start' : null
   if (name === 'skill' || name.includes('skill')) return 'skill'
   if (name.includes('viewport') || name.includes('screenshot')) return 'screenshot'
   if (name.includes('export')) return 'export'

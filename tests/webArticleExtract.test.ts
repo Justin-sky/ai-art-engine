@@ -150,7 +150,10 @@ describe('本地无头浏览器网页图文提取服务 (webArticleExtractServic
     expect(mcpSrc).toContain("name: 'web_extract_article'")
     expect(mcpSrc).toContain('extractWebArticleWithHeadlessBrowser')
 
-    const harnessSrc = readFileSync(resolve('src/main/services/deepseekHarnessService.ts'), 'utf8')
+    const harnessSrc =
+      readFileSync(resolve('src/main/agent/piHarnessService.ts'), 'utf8') +
+      '\n' +
+      readFileSync(resolve('src/main/agent/piPersona.ts'), 'utf8')
     expect(harnessSrc).toContain('web_extract_article')
     expect(harnessSrc).toContain('[Studio Host Pre-Extracted Web Article')
   })

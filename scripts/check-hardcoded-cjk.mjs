@@ -55,8 +55,13 @@ const EXEMPT_FILES = new Set([
   // 主进程媒体处理服务：分离失败文案直接透传 UI（与渲染端 i18n 标题成对使用）
   'src/main/services/audioSeparationService.ts',
   // MCP / Agent 集成域：展示给外部 Agent 与开发者，非 UI 文案
-  'src/main/services/deepseekHarnessService.ts',
-  'src/main/services/deepseekHarnessFailure.ts',
+  'src/main/agent/mcpLazyToolsets.ts',
+  'src/main/agent/piGovernance.ts',
+  'src/main/agent/piHarnessService.ts',
+  'src/main/agent/piModelResolver.ts',
+  'src/main/agent/piPersona.ts',
+  'src/main/agent/piSessionStore.ts',
+  'src/main/agent/piWorkspaceTools.ts',
   'src/main/services/mcpServerService.ts',
   'src/main/services/webVideoFetchService.ts',
   'src/shared/blenderMcp.ts',

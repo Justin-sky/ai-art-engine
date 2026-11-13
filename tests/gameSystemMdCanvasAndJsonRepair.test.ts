@@ -1,8 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  prepareLooseToolArguments,
+  repairMalformedToolJsonString
+} from '../src/main/agent/piModelResolver'
 import { applySmartNodePatch, type GraphNode } from '../src/shared/graph'
 import { projectService } from '../src/main/services/projectService'
 import {
@@ -14,8 +17,7 @@ import { buildActiveWorkspaceContext } from '../src/renderer/src/features/mcp/bu
 import { useProjectStore } from '../src/renderer/src/stores/project'
 import { useWorkspaceStore } from '../src/renderer/src/stores/workspace'
 
-const RUNNER_PATH = resolve('src/main/services/aiartHeadlessRunner.template.mjs')
-const HARNESS_SRC = readFileSync(resolve('src/main/services/deepseekHarnessService.ts'), 'utf8')
+const PERSONA_SRC = readFileSync(resolve('src/main/agent/piPersona.ts'), 'utf8')
 const MCP_RUNNER_SRC = readFileSync(
   resolve('src/renderer/src/features/mcp/mcpTaskRunner.ts'),
   'utf8'
@@ -27,15 +29,6 @@ describe('asset.gameSystem canvas creation when .md file is open & malformed/tru
   })
 
   it('repairs 6.5KB+ graph_edit asset.gameSystem JSON with unescaped inner quotes, commas, and raw newlines', async () => {
-    const mod = (await import(pathToFileURL(RUNNER_PATH).href)) as {
-      repairMalformedToolJson: (raw: string) => string
-      wrapDsmlStream: (
-        source: AsyncIterable<Record<string, unknown>>,
-        options?: Record<string, unknown>,
-        getMode?: () => string
-      ) => AsyncGenerator<Record<string, unknown>>
-    }
-
     const padding = 'SLG王城争夺阶段规则说明与建筑解锁配表还原分析。'.repeat(260) // > 6400 chars
     const brokenRaw =
       `{"ops": [{"op": "node_upsert", "nodeId": "gdd_slg", "typeId": "asset.gameSystem", "title": "王城争夺策划案", "params": {"prompt": "${padding}` +
@@ -44,7 +37,7 @@ describe('asset.gameSystem canvas creation when .md file is open & malformed/tru
     // Confirm raw string fails native JSON.parse around char ~6400+ just like Screenshot 1
     expect(() => JSON.parse(brokenRaw)).toThrow()
 
-    const repaired = mod.repairMalformedToolJson(brokenRaw)
+    const repaired = repairMalformedToolJsonString(brokenRaw)
     const parsed = JSON.parse(repaired) as {
       ops: Array<{
         op: string
@@ -60,45 +53,13 @@ describe('asset.gameSystem canvas creation when .md file is open & malformed/tru
     expect(parsed.ops[0]?.params.prompt).toContain('"1备战 2争夺城市 3争夺核心城 4争夺中心城"')
     expect(parsed.ops[0]?.params.prompt).toContain('{"id": "301"}')
 
-    // Verify wrapDsmlStream repairs native `block-end` tool-call blocks automatically
-    async function* fakeStream(): AsyncGenerator<Record<string, unknown>> {
-      yield { type: 'block-start', index: 0, blockType: 'tool-call' }
-      yield {
-        type: 'tool-call-delta',
-        index: 0,
-        id: 'call_1',
-        name: 'mcp__studio__graph_edit',
-        argumentsDelta: brokenRaw
-      }
-      yield {
-        type: 'block-end',
-        index: 0,
-        block: {
-          type: 'tool-call',
-          id: 'call_1',
-          name: 'mcp__studio__graph_edit',
-          arguments: brokenRaw
-        }
-      }
-      yield { type: 'finish', reason: { kind: 'tool-calls' } }
-    }
-
-    const chunks: Array<Record<string, unknown>> = []
-    for await (const c of mod.wrapDsmlStream(fakeStream(), {}, () => 'craft')) {
-      chunks.push(c)
-    }
-    const endBlock = chunks.find((c) => c.type === 'block-end') as
-      { block: { arguments: string } } | undefined
-    expect(endBlock).toBeDefined()
-    expect(() => JSON.parse(endBlock!.block.arguments)).not.toThrow()
+    const looseArgs = prepareLooseToolArguments(brokenRaw)
+    expect(Array.isArray(looseArgs.ops)).toBe(true)
   })
 
-  it('enforces lightweight two-step node creation & max-tokens auto-recovery so giant GDD calls never stall silently', () => {
-    const runnerSrc = readFileSync(RUNNER_PATH, 'utf8')
-    expect(runnerSrc).toContain('MAX_TOKENS_AUTO_CONTINUES')
-    expect(runnerSrc).toContain("interim.reason?.kind !== 'max-tokens'")
-    expect(HARNESS_SRC).toContain('Two-Step Lightweight Canvas-First Rule (CRITICAL)')
-    expect(HARNESS_SRC).not.toContain('gameSystemSpecJson }` —')
+  it('enforces lightweight two-step node creation so giant GDD calls never stall silently', () => {
+    expect(PERSONA_SRC).toContain('Two-Step Lightweight Canvas-First Rule (CRITICAL)')
+    expect(PERSONA_SRC).not.toContain('gameSystemSpecJson }` —')
   })
 
   it('normalizes legacy gameSystemSpec / gameSystemSpecJson into params.text in smartPatch', () => {

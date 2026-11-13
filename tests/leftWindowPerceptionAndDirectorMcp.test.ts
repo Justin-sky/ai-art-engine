@@ -702,10 +702,11 @@ describe('Left window perception and 3D Director Stage MCP live editing', () => 
     unreg()
   })
 
-  it('intercepts and transpiles raw DSML tool-call markup in both llm/stream and chatMarkdown', async () => {
+  it('intercepts and transpiles raw DSML tool-call markup in both Pi stream recovery and chatMarkdown', async () => {
     const { renderChatMarkdown, stripChatDsmlMarkup } = await import('../src/shared/chatMarkdown')
-    const { parseDsmlToolCalls, stripDsmlFromText, wrapDsmlStream } =
-      await import('../src/main/services/aiartHeadlessRunner.template.mjs')
+    const { createAssistantMessageEventStream } = await import('@earendil-works/pi-ai')
+    const { parseDsmlToolCalls, stripDsmlFromText, wrapPiStreamWithDsmlRecovery } =
+      await import('../src/main/agent/piModelResolver')
 
     const screenshotDsml = `< | DSML | calls>
 < | DSML | invoke name="mcp__studio__graph_edit">
@@ -737,55 +738,86 @@ describe('Left window perception and 3D Director Stage MCP live editing', () => 
     expect(stripChatDsmlMarkup(partialStreamText)).toBe('我将为您隐藏林小满：')
     expect(stripDsmlFromText(partialStreamText)).toBe('我将为您隐藏林小满：')
 
-    // 3. Verify wrapDsmlStream suppresses DSML from text-delta and emits valid tool-call chunks
-    async function* fakeUpstream() {
-      yield { type: 'start', id: 'resp-1', model: 'deepseek-chat' }
-      yield { type: 'block-start', index: 0, blockType: 'text' }
-      yield { type: 'text-delta', index: 0, text: '好的，马上隐藏林小满。\n' }
-      yield { type: 'text-delta', index: 0, text: '< | DS' }
-      yield {
-        type: 'text-delta',
-        index: 0,
-        text: 'ML | calls>\n< | DSML | invoke name="mcp__studio__graph_edit">\n'
-      }
-      yield {
-        type: 'text-delta',
-        index: 0,
-        text: '< | DSML | parameter name="ops" string="false">[{"op":"hide_object","name":"林小满"}]</ | DSML | parameter>\n</ | DSML | invoke>\n</ | DSML | calls>'
-      }
-      yield { type: 'block-end', index: 0, block: { type: 'text', text: '' } }
-      yield {
-        type: 'finish',
-        reason: { kind: 'stop', raw: 'stop' }
-      }
+    // 3. Verify wrapPiStreamWithDsmlRecovery suppresses DSML from text_delta and emits native Pi toolcall events
+    const upstream = createAssistantMessageEventStream()
+    const baseMsg = {
+      role: 'assistant' as const,
+      content: [
+        {
+          type: 'text' as const,
+          text:
+            '好的，马上隐藏林小满。\n< | DSML | calls>\n< | DSML | invoke name="mcp__studio__graph_edit">\n' +
+            '< | DSML | parameter name="ops" string="false">[{"op":"hide_object","name":"林小满"}]</ | DSML | parameter>\n</ | DSML | invoke>\n</ | DSML | calls>'
+        }
+      ],
+      api: 'openai-completions' as const,
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      usage: {
+        input: 10,
+        output: 20,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 30,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+      },
+      stopReason: 'stop' as const,
+      timestamp: Date.now()
     }
+    upstream.push({ type: 'start', partial: baseMsg })
+    upstream.push({ type: 'text_start', contentIndex: 0, partial: baseMsg })
+    upstream.push({
+      type: 'text_delta',
+      contentIndex: 0,
+      delta: '好的，马上隐藏林小满。\n',
+      partial: baseMsg
+    })
+    upstream.push({ type: 'text_delta', contentIndex: 0, delta: '< | DS', partial: baseMsg })
+    upstream.push({
+      type: 'text_delta',
+      contentIndex: 0,
+      delta: 'ML | calls>\n< | DSML | invoke name="mcp__studio__graph_edit">\n',
+      partial: baseMsg
+    })
+    upstream.push({
+      type: 'text_delta',
+      contentIndex: 0,
+      delta:
+        '< | DSML | parameter name="ops" string="false">[{"op":"hide_object","name":"林小满"}]</ | DSML | parameter>\n</ | DSML | invoke>\n</ | DSML | calls>',
+      partial: baseMsg
+    })
+    upstream.push({
+      type: 'text_end',
+      contentIndex: 0,
+      content: baseMsg.content[0].text,
+      partial: baseMsg
+    })
+    upstream.push({ type: 'done', reason: 'stop', message: baseMsg })
+    upstream.end(baseMsg)
 
-    const emitted: Array<Record<string, unknown>> = []
-    for await (const chunk of wrapDsmlStream(fakeUpstream())) {
-      emitted.push(chunk as Record<string, unknown>)
+    const wrapped = wrapPiStreamWithDsmlRecovery(upstream, new Set(['graph_edit']))
+    const emitted: Array<{ type: string; [k: string]: unknown }> = []
+    for await (const chunk of wrapped) {
+      emitted.push(chunk as unknown as { type: string; [k: string]: unknown })
     }
 
     const textDeltas = emitted
-      .filter((c) => c.type === 'text-delta')
-      .map((c) => String(c.text))
+      .filter((c) => c.type === 'text_delta')
+      .map((c) => String(c.delta))
       .join('')
-    expect(textDeltas).toBe('好的，马上隐藏林小满。\n')
+    expect(textDeltas.trim()).toBe('好的，马上隐藏林小满。')
     expect(textDeltas).not.toContain('DSML')
 
-    const toolStarts = emitted.filter(
-      (c) => c.type === 'block-start' && c.blockType === 'tool-call'
-    )
-    expect(toolStarts).toHaveLength(1)
-
-    const toolDeltas = emitted.filter((c) => c.type === 'tool-call-delta')
-    expect(toolDeltas).toHaveLength(1)
-    expect(toolDeltas[0].name).toBe('mcp__studio__graph_edit')
-    expect(JSON.parse(String(toolDeltas[0].argumentsDelta))).toEqual({
+    const toolEnds = emitted.filter((c) => c.type === 'toolcall_end')
+    expect(toolEnds).toHaveLength(1)
+    const tc = toolEnds[0].toolCall as { name: string; arguments: Record<string, unknown> }
+    expect(tc.name).toBe('graph_edit')
+    expect(tc.arguments).toEqual({
       ops: [{ op: 'hide_object', name: '林小满' }]
     })
 
-    const finishChunk = emitted.find((c) => c.type === 'finish')
-    expect((finishChunk?.reason as { kind: string })?.kind).toBe('tool-calls')
+    const finalMsg = await wrapped.result()
+    expect(finalMsg.stopReason).toBe('toolUse')
   })
 
   it('sniffs actual JPEG magic bytes (FF D8 FF E0) when wrapped as data:image/png or .png so extension and visual check MIME stay consistent', async () => {

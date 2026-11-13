@@ -241,7 +241,7 @@ function stripComments(source: string): string {
 
 const SERVICE = read('src/main/services/skillMarketService.ts')
 const SERVICE_CODE = stripComments(SERVICE)
-const HARNESS = read('src/main/services/deepseekHarnessService.ts')
+const HARNESS = read('src/main/agent/piHarnessService.ts')
 const RUNTIME = read('src/main/services/claudeSkillRuntime.ts')
 const VIEW = read('src/renderer/src/views/MarketplaceView.vue')
 
@@ -324,7 +324,7 @@ describe('技能可见性守卫', () => {
       报的还是 "Cannot find package 'virtual:aiart-headless-runner-template'" 这种
       与调用点无关的错。路径共享走 `./dshPaths` 这个纯小文件。
     */
-    expect(SERVICE_CODE).not.toContain("from './deepseekHarnessService'")
+    expect(SERVICE_CODE).not.toContain("from '../agent/piHarnessService'")
     expect(SERVICE_CODE).toContain("from './dshPaths'")
   })
 

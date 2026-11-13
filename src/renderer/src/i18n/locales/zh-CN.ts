@@ -544,7 +544,7 @@ export default {
       }
     },
     skills: {
-      hint: 'AI 对话的 agent 通过 dsh 技能机制感知技能：把符合 dsh SKILL.md 格式（frontmatter name / description + 正文）的 .md 文件放进下方目录，下次对话自动生效；**插件市场**装上的技能包是目录形态（`<name>/SKILL.md`），也会出现在这里，但它们跟着所属工作流走 —— 卸载工作流时会一并删除，请勿手动改。应用内置技能由程序自动管理。',
+      hint: 'AI 对话的 Pi Agent 通过标准技能机制感知技能：把符合 SKILL.md 格式（frontmatter name / description + 正文）的 .md 文件放进下方目录，下次对话自动生效；**插件市场**装上的技能包是目录形态（`<name>/SKILL.md`），也会出现在这里，但它们跟着所属工作流走 —— 卸载工作流时会一并删除，请勿手动改。应用内置技能由程序自动管理。',
       dirPath: '技能目录',
       builtinCount: '内置技能 {count} 个（程序自动管理）',
       kind: {
@@ -1153,7 +1153,7 @@ export default {
         skillNameMismatch: '技能包的名称与目录里声明的不一致',
         skillNoDescription: '技能包的 SKILL.md 缺少 description',
         skillLegacyInvocationKey:
-          '技能包用了 dsh 不接受的旧写法（disableModelInvocation 等），请让作者改用 kebab-case',
+          '技能包用了旧版驼峰写法（disableModelInvocation 等），请让作者改用 kebab-case',
         unknown: '未知错误'
       }
     },
@@ -1298,7 +1298,7 @@ export default {
     },
     chat: {
       empty:
-        '向 DeepSeek Harness 描述任务，它会通过 MCP 调用本应用的生成工具（图片 / 视频 / 语音 / 3D 等）。',
+        '向 Pi Agent 描述任务，它会按需加载 MCP 工具并调用本应用的生成能力（图片 / 视频 / 语音 / 3D 等）。',
       placeholder:
         "输入任务，Enter 发送，Shift+Enter 换行；{'@'} 引用资产，支持粘贴截图/图片；/ 查看指令",
       send: '发送',
@@ -1667,7 +1667,7 @@ export default {
         done: '完成',
         loading: '正在加载 HTML…',
         empty:
-          '还没有可试玩 HTML。先运行上游「可玩 HTML 生成」（dsh），再对本节点 cook（npm + node build.mjs）；无工程时会写入样例。',
+          '还没有可试玩 HTML。先运行上游「可玩 HTML 生成」（Pi Agent），再对本节点 cook（npm + node build.mjs）；无工程时会写入样例。',
         mode2d: '2D Canvas',
         mode3d: '3D Three.js'
       }
@@ -6124,7 +6124,7 @@ export default {
       modelPoseNoMatch: 'Blender 未回传可用骨骼姿势',
       modelPoseFailed: '3D 姿势生成未完成',
       modelPoseExport: 'Blender 未导出姿势 GLB',
-      modelPoseDsh: '无法启动 dsh 作业（姿势）',
+      modelPoseDsh: '无法启动 Pi Agent 作业（姿势）',
       modelRigNoModel: '请先连接上游 3D 模型',
       modelRigNoTextModel: '请先在节点上选择文本模型',
       modelRigMcp: '请先启动 Blender 并启用 Blender MCP',
@@ -6154,11 +6154,12 @@ export default {
       worldExportNoWorld:
         '上游模型没有 world_id：导出端点只认空间世界生成节点给出的世界。请确认上游是「空间世界生成」节点（而不是 3D 模型生成 / 加工节点）；若这个世界是旧版本生成的、记录里从未存过 world_id，只能重新生成一次世界。',
       modelAnimExport: 'Blender 未导出动画 GLB',
-      modelAnimDsh: '无法启动 dsh 作业（动画）',
-      modelDshTimeout: 'dsh / Blender 作业超时（绑骨约 100 分钟、姿势约 60 分钟、动画约 120 分钟）',
+      modelAnimDsh: '无法启动 Pi Agent 作业（动画）',
+      modelDshTimeout:
+        'Pi Agent / Blender 作业超时（绑骨约 100 分钟、姿势约 60 分钟、动画约 120 分钟）',
       modelDshResult: '作业未写出有效 result.json',
       modelDshExport: '作业未导出 GLB',
-      modelDshStart: 'dsh 未能启动',
+      modelDshStart: 'Pi Agent 未能启动',
       blockedTitle: '无法开始执行',
       blockedMessage:
         '这条链与画布上正在执行的链共用上游节点。请等它跑完或先停止它；互不重叠的链可以并行执行。',
@@ -7081,7 +7082,7 @@ export default {
         hint: '双击节点调节情绪与模型；运行后输出结果图，此处可预览图库与提示词'
       },
       modelPose: {
-        hint: '连接上游已蒙皮 3D 模型，点选常用姿势或填写描述后运行。Cook 经 dsh 指挥 Blender 导出新 GLB，再接到 3D 导演台模型口。需要启动 Blender 并启用 Blender MCP。',
+        hint: '连接上游已蒙皮 3D 模型，点选常用姿势或填写描述后运行。Cook 经 Pi Agent 指挥 Blender 导出新 GLB，再接到 3D 导演台模型口。需要启动 Blender 并启用 Blender MCP。',
         presets: '常用姿势',
         instruction: '姿势指令',
         posePreview: '姿势预览',
@@ -7263,7 +7264,7 @@ export default {
         previewEmpty: '请先连接上游 3D 模型'
       },
       modelAnimation: {
-        hint: '连接上游已蒙皮模型，点选常用动作或填写描述后运行。Cook 经 dsh 指挥 Blender 做关键帧并导出带 AnimationClip 的 GLB。需要启动 Blender 并启用 Blender MCP。',
+        hint: '连接上游已蒙皮模型，点选常用动作或填写描述后运行。Cook 经 Pi Agent 指挥 Blender 做关键帧并导出带 AnimationClip 的 GLB。需要启动 Blender 并启用 Blender MCP。',
         animPreview: '动画预览',
         animHint:
           '按 fps 节拍推进当前帧，姿态按关键帧线性插值后驱动模型骨骼。拖动时间轴单帧定位，▶/❚❚ 播放暂停，循环到起帧。',
@@ -7288,8 +7289,8 @@ export default {
         live: {
           probe: '正在检查 Blender MCP…',
           prepare: '正在准备作业目录…',
-          queued: '排队等待 dsh…',
-          start: '正在启动 dsh…',
+          queued: '排队等待 Pi Agent…',
+          start: '正在启动 Pi Agent…',
           skill: '正在加载技能…',
           inspect: '正在读取场景…',
           landmark: '正在拟合关节标记…',
@@ -7300,7 +7301,7 @@ export default {
           export: '正在导出 GLB…',
           write: '正在写 result.json…',
           finalize: '正在收作业产物…',
-          error: 'dsh 报错'
+          error: 'Pi Agent 报错'
         }
       },
       upscale: {

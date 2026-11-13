@@ -9,10 +9,8 @@ import {
 describe('phaseFromHarnessEvent', () => {
   it('maps queue / start status and tool names', () => {
     expect(phaseFromHarnessEvent({ type: 'status', text: '排队等待 dsh…' })).toBe('queued')
-    expect(phaseFromHarnessEvent({ type: 'status', text: '正在启动 DeepSeek Harness…' })).toBe(
-      'start'
-    )
-    expect(phaseFromHarnessEvent({ type: 'tool', name: 'dsh-agent', state: 'start' })).toBe('start')
+    expect(phaseFromHarnessEvent({ type: 'status', text: '正在启动 Pi Agent…' })).toBe('start')
+    expect(phaseFromHarnessEvent({ type: 'tool', name: 'pi-agent', state: 'start' })).toBe('start')
     expect(phaseFromHarnessEvent({ type: 'tool', name: 'skill', state: 'start' })).toBe('skill')
     expect(phaseFromHarnessEvent({ type: 'tool', name: 'get_scene_info', state: 'start' })).toBe(
       'inspect'

@@ -145,7 +145,7 @@ describe('真实仓库的依赖树', () => {
     const { readFileSync } = await import('node:fs')
     const packages = JSON.parse(readFileSync('package-lock.json', 'utf8')).packages
     const excluded = readAsarExcluded(readFileSync('electron-builder.yml', 'utf8'))
-    expect(excluded.has('node-fetch')).toBe(true)
+    expect(excluded.has('chokidar')).toBe(true)
     expect(packages['node_modules/axios']).toBeTruthy()
     expect(findPackConflicts(['axios'], excluded, packages).conflicts).toEqual([])
   })

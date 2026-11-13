@@ -164,16 +164,17 @@ describe('入口与设置页迁移', () => {
   })
 })
 
-describe('第三方 MCP：中继与注入', () => {
+describe('第三方 MCP：中继与按需懒加载注入', () => {
   const MCP_SERVICE = read('src/main/services/mcpServerService.ts')
-  const HARNESS = read('src/main/services/deepseekHarnessService.ts')
+  const HARNESS = read('src/main/agent/piHarnessService.ts')
+  const LAZY = read('src/main/agent/mcpLazyToolsets.ts')
 
   it('MCP 服务路由 /mcp/ext/<id>，且停用的服务直接 403', () => {
     expect(MCP_SERVICE).toContain('externalMcpIdFromPath(url)')
     expect(MCP_SERVICE).toMatch(/configured\.enabled[\s\S]{0,160}403/)
   })
 
-  it('中继给外部工具名加命名空间（防与内建 72 个工具撞名）', () => {
+  it('中继给外部工具名加命名空间（防与内建工具撞名）', () => {
     expect(MCP_SERVICE).toMatch(/namespaceExternalMcpTool\(server\.id, tool\.name\)/)
     expect(MCP_SERVICE).toMatch(/stripExternalMcpToolPrefix\(server\.id, name\)/)
   })
@@ -197,25 +198,31 @@ describe('第三方 MCP：中继与注入', () => {
     expect(MCP_SERVICE).toMatch(/externalMcpHandlers\.clear\(\)/)
   })
 
-  it('dsh 每轮配置注入每条可用的外部服务，指向应用中继端点', () => {
-    expect(HARNESS).toMatch(/settingsService\.get\(\)\.externalMcp/)
-    expect(HARNESS).toMatch(/externalMcpEndpoint\(port, configured\.id\)/)
-    // 未启用 / 未配好的不挂：挂上去只会变成每次调用的报错
-    expect(HARNESS).toMatch(/if \(!configured \|\| !configured\.enabled\) continue/)
-    expect(HARNESS).toMatch(/if \(externalMcpUnusableReason\(configured\)\) continue/)
+  it('Pi Agent 按需懒加载可用外部服务（ext:<id>），自动过滤未启用或无效配置', () => {
+    expect(MCP_SERVICE).toContain('export function listConfiguredExternalMcpServers')
+    expect(MCP_SERVICE).toMatch(/if \(!configured \|\| !configured\.enabled\) continue/)
+    expect(MCP_SERVICE).toMatch(/if \(externalMcpUnusableReason\(configured\)\) continue/)
+    expect(LAZY).toContain('`ext:${ext.id}`')
+    expect(HARNESS).toContain('listConfiguredExternalMcpServers')
   })
 
-  it('注入的 mcp-client 带上模式 / runId 头（与内建工具面同等受约束）', () => {
-    expect(HARNESS).toMatch(/mcp-ext-[\s\S]{0,900}accessHeaders\(mode, runId\)/)
+  it('调用外部 MCP 工具时透传 mode / runId / sessionId 上下文（与内建工具同等受约束）', () => {
+    expect(MCP_SERVICE).toContain('export async function callInProcessMcpTool')
+    expect(HARNESS).toContain('callInProcessMcpTool')
+    expect(LAZY).toContain('isToolVisible(descriptor.access, view)')
   })
 
-  it('超时用该服务自己的配置，而不是内建那两条的 2 小时', () => {
-    expect(HARNESS).toMatch(/toolCallTimeoutMs: \$\{configured\.timeoutMs\}/)
+  it('外部 MCP 客户端沿用该服务自身的 timeoutMs 配置，而非内建工具超时', () => {
+    const EXT_CLIENT = read('src/main/services/externalMcpClient.ts')
+    expect(EXT_CLIENT).toContain('server.timeoutMs')
+    expect(MCP_SERVICE).toContain('getExternalMcpSession(server).callTool(bare, args)')
   })
 
-  it('第三方服务变化会重建常驻 worker（否则新工具这轮不出现）', () => {
-    expect(HARNESS).toContain('externalMcpFp: externalMcpFingerprint()')
-    expect(HARNESS).toMatch(/function externalMcpFingerprint/)
+  it('每轮实时读取最新外部 MCP 服务配置（无需重启进程即可生效）', () => {
+    expect(MCP_SERVICE).toMatch(
+      /listConfiguredExternalMcpServers\(\)[\s\S]{0,160}settingsService\.get\(\)\.externalMcp/
+    )
+    expect(LAZY).toContain('this.backend.listExternalServers()')
   })
 
   it('IPC 探测失败返回 ok:false 而不是抛错（原因要能显示在卡片上）', () => {

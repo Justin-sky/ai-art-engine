@@ -75,61 +75,33 @@ function threeModuleRawPlugin(): Plugin {
   }
 }
 
-/** 主进程：把常驻 dsh runner 模板打进 bundle，避免运行时再找散落的 .mjs */
-function aiartRunnerTemplatePlugin(): Plugin {
-  const virtualId = 'virtual:aiart-headless-runner-template'
-  const resolvedId = '\0' + virtualId
-  return {
-    name: 'aiart-runner-template',
-    resolveId(id) {
-      if (id === virtualId) return resolvedId
-      return null
-    },
-    load(id) {
-      if (id !== resolvedId) return null
-      const abs = resolve('src/main/services/aiartHeadlessRunner.template.mjs')
-      const source = readFileSync(abs, 'utf-8')
-      return `export default ${JSON.stringify(source)}`
-    }
-  }
-}
-
-/**
- * 主进程：把 dsh 审批应答插件模板同样打进 bundle。
- *
- * 与 runner 模板分开一个虚拟模块（而不是拼进同一份字符串）：应答器是安全关键的一小块，
- * 单独成文件才能在测试里当普通模块导入、用假 deps 驱动真实实现。
- */
-function aiartApprovalAnswererTemplatePlugin(): Plugin {
-  const virtualId = 'virtual:aiart-approval-answerer-template'
-  const resolvedId = '\0' + virtualId
-  return {
-    name: 'aiart-approval-answerer-template',
-    resolveId(id) {
-      if (id === virtualId) return resolvedId
-      return null
-    },
-    load(id) {
-      if (id !== resolvedId) return null
-      const abs = resolve('src/main/services/aiartApprovalAnswerer.template.mjs')
-      const source = readFileSync(abs, 'utf-8')
-      return `export default ${JSON.stringify(source)}`
-    }
-  }
-}
-
 export default defineConfig({
   main: {
-    // chokidar 特意不外置：Assets 目录 watchdog 在主进程里 import 它，而 electron-builder.yml
-    // 的 asar 排除清单（按 dsh 依赖闭包审计生成）把 chokidar / readdirp 排除在 asar 之外
-    // （dsh 运行时自带一份），外置时打包版会在 asar 内 require 不到 → 启动即
-    // "Cannot find module 'chokidar'"，主进程弹错误框、窗口永不出现（CI 冒烟只报「未就绪」）。
-    // 它是纯 ESM（type: module）、无顶层 await，直接打进 bundle 最稳，与 asar 规则解耦。
+    // chokidar 与 @earendil-works/pi-* 均为纯 ESM（exports 仅含 import），直接打进主进程 bundle；
+    // 而 pi-ai 下游的 CJS/双模 SDK（openai、@anthropic-ai/sdk、@google/genai、ws 等）通过 include 保持外置，
+    // 避免 Rollup CommonJS 插件将 ws 的可选原生 peerDep（bufferutil / utf-8-validate）提升为顶层抛错。
     ...watchIgnore(),
     plugins: [
-      externalizeDepsPlugin({ exclude: ['chokidar'] }),
-      aiartRunnerTemplatePlugin(),
-      aiartApprovalAnswererTemplatePlugin(),
+      externalizeDepsPlugin({
+        include: [
+          '@anthropic-ai/sdk',
+          '@google/genai',
+          'openai',
+          'http-proxy-agent',
+          'https-proxy-agent',
+          'partial-json',
+          'ws',
+          'bufferutil',
+          'utf-8-validate'
+        ],
+        exclude: [
+          'chokidar',
+          '@earendil-works/pi-ai',
+          '@earendil-works/pi-agent-core',
+          '@earendil-works/pi-schema',
+          '@earendil-works/pi-telemetry'
+        ]
+      }),
       skipEsbuildTranspile()
     ],
     resolve: {

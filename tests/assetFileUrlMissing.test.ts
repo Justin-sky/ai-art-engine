@@ -15,9 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * 调用方在类型上就分得清「没有文件」与「这是一条路径」。这里的用例真开一个临时工程、
  * 真读写磁盘文件，测的就是 handler 委托的那个方法。
  *
- * 为什么不直接 import src/main/ipc.ts 调注册好的 handler：它会连带 electron-vite 注入的
- * `virtual:aiart-headless-runner-template` 等虚拟模块（src/main/services/deepseekHarnessService.ts），
- * vitest 解析不了；把那一整片服务 mock 掉，测到的就不是真实 handler 了。
+ * 为什么不直接 import src/main/ipc.ts 调注册好的 handler：ipc.ts 会初始化整套主进程服务，
+ * 把那一整片服务 mock 掉，测到的就不是真实 handler 了。
  * handler 里只有一行 `projectService.getAssetFileUrl(relativePath)` 透传，因此按行为测这一行。
  */
 

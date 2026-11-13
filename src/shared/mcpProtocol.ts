@@ -19,6 +19,8 @@ export interface McpRequestContext {
   runId?: string
   /** 常驻 Harness worker 槽位标识（请求头 `X-AIArt-Worker-Slot`）：多会话并行时按槽位隔离模式与会话归属 */
   workerSlot?: string
+  /** 进程内 Pi Agent 直接调用时携带的会话 ID，支持多会话并发无锁归属 */
+  sessionId?: string
 }
 
 export interface McpToolDescriptor {

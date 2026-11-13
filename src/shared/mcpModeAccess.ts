@@ -95,7 +95,9 @@ const READ_TOOLS = new Set([
   'vision_local_ocr',
   'vision_local_yolo',
   'schedule_list',
-  'ask_user'
+  'load_toolset',
+  'ask_user',
+  'ask_user_question'
 ])
 
 /**

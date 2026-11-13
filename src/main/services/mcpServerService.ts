@@ -81,7 +81,8 @@ import {
   MCP_WORKER_SLOT_HEADER,
   normalizeChatMode,
   toolAccessOf,
-  type McpAccessView
+  type McpAccessView,
+  type McpToolAccess
 } from '@shared/mcpModeAccess'
 import {
   clearActiveHarnessRunState,
@@ -95,6 +96,7 @@ import {
 import {
   createMcpProtocolHandler,
   type McpRequestContext,
+  type McpToolCallOutcome,
   type McpToolImage
 } from '@shared/mcpProtocol'
 import {
@@ -209,6 +211,7 @@ import {
   stopBlenderMcp
 } from './blenderMcpService'
 import {
+  externalMcpUnusableReason,
   normalizeExternalMcpServer,
   externalMcpIdFromPath,
   namespaceExternalMcpTool,
@@ -8795,7 +8798,7 @@ function currentMcpRunInfo(): {
   return {
     runId: active?.runId ?? ctx?.runId,
     mode: active?.mode ?? ctx?.mode,
-    sessionId: active?.sessionId,
+    sessionId: active?.sessionId ?? ctx?.sessionId,
     workerSlot: ctx?.workerSlot
   }
 }
@@ -9643,6 +9646,200 @@ async function serveMcpEndpoint(
   } finally {
     req.off('close', onClose)
   }
+}
+
+export interface InProcessMcpToolDescriptor {
+  name: string
+  title?: string
+  description: string
+  inputSchema: Record<string, unknown>
+  access: McpToolAccess
+  source: 'studio' | 'blender' | 'external'
+  serverId?: string
+  serverName?: string
+}
+
+/**
+ * 供进程内 Pi Agent 运行时按需懒加载读取：返回全部 Studio 内建工具（不含原生接管的 ask_user）
+ * 与已启用时的 Blender 工具描述符。无需经过 HTTP loopback 往返。
+ */
+export function listInProcessStudioAndBlenderTools(opts?: {
+  includeBlenderWhenDisabled?: boolean
+}): InProcessMcpToolDescriptor[] {
+  const studioTools: InProcessMcpToolDescriptor[] = TOOL_DEFS.filter(
+    (tool) => tool.name !== 'ask_user'
+  ).map((tool) => ({
+    name: tool.name,
+    title: tool.title,
+    description: tool.description,
+    inputSchema: tool.inputSchema as Record<string, unknown>,
+    access: toolAccessOf(tool.name),
+    source: 'studio'
+  }))
+  const includeBlender = Boolean(opts?.includeBlenderWhenDisabled) || blenderMcpEnabled()
+  if (!includeBlender) return studioTools
+  const blenderTools: InProcessMcpToolDescriptor[] = blenderToolDescriptors().map((tool) => ({
+    name: tool.name,
+    title: tool.title,
+    description: tool.description,
+    inputSchema: tool.inputSchema as Record<string, unknown>,
+    access: blenderToolAccessOf(tool.name),
+    source: 'blender'
+  }))
+  return [...studioTools, ...blenderTools]
+}
+
+/** 列出当前设置中所有已启用且合法配置的第三方 MCP 服务 */
+export function listConfiguredExternalMcpServers(): ExternalMcpServer[] {
+  const raw = settingsService.get().externalMcp ?? []
+  const result: ExternalMcpServer[] = []
+  for (const item of raw) {
+    const configured = normalizeExternalMcpServer(item)
+    if (!configured || !configured.enabled) continue
+    if (externalMcpUnusableReason(configured)) continue
+    result.push(configured)
+  }
+  return result
+}
+
+/** 按需拉取指定第三方 MCP 服务的工具列表（带 `<serverId>__` 命名空间前缀） */
+export async function listInProcessExternalMcpTools(
+  serverId: string
+): Promise<InProcessMcpToolDescriptor[]> {
+  const server = listConfiguredExternalMcpServers().find((item) => item.id === serverId)
+  if (!server) return []
+  try {
+    const session = getExternalMcpSession(server)
+    const tools = await session.listTools()
+    return tools.map((tool) => {
+      const namespaced = namespaceExternalMcpTool(server.id, tool.name)
+      return {
+        name: namespaced,
+        title: tool.title,
+        description: tool.description ?? '',
+        inputSchema: (tool.inputSchema ?? {
+          type: 'object',
+          properties: {}
+        }) as Record<string, unknown>,
+        access: toolAccessOf(namespaced),
+        source: 'external',
+        serverId: server.id,
+        serverName: server.name
+      }
+    })
+  } catch (err) {
+    dropExternalMcpSession(server.id)
+    console.warn(`[mcp] listInProcessExternalMcpTools("${serverId}") failed:`, err)
+    return []
+  }
+}
+
+function stripLegacyMcpNamespace(rawName: string): string {
+  if (rawName.startsWith('mcp__studio__')) return rawName.slice('mcp__studio__'.length)
+  if (rawName.startsWith('mcp__blender__')) return rawName.slice('mcp__blender__'.length)
+  if (rawName.startsWith('studio__')) return rawName.slice('studio__'.length)
+  if (rawName.startsWith('blender__')) return rawName.slice('blender__'.length)
+  return rawName
+}
+
+/**
+ * 供进程内 Pi Agent 直接调用任一 Studio / Blender / 第三方外部 MCP 工具：
+ * 保持与 HTTP `/mcp` 完全一致的模式硬约束（Ask / Plan）、会话上下文归属、审计日志与图片载荷拆分。
+ */
+export async function callInProcessMcpTool(
+  rawName: string,
+  args: Record<string, unknown>,
+  ctx?: McpRequestContext
+): Promise<McpToolCallOutcome> {
+  const name = stripLegacyMcpNamespace(rawName.trim())
+  if (ctx?.signal?.aborted) {
+    return { error: '调用已取消' }
+  }
+
+  // 1) Blender 工具
+  const blenderSpec = blenderToolSpec(name)
+  if (blenderSpec) {
+    if (!blenderMcpEnabled()) {
+      return { error: 'Blender 工具面已在设置中禁用' }
+    }
+    const denial = denialReasonForTool(blenderSpec.access, accessViewFor(ctx))
+    if (denial) {
+      auditDeniedToolCall(name, args, denial)
+      return { error: denial }
+    }
+    const startedAt = Date.now()
+    const outcome = await mcpCallContextStorage.run(ctx ?? {}, () =>
+      runBlenderTool(blenderSpec, args)
+    )
+    appendMcpAudit({
+      tool: `blender.${name}`,
+      ok: !outcome.error,
+      durationMs: Date.now() - startedAt,
+      args,
+      error: outcome.error
+    })
+    return outcome
+  }
+
+  // 2) Studio 内建工具
+  if (TOOL_DEFS.some((tool) => tool.name === name)) {
+    const denial = denialReasonForTool(toolAccessOf(name), accessViewFor(ctx))
+    if (denial) {
+      auditDeniedToolCall(name, args, denial)
+      return { error: denial }
+    }
+    try {
+      const payload = (await handleToolCall(name, JSON.stringify({ arguments: args }), ctx)) as {
+        ok?: boolean
+        result?: unknown
+        error?: string
+      }
+      if (payload && payload.ok === false) return { error: payload.error ?? '未知错误' }
+      const outcome = splitToolImages((payload as { result?: unknown }).result ?? null)
+      return {
+        result: outcome.result,
+        ...(outcome.images.length ? { images: outcome.images } : {})
+      }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  // 3) 第三方外部 MCP 工具（`<serverId>__<bareName>`，也兼容 `mcp__ext_<serverId>__<bareName>`）
+  const normalizedExtName = name.replace(/^mcp__ext_([a-z0-9_-]+)__/i, '$1__')
+  for (const server of listConfiguredExternalMcpServers()) {
+    const bare = stripExternalMcpToolPrefix(server.id, normalizedExtName)
+    if (bare !== null) {
+      const denial = denialReasonForTool(toolAccessOf(normalizedExtName), accessViewFor(ctx))
+      if (denial) {
+        auditDeniedToolCall(normalizedExtName, args, denial)
+        return { error: denial }
+      }
+      const startedAt = Date.now()
+      try {
+        const result = await getExternalMcpSession(server).callTool(bare, args)
+        appendMcpAudit({
+          tool: normalizedExtName,
+          ok: true,
+          durationMs: Date.now() - startedAt,
+          args
+        })
+        return { result: normalizeExternalToolResult(result) }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        appendMcpAudit({
+          tool: normalizedExtName,
+          ok: false,
+          durationMs: Date.now() - startedAt,
+          args,
+          error: errorMessage
+        })
+        return { error: errorMessage }
+      }
+    }
+  }
+
+  return { error: `未知工具：${rawName}` }
 }
 
 /** 供测试注入：当前 token（仅测试用途） */

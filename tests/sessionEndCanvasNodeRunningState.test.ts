@@ -28,7 +28,10 @@ import { mergeSubsetGraphIntoBase, useGraphTaskStore } from '../src/renderer/src
 import { useProjectStore } from '../src/renderer/src/stores/project'
 import { useWorkspaceStore } from '../src/renderer/src/stores/workspace'
 
-const HARNESS_SRC = readFileSync(resolve('src/main/services/deepseekHarnessService.ts'), 'utf8')
+const HARNESS_SRC =
+  readFileSync(resolve('src/main/agent/piHarnessService.ts'), 'utf8') +
+  '\n' +
+  readFileSync(resolve('src/main/agent/piPersona.ts'), 'utf8')
 const MCP_SERVER_SRC = readFileSync(resolve('src/main/services/mcpServerService.ts'), 'utf8')
 
 interface MountedTestCanvas {
@@ -454,9 +457,9 @@ describe('会话结束与直接写入正文时的画布节点运行态收敛（�
     expect(runRes.states.gdd_fast?.status).toBe('done')
     expect(buildDirectContentDoneState(gddNode)?.status).toBe('done')
 
-    // 主进程 finishTurn 与一句话游戏脱钩保护契约校验
+    // 主进程结束清理与一句话游戏脱钩保护契约校验
     expect(HARNESS_SRC).toContain(
-      "abortActiveMcpCanvasRuns('会话已结束', finishedSessionId, { skipDetached: true })"
+      "abortActiveMcpCanvasRuns('会话已结束', publicSessionId, { skipDetached: true })"
     )
     expect(HARNESS_SRC).toContain('DO NOT call `task_run`')
     expect(MCP_SERVER_SRC).toContain('keepAliveAfterSessionEnd: true')

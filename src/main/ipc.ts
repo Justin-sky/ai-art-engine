@@ -90,7 +90,7 @@ import {
   steerHarnessTurn,
   writeDshSkillsTemplate,
   writeHarnessTextFile
-} from './services/deepseekHarnessService'
+} from './agent/piHarnessService'
 import {
   inspectGitHubSkillSource,
   installGitHubSkills,

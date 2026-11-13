@@ -17,7 +17,7 @@ const read = (p: string): string => readFileSync(resolve(ROOT, p), 'utf8')
 const CHAT = read('src/renderer/src/components/ChatPanel.vue')
 const HISTORY = read('src/renderer/src/composables/useChatHistory.ts')
 const IPC = read('src/shared/ipc.ts')
-const HARNESS = read('src/main/services/deepseekHarnessService.ts')
+const HARNESS = read('src/main/agent/piGovernance.ts')
 const ZH = read('src/renderer/src/i18n/locales/zh-CN.ts')
 const EN = read('src/renderer/src/i18n/locales/en-US.ts')
 

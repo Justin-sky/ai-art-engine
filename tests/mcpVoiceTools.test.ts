@@ -10,7 +10,7 @@ import {
 
 const SRC = readFileSync(resolve('src/main/services/mcpServerService.ts'), 'utf8')
 const SMART_PATCH_SRC = readFileSync(resolve('src/shared/graph/smartPatch.ts'), 'utf8')
-const HARNESS_SRC = readFileSync(resolve('src/main/services/deepseekHarnessService.ts'), 'utf8')
+const HARNESS_SRC = readFileSync(resolve('src/main/agent/piPersona.ts'), 'utf8')
 
 describe('对话解析（图节点共用）', () => {
   it('按行解析「说话人: 台词」，中英文冒号都认', () => {

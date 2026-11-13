@@ -108,7 +108,16 @@ const TOOL_TITLE_ZH: Record<string, string> = {
   subagent_fork: '分叉子代理任务',
   send_message: '向子代理发送指令',
   todo_write: '更新任务清单',
-  present: '交付成果文件'
+  present: '交付成果文件',
+  present_files: '交付成果文件',
+  'pi-agent': 'Pi 智能体',
+  'dsh-agent': 'Pi 智能体',
+  load_toolset: '按需加载工具包',
+  search: '检索文件与内容',
+  goal_manage: '更新自主目标',
+  schedule_manage: '管理定时提醒',
+  spawn_subagent: '派发领域子代理',
+  session_export: '导出会话归档'
 }
 
 const TOOL_TITLE_EN: Record<string, string> = {
@@ -154,7 +163,16 @@ const TOOL_TITLE_EN: Record<string, string> = {
   vision_local_ocr: 'Local OCR Text Recognition',
   vision_local_yolo: 'Local Vision Detection (YOLO/SAM2)',
   project_git_status: 'Project Git Status',
-  project_git_diff: 'Project Git Diff'
+  project_git_diff: 'Project Git Diff',
+  'pi-agent': 'Pi Agent',
+  'dsh-agent': 'Pi Agent',
+  load_toolset: 'Load Toolset',
+  search: 'Search Files & Content',
+  present_files: 'Present Deliverables',
+  goal_manage: 'Manage Autonomous Goal',
+  schedule_manage: 'Manage Schedule',
+  spawn_subagent: 'Spawn Domain Subagent',
+  session_export: 'Export Session Archive'
 }
 
 /** 获取工具在对话流中的友好显示名称 */

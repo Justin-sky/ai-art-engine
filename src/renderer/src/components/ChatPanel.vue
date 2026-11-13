@@ -2425,7 +2425,7 @@ function stepIcon(step: string): string {
 }
 
 function isInlineStreamTool(tm: ChatMsg & { kind: 'tool' }): boolean {
-  if (tm.name === 'dsh-agent' && tm.state !== 'error') return false
+  if ((tm.name === 'pi-agent' || tm.name === 'dsh-agent') && tm.state !== 'error') return false
   if (tm.parentId) return false
   return true
 }
@@ -3195,7 +3195,11 @@ function handleBackgroundHarnessEvent(targetSid: string, event: HarnessEvent): v
         if (errMsg) {
           for (let i = session.messages.length - 1; i >= rt.sessionStart; i--) {
             const m = session.messages[i]
-            if (m?.kind === 'tool' && m.key === 'tool:dsh-agent' && !m.detail) {
+            if (
+              m?.kind === 'tool' &&
+              (m.key === 'tool:pi-agent' || m.key === 'tool:dsh-agent') &&
+              !m.detail
+            ) {
               m.detail = errMsg
               break
             }
@@ -3246,7 +3250,7 @@ function onHarnessEvent(event: HarnessEvent): void {
           preferLightning: /graph_|canvas_|node_|cook|gen|split|render/i.test(event.name)
         })
       }
-      // dsh-agent 等 harness 工具卡：同一会话内按 key 去重（优先 callId 实例，无则按名字回退），
+      // pi-agent 等 harness 工具卡：同一会话内按 key 去重（优先 callId 实例，无则按名字回退），
       // 状态变更时原地更新，不要保留一张"执行中"的同时再新增一张"完成"
       // 子代理的 callId 只在它自己的会话内唯一，挂上父卡片 id 才能与主代理的卡片区分
       const key = event.parentId
@@ -3417,7 +3421,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       rt.waitingInput = hasUnansweredPromptOrApproval(messages.value)
       const errMsg = (event.message ?? '').trim()
       if (errMsg) {
-        const agentCard = findToolByKey('tool:dsh-agent')
+        const agentCard = findToolByKey('tool:pi-agent') ?? findToolByKey('tool:dsh-agent')
         if (agentCard && !agentCard.detail) {
           agentCard.detail = errMsg
           commitMessages([...messages.value])

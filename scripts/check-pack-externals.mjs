@@ -38,10 +38,15 @@ if (bundles.length === 0) {
 const builderConfig = readFileSync(join(root, 'electron-builder.yml'), 'utf8')
 const excluded = readAsarExcluded(builderConfig)
 
-// 2) bundle 里 require 到的第三方包（排除相对路径、内置模块）
+// 2) bundle 里 require 到的第三方包（排除相对路径、内置模块），同时拦截被 Rollup 提升为顶层抛错的 __viteOptionalPeerDep
 const externals = new Set()
+const hoistedOptionalPeerDeps = new Set()
 for (const file of bundles) {
-  for (const match of readFileSync(file, 'utf8').matchAll(/require\((["'])([^"']+)\1\)/g)) {
+  const code = readFileSync(file, 'utf8')
+  for (const m of code.matchAll(/Could not resolve "([^"]+)" imported by "([^"]+)"/g)) {
+    hoistedOptionalPeerDeps.add(`${m[1]} (imported by ${m[2]})`)
+  }
+  for (const match of code.matchAll(/require\((["'])([^"']+)\1\)/g)) {
     const specifier = match[2]
     const isBuiltin = specifier.startsWith('node:') || builtinModules.includes(specifier)
     if (specifier.startsWith('.') || specifier.startsWith('/') || isBuiltin) continue
@@ -61,6 +66,17 @@ for (const file of bundles) {
 // 运行时 require 得到。逻辑与原因见 scripts/lib/pack-externals.mjs（那里有单测）。
 const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'))
 const { conflicts, visited } = findPackConflicts(externals, excluded, lock.packages ?? {})
+
+if (hoistedOptionalPeerDeps.size > 0) {
+  console.error(
+    '[check-pack-externals] 主进程 / preload bundle 中检测到被 Rollup 提升为顶层抛错的可选 peerDep：'
+  )
+  for (const item of hoistedOptionalPeerDeps) console.error(`  - ${item}`)
+  console.error(
+    '修复：在 electron.vite.config.ts 的 externalizeDepsPlugin({ include: [...] }) 中将导入方设为外置。'
+  )
+  process.exit(1)
+}
 
 if (conflicts.length > 0) {
   console.error(
