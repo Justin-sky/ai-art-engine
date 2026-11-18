@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [9.0.3] — 2026-11-18
+
+9.0.3 画布排版、小地图体验与多语言补丁版：优化 **画布小地图（`minimapGeometry`）双向自动居中与四周安全内边距**、升级 **大批量无连线孤立节点（如音效/图标矩阵）自动折行排成多列横屏网格（`layout`）**，并补齐 **模型设置页与任务弹窗全部动态多语言词条及回退链保护（`zh-CN` / `en-US` / `ModelsPanel`）**。
+
+- **优化 · 画布小地图双向居中与安全内边距（`src/renderer/src/graph/minimapGeometry`）**：`computeMinimapTransform` 改为水平与垂直双向居中映射并默认保留 `8px` 四周安全内边距（`DEFAULT_MINIMAP_INSET = 8`），`resolveMinimapWorldBounds` 单节点兜底扩充保持中心对称，彻底解决窄高节点列在小地图中贴死最左边缘的问题。
+- **优化 · 批量无连线独立节点多列网格折行与超长拓扑列拆分（`src/shared/graph/layout`）**：当画布存在 `>= 4` 个无连线孤立节点时，`autoLayoutNodes` 自动按约 `1.5:1` 横屏比例计算列数并按阅读顺序折行排成整齐多列矩阵（二次自动布局幂等不变形，混合工作流中自动排布于连通 DAG 下方）；单层连通节点超过 `8` 个时自动在层内拆分为并排子列。
+- **修复 · 模型设置页与任务列表动态多语言键补齐（`src/renderer/src/i18n/*` + `ModelsPanel` + `GraphTaskListDialog`）**：补齐 `openrouterModalityHint` 全模态、`credentialsHint.elevenlabs`、`minimax`/`dashscope` 音乐页签说明、`spatialWorld` 说明与全部 24 项 `McpActivityTool` 任务标签，增加 `te(...)` 防御校验与精确 `fallbackLocale` 映射，消除 `[intlify]` 控制台告警。
+
 ## [9.0.2] — 2026-11-13
 
 9.0.2 智能体持续自愈与网络/生图容灾升级版：针对 **内置 Pi Agent 运行时（`piPayloadGuard` + `piSelfHealing` + `piHarnessService`）** 新增 **8 MB 请求字节水位硬防线与历史大载荷落盘卸载**、**未收尾承诺意图检测与瞬态断连/载荷超限自动自愈续跑**；针对 **外部 MCP（`externalMcpClient` + `mcpServerService`）** 新增 **外部高版本系统 Node.js 运行时自动探测（修复 `rea` 等 Node 版本限制）**；并打通 **主进程系统代理隧道（`127.0.0.1:7890` / PAC / WinINET）、TLS 握手闪断重试与生图跨渠道自动容灾回退（`systemProxyTransport` + `modelProviders`）**。
