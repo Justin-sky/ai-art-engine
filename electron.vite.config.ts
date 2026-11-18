@@ -146,6 +146,7 @@ export default defineConfig({
     }
   },
   renderer: {
+    clearScreen: false,
     ...watchIgnore(),
     resolve: {
       alias: {

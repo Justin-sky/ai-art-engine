@@ -24,7 +24,6 @@ import SelectNodeInspector from '../components/SelectNodeInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
 import IconPackInspector from '../components/IconPackInspector.vue'
 import LayerSplitInspector from '../components/LayerSplitInspector.vue'
-import UiComponentLibInspector from '../components/UiComponentLibInspector.vue'
 import UiGenInspector from '../components/UiGenInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import DecisionsJudgeInspector from '../components/DecisionsJudgeInspector.vue'
@@ -221,11 +220,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'ui.gen'
   },
   {
-    id: 'studio.graph.uiComponentLib',
-    component: UiComponentLibInspector,
-    nodeTypeId: 'ui.componentLib'
-  },
-  {
     id: 'studio.graph.anim2d',
     component: Anim2dInspector,
     nodeTypeId: 'anim.2d'
@@ -393,7 +387,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     match: (target) => {
       if (target.kind !== 'graph.node') return false
       const n = target.subject as GraphNode | null
-      return n?.typeId === 'image.layerSplit' || n?.typeId === 'ui.atlasCompose'
+      return n?.typeId === 'image.layerSplit'
     }
   },
   {

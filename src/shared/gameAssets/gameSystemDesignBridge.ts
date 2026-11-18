@@ -1468,7 +1468,7 @@ export function synthesizeGameSystemDocOffline(opts: SynthesizeGameSystemDocOpti
       `- **核心玩法循环（Core Loop）**：${arch.coreLoopZh}`,
       `- **上下游系统耦合关系**：`,
       `  - 上游可选接入 **机制设计 (\`game.economy\`)**、**数值系统 (\`game.numerical\`)** 与 **小说 IP (\`asset.novel\`)**，接入后自动注入结算公式、配表与世界观设定；`,
-      `  - 下游驱动 **UI 界面拆分 (\`ui.split\`) ➔ UI 界面生成 (\`ui.gen\`) ➔ UI 图层分离 (\`image.layerSplit\`)** 或 **图集拼装 UI (\`ui.atlasCompose\`)**。`,
+      `  - 下游驱动 **UI 界面拆分 (\`ui.split\`) ➔ UI 界面生成 (\`ui.gen\`) ➔ UI 图层分离 (\`image.layerSplit\`)**。`,
       ``,
       `# 系统目标`,
       `- **玩家体验目标**：${arch.playerGoalZh}`,

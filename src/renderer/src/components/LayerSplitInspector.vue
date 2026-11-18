@@ -4,11 +4,7 @@
       <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
-      {{
-        isAtlasCompose
-          ? t('graph.inspector.atlasCompose.hint')
-          : t('graph.inspector.layerSplit.hint')
-      }}
+      {{ t('graph.inspector.layerSplit.hint') }}
     </p>
 
     <GraphNodeRunControl
@@ -21,72 +17,66 @@
 
     <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
 
-    <label v-if="!isAtlasCompose" class="field-block">
-      <span class="field-label">{{ t('graph.layerSplit.splitMode') }}</span>
-      <select class="select" :value="state.splitMode || 'auto'" @change="onSplitModeChange">
-        <option v-for="mode in splitModeOptions" :key="mode.id" :value="mode.id">
-          {{ mode.label }}
-        </option>
-      </select>
-      <span class="mode-hint">{{ activeStrategyHint }}</span>
-    </label>
+    <ImageGenerateModelField
+      :open="Boolean(node)"
+      :label="t('graph.layerSplit.splitModelLabel')"
+      :empty-label="t('graph.layerSplit.noSeedreamProModels')"
+      :model-filter="isSeedreamSplitOption"
+      :generate-model="node.params.generateModel ?? ''"
+      :generate-provider-instance-id="node.params.generateProviderInstanceId ?? ''"
+      @change="onModelChange"
+    />
 
-    <label
-      v-if="effectiveStrategy !== 'local-slice'"
-      class="field-block"
-      :title="t('graph.layerSplit.visionModelHint')"
-    >
-      <span class="field-label">{{ t('graph.layerSplit.visionModelLabel') }}</span>
-      <select class="select" :value="visionSelectionKey" @change="onVisionModelChange">
-        <option value="">{{ t('graph.layerSplit.visionModelAuto') }}</option>
-        <option v-for="opt in visionModelOptions" :key="opt.key" :value="opt.key">
-          {{ opt.label }}
-        </option>
-      </select>
-      <span class="mode-hint">{{ t('graph.layerSplit.visionModelHint') }}</span>
-    </label>
+    <ImageGenerateModelField
+      :open="Boolean(node)"
+      :label="t('graph.layerSplit.repairModelLabel')"
+      :generate-model="node.params.repairModel ?? ''"
+      :generate-provider-instance-id="node.params.repairProviderInstanceId ?? ''"
+      @change="onRepairModelChange"
+    />
 
-    <template v-if="effectiveStrategy !== 'local-slice'">
-      <ImageGenerateModelField
-        :open="Boolean(node)"
-        :generate-model="node.params.generateModel ?? ''"
-        :generate-provider-instance-id="node.params.generateProviderInstanceId ?? ''"
-        @change="onModelChange"
-      />
-
+    <div class="field-row">
       <label class="field-block">
         <span class="field-label">{{ t('graph.layerSplit.resolution') }}</span>
         <select class="select" :value="state.resolution" @change="onResolutionChange">
           <option v-for="res in resolutions" :key="res" :value="res">{{ res }}</option>
         </select>
       </label>
-    </template>
 
-    <label class="field-block">
-      <span class="field-label">{{ t('graph.layerSplit.prompt') }}</span>
-      <textarea
-        class="prompt"
-        :value="state.prompt"
-        rows="4"
-        :placeholder="t('graph.layerSplit.promptPlaceholder')"
-        @change="onPromptChange"
-      />
-    </label>
+      <label class="field-block">
+        <span class="field-label">{{ t('graph.layerSplit.maxLayers') }}</span>
+        <select class="select" :value="state.maxLayers ?? 0" @change="onMaxLayersChange">
+          <option v-for="opt in maxLayersChoices" :key="opt" :value="opt">
+            {{ formatMaxLayersLabel(opt) }}
+          </option>
+        </select>
+      </label>
+    </div>
 
-    <div class="preset-block">
-      <span class="preset-label">{{ t('graph.layerSplit.presets') }}</span>
+    <div class="field-block">
+      <div class="field-label-row">
+        <span class="field-label">{{ t('graph.layerSplit.prompt') }}</span>
+        <span class="field-sub">{{ t('graph.layerSplit.presets') }}</span>
+      </div>
       <div class="preset-chips">
         <button
-          v-for="preset in presetOptions"
+          v-for="preset in presetItems"
           :key="preset.id"
           type="button"
           class="preset-chip"
-          :class="{ active: isPresetActive(preset.prompt) }"
-          @click="applyPreset(preset.prompt)"
+          :class="{ active: activePresetId === preset.id }"
+          @click="applyPreset(preset.id)"
         >
           {{ preset.label }}
         </button>
       </div>
+      <textarea
+        class="textarea"
+        rows="3"
+        :value="state.prompt"
+        :placeholder="t('graph.layerSplit.promptPlaceholder')"
+        @input="onPromptInput"
+      />
     </div>
 
     <dl class="meta">
@@ -95,23 +85,16 @@
         <dd>{{ state.resolution }}</dd>
       </div>
       <div>
+        <dt>{{ t('graph.layerSplit.maxLayers') }}</dt>
+        <dd>{{ formatMaxLayersLabel(state.maxLayers ?? 0) }}</dd>
+      </div>
+      <div>
         <dt>{{ t('graph.layerSplit.layers') }}</dt>
         <dd>{{ state.layers.length || '—' }}</dd>
       </div>
       <div v-if="state.groups.length">
         <dt>{{ t('graph.layerSplit.group') }}</dt>
         <dd>{{ state.groups.length }}</dd>
-      </div>
-      <div v-if="state.componentLibrary?.length">
-        <dt>{{ t('graph.layerSplit.componentLibTitle') }}</dt>
-        <dd>
-          {{
-            t('graph.layerSplit.componentLibSummary', {
-              libCount: state.componentLibrary.length,
-              matchedCount: matchedComponentLayerCount
-            })
-          }}
-        </dd>
       </div>
     </dl>
 
@@ -150,19 +133,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import {
+  LAYER_SPLIT_MAX_LAYERS_OPTIONS,
   LAYER_SPLIT_RESOLUTIONS,
   UI_LAYER_SPLIT_PRESETS,
   autoGroupLayersForGameUi,
   buildLayerSplitUiManifest,
   imageLayerSplitToNodePatch,
-  normalizeLayerSplitMode,
+  isNativeLayerDecompositionModel,
+  normalizeLayerSplitMaxLayers,
   normalizeLayerSplitResolution,
   readImageLayerSplitFromNode,
-  resolveEffectiveUiLayerSplitStrategy,
   type ImageLayerSplitState,
-  type UiLayerSplitMode,
   type UiLayerSplitPresetId
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
@@ -172,11 +155,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
-import {
-  loadVisionModelOptions,
-  preferredModelKey,
-  type GenerateModelOption
-} from '../features/graph/model/generateModelOptions'
+import type { GenerateModelOption } from '../features/graph/model/generateModelOptions'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { layerSplitToPsdUint8Array } from '../features/graph/model/layerSplitPsd'
 
@@ -186,9 +165,17 @@ const resolutions = LAYER_SPLIT_RESOLUTIONS
 const exporting = ref(false)
 const exportMessage = ref('')
 const exportFailed = ref(false)
-const visionModelOptions = ref<GenerateModelOption[]>([])
-const visionSelectionKey = ref('')
 let exportMsgTimer: ReturnType<typeof setTimeout> | null = null
+
+const isZhLocale = computed(() =>
+  String(locale.value || '')
+    .toLowerCase()
+    .startsWith('zh')
+)
+
+function isSeedreamSplitOption(opt: GenerateModelOption): boolean {
+  return isNativeLayerDecompositionModel(opt.model, opt.label)
+}
 
 const node = computed(() => {
   void graphEditorHosts.revision.value
@@ -196,12 +183,8 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  return current?.typeId === 'image.layerSplit' || current?.typeId === 'ui.atlasCompose'
-    ? current
-    : null
+  return current?.typeId === 'image.layerSplit' ? current : null
 })
-
-const isAtlasCompose = computed(() => node.value?.typeId === 'ui.atlasCompose')
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
@@ -209,51 +192,37 @@ const hostId = computed(() => {
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
-const typeLabel = computed(() =>
-  graphTypeLabel(node.value?.typeId === 'ui.atlasCompose' ? 'ui.atlasCompose' : 'image.layerSplit')
-)
+const typeLabel = computed(() => graphTypeLabel('image.layerSplit'))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const state = computed(() =>
   node.value ? readImageLayerSplitFromNode(node.value.params) : readImageLayerSplitFromNode({})
 )
 
-const matchedComponentLayerCount = computed(
-  () =>
-    state.value.layers.filter((l) => Boolean(l.componentId) && l.keepOriginalPixels !== true).length
-)
-
-const splitModeOptions = computed<Array<{ id: UiLayerSplitMode; label: string }>>(() => [
-  { id: 'auto', label: t('graph.layerSplit.splitModeAuto') },
-  { id: 'precise', label: t('graph.layerSplit.splitModePrecise') },
-  { id: 'ai-inpaint-slice', label: t('graph.layerSplit.splitModeAiInpaintSlice') },
-  { id: 'ai-layers', label: t('graph.layerSplit.splitModeAiLayers') },
-  { id: 'local-slice', label: t('graph.layerSplit.splitModeLocalSlice') }
-])
-
-const effectiveStrategy = computed(() =>
-  resolveEffectiveUiLayerSplitStrategy(state.value.splitMode, node.value?.params.generateModel)
-)
-
-const legacyStrategyHint = computed(() => {
-  if (effectiveStrategy.value === 'local-slice') {
-    return t('graph.layerSplit.splitModeHintLocalSlice')
-  }
-  if (effectiveStrategy.value === 'ai-inpaint-slice') {
-    return t('graph.layerSplit.splitModeHintAiInpaint')
-  }
-  return t('graph.layerSplit.splitModeHintAutoLayers')
+const isOpenRouterSplitModel = computed(() => {
+  const model = node.value?.params.generateModel?.trim() ?? ''
+  return /^bytedance-seed\//i.test(model)
 })
 
-const activeStrategyHint = computed(() => {
-  const mode = normalizeLayerSplitMode(state.value.splitMode)
-  if (mode === 'precise') return t('graph.layerSplit.splitModeHintPrecise')
-  if (mode === 'auto') {
-    return `${t('graph.layerSplit.splitModeHintPrecise')}\n${t('graph.layerSplit.splitModeHintPreciseFallback')} ${legacyStrategyHint.value}`
+const maxLayersChoices = computed(() => {
+  const cur = normalizeLayerSplitMaxLayers(state.value.maxLayers)
+  const list: number[] = [...LAYER_SPLIT_MAX_LAYERS_OPTIONS]
+  if (cur >= 2 && !list.includes(cur)) {
+    list.push(cur)
+    list.sort((a, b) => a - b)
   }
-  return legacyStrategyHint.value
+  return list
 })
 
-const PRESET_LABEL_KEYS: Record<UiLayerSplitPresetId, string> = {
+function formatMaxLayersLabel(n: number): string {
+  if (!n || n < 2) return t('graph.layerSplit.maxLayersAuto')
+  if (isOpenRouterSplitModel.value && n > 16) {
+    return t('graph.layerSplit.maxLayersOpenRouterCap', { n })
+  }
+  return t('graph.layerSplit.maxLayersCount', { n })
+}
+
+const presetLabelKeyMap: Record<UiLayerSplitPresetId, string> = {
+  'auto-all': 'graph.layerSplit.presetAutoAll',
   'ui-standard': 'graph.layerSplit.presetStandard',
   'ui-hud': 'graph.layerSplit.presetHud',
   'ui-popup': 'graph.layerSplit.presetPopup',
@@ -261,33 +230,36 @@ const PRESET_LABEL_KEYS: Record<UiLayerSplitPresetId, string> = {
   'ui-card': 'graph.layerSplit.presetCard'
 }
 
-const presetOptions = computed(() => {
-  const isZh = String(locale.value || '')
-    .toLowerCase()
-    .startsWith('zh')
-  return UI_LAYER_SPLIT_PRESETS.map((item) => ({
-    id: item.id,
-    label: t(PRESET_LABEL_KEYS[item.id]),
-    prompt: isZh ? item.promptZh : item.promptEn
+const presetItems = computed(() =>
+  UI_LAYER_SPLIT_PRESETS.map((p) => ({
+    id: p.id,
+    label: t(presetLabelKeyMap[p.id]),
+    prompt: isZhLocale.value ? p.promptZh : p.promptEn
   }))
+)
+
+const activePresetId = computed<UiLayerSplitPresetId | ''>(() => {
+  const trimmed = state.value.prompt.trim()
+  if (!trimmed) return ''
+  const hit = UI_LAYER_SPLIT_PRESETS.find(
+    (p) => p.promptZh.trim() === trimmed || p.promptEn.trim() === trimmed
+  )
+  return hit?.id ?? ''
 })
 
-function isPresetActive(promptText: string): boolean {
-  return state.value.prompt.trim() === promptText.trim()
-}
-
-function applyPreset(promptText: string): void {
+function applyPreset(id: UiLayerSplitPresetId): void {
+  const preset = UI_LAYER_SPLIT_PRESETS.find((p) => p.id === id)
+  if (!preset) return
+  const target = isZhLocale.value ? preset.promptZh : preset.promptEn
+  const nextPrompt = activePresetId.value === id ? '' : target
   persist({
     ...state.value,
-    prompt: promptText
+    prompt: nextPrompt
   })
 }
 
 function autoGroupUiLayers(): void {
-  const isZh = String(locale.value || '')
-    .toLowerCase()
-    .startsWith('zh')
-  persist(autoGroupLayersForGameUi(state.value, isZh ? 'zh-CN' : 'en-US'))
+  persist(autoGroupLayersForGameUi(state.value, isZhLocale.value ? 'zh-CN' : 'en-US'))
 }
 
 function flashExportMessage(message: string, failed = false): void {
@@ -315,24 +287,6 @@ async function resolveInspectorLayerUrls(): Promise<Record<string, string>> {
     if (rel) {
       const fileUrl = await window.studio.getAssetFileUrl(rel).catch(() => '')
       if (fileUrl) urls[id] = fileUrl
-    }
-  }
-  for (const comp of state.value.componentLibrary ?? []) {
-    const key = comp.imageId?.trim() || comp.id
-    if (urls[key]) continue
-    if (comp.imageUrl?.trim()) {
-      urls[key] = comp.imageUrl.trim()
-      urls[comp.id] = comp.imageUrl.trim()
-      continue
-    }
-    if (comp.imageRelativePath?.trim()) {
-      const fileUrl = await window.studio
-        .getAssetFileUrl(comp.imageRelativePath.trim())
-        .catch(() => '')
-      if (fileUrl) {
-        urls[key] = fileUrl
-        urls[comp.id] = fileUrl
-      }
     }
   }
   return urls
@@ -396,19 +350,27 @@ function persist(next: ImageLayerSplitState): void {
   graphEditorHosts.updateNode(hid, current.id, imageLayerSplitToNodePatch(next))
 }
 
-function onSplitModeChange(event: Event): void {
-  const splitMode = normalizeLayerSplitMode((event.target as HTMLSelectElement).value)
-  persist({
-    ...state.value,
-    splitMode
-  })
-}
-
 function onResolutionChange(event: Event): void {
   const resolution = normalizeLayerSplitResolution((event.target as HTMLSelectElement).value)
   persist({
     ...state.value,
     resolution
+  })
+}
+
+function onMaxLayersChange(event: Event): void {
+  const maxLayers = normalizeLayerSplitMaxLayers((event.target as HTMLSelectElement).value)
+  persist({
+    ...state.value,
+    maxLayers
+  })
+}
+
+function onPromptInput(event: Event): void {
+  const prompt = (event.target as HTMLTextAreaElement).value
+  persist({
+    ...state.value,
+    prompt
   })
 }
 
@@ -431,60 +393,22 @@ function onModelChange(payload: {
   })
 }
 
-async function refreshVisionModels(): Promise<void> {
-  const current = node.value
-  if (!current) {
-    visionModelOptions.value = []
-    visionSelectionKey.value = ''
-    return
-  }
-  const preferred = preferredModelKey(
-    current.params.visionProviderInstanceId,
-    current.params.visionModel
-  )
-  const { options, selectedKey } = await loadVisionModelOptions(preferred)
-  visionModelOptions.value = options
-  visionSelectionKey.value = selectedKey
-}
-
-watch(
-  () => [
-    node.value?.id ?? '',
-    node.value?.params.visionProviderInstanceId ?? '',
-    node.value?.params.visionModel ?? ''
-  ],
-  () => {
-    void refreshVisionModels()
-  },
-  { immediate: true }
-)
-
-function onVisionModelChange(event: Event): void {
+function onRepairModelChange(payload: {
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid) return
-  const key = (event.target as HTMLSelectElement).value
-  visionSelectionKey.value = key
-  if (!key) {
-    graphEditorHosts.updateNode(hid, current.id, {
-      visionModel: '',
-      visionProviderInstanceId: ''
-    })
+  if (
+    (current.params.repairModel ?? '') === payload.generateModel &&
+    (current.params.repairProviderInstanceId ?? '') === payload.generateProviderInstanceId
+  ) {
     return
   }
-  const opt = visionModelOptions.value.find((o) => o.key === key)
-  if (!opt) return
   graphEditorHosts.updateNode(hid, current.id, {
-    visionModel: opt.model,
-    visionProviderInstanceId: opt.providerInstanceId
-  })
-}
-
-function onPromptChange(event: Event): void {
-  const value = (event.target as HTMLTextAreaElement).value
-  persist({
-    ...state.value,
-    prompt: value
+    repairModel: payload.generateModel,
+    repairProviderInstanceId: payload.generateProviderInstanceId
   })
 }
 
@@ -529,15 +453,35 @@ function clearLayers(): void {
   line-height: 1.4;
 }
 
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: 8px;
+}
+
 .field-block {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .field-label {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.field-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.8;
 }
 
 .select {
@@ -551,57 +495,51 @@ function clearLayers(): void {
   font-size: 12px;
 }
 
-.mode-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  line-height: 1.35;
-  white-space: pre-line;
-}
-
-.prompt {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--text);
-  padding: 8px;
-  font-size: 12px;
-  resize: vertical;
-}
-
-.preset-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.preset-label {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
 .preset-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .preset-chip {
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--bg);
-  color: var(--text);
-  padding: 4px 10px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  padding: 3px 8px;
   font-size: 11px;
   cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
-.preset-chip.active,
 .preset-chip:hover {
+  border-color: var(--accent, #4a90e2);
+  color: var(--text);
+}
+
+.preset-chip.active {
   border-color: #4a90e2;
-  color: #4a90e2;
+  background: rgba(74, 144, 226, 0.16);
+  color: #7ab8ff;
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 62px;
+  max-height: 160px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 7px 9px;
+  font-size: 12px;
+  line-height: 1.45;
+  font-family: inherit;
 }
 
 .meta {

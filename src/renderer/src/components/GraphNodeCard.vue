@@ -723,7 +723,6 @@ import {
   isFilmNodeTypeId,
   parseFilmCast,
   parseFilmRenderCache,
-  parseUiComponentLibrary,
   portLimitMaxForDataType,
   readImageGenerateParamsFromNode,
   readAnim2dFromNode,
@@ -931,7 +930,6 @@ function portDataTypeClass(port: GraphPortDef): string {
     case GraphPortType.storyboard:
       return 'port-beat'
     case GraphPortType.filmCast:
-    case GraphPortType.uiComponents:
       return 'port-world-entities'
     default:
       return ''
@@ -1626,23 +1624,6 @@ const filmCardImageSources = computed((): CardImageGridSource[] => {
     }
     return out
   }
-  if (props.node.typeId === 'ui.componentLib') {
-    const lib = parseUiComponentLibrary(props.node.params.uiComponentLibrary ?? '')
-    if (!lib?.items?.length) return []
-    const out: CardImageGridSource[] = []
-    for (const [idx, item] of lib.items.entries()) {
-      const url = item.imageUrl?.trim() ?? ''
-      const rel = item.imageRelativePath?.trim() || (url && !url.startsWith('data:') ? url : '')
-      const dataUrl = url.startsWith('data:') ? url : undefined
-      if (!dataUrl && !rel) continue
-      out.push({
-        key: item.id?.trim() || `uicmp:${idx}`,
-        dataUrl,
-        relativePath: rel || undefined
-      })
-    }
-    return out
-  }
   return []
 })
 
@@ -1680,7 +1661,6 @@ watch(
         isComposeNode(props.node) ||
         isFramePullNode(props.node) ||
         isComicPageNode(props.node) ||
-        props.node.typeId === 'ui.componentLib' ||
         isGameProductionNode(props.node),
       previewInViewport.value,
       previewPriority.value
@@ -1717,10 +1697,6 @@ watch(
 )
 
 const cardImageGridSources = computed((): CardImageGridSource[] => {
-  // 图集拼装 UI 节点的 generatedImages 存放内部图层切片与主件缓存，卡片封面直接全幅展示合成后的完整 UI 画面（selectImagePreview）
-  if (props.node.typeId === 'ui.atlasCompose') {
-    return []
-  }
   if (filmCardImageSources.value.length > 1) {
     return filmCardImageSources.value
   }
@@ -3104,21 +3080,6 @@ function onPreviewDblClick(): void {
     // UI 界面生成：双击进入内图（每条提示词一条输出链）
     if (props.node.typeId === 'ui.gen') {
       emit('uiSplitOpen', props.node.id)
-      return
-    }
-
-    // UI 共享组件库：双击进入组件库工作台（母版网格、九宫格切线与实时拉伸模拟），绝不误开记事本
-    if (props.node.typeId === 'ui.componentLib') {
-      const hostId = props.hostId?.trim()
-      if (hostId) {
-        await graphEditorHosts.flush(hostId)
-        const ok = await diveView(
-          { viewId: 'ui.componentLib', hostId, nodeId: props.node.id },
-          title
-        )
-        if (ok) return
-      }
-      instructionOpen.value = !instructionOpen.value
       return
     }
 

@@ -42,40 +42,19 @@ import { normalizeImageCrop, readImageCropFromNode, type ImageCropState } from '
 import { readImageGridSplitFromNode, resolveGridSplitTargets } from '../imageGridSplit'
 import {
   autoGroupLayersForGameUi,
-  buildUiCleanBaseInpaintPrompt,
   imageLayerSplitToNodePatch,
   isCanvasSafeImageSrc,
   isLayerSplitBase,
+  isNativeLayerDecompositionModel,
   layerSplitCompositeImageId,
   layerSplitFingerprint,
   mapDecompositionToLayers,
-  prefersPreciseUiLayerSplit,
   readImageLayerSplitFromNode,
   resolveEffectiveLayerSplitPrompt,
-  resolveEffectiveUiLayerSplitStrategy,
   sortLayersForCompose,
-  type ImageLayerSplitGroup,
   type ImageLayerSplitLayer,
   type ImageLayerSplitState
 } from '../imageLayerSplit'
-import { PreciseSplitError } from '../uiPreciseSplit'
-import { uiComponentLibraryFingerprintKey, type UiSharedComponentItem } from '../uiComponentLibrary'
-import {
-  canRunPreciseLayerSplit,
-  purifySolidBgFallbackSplitLayers,
-  runPreciseLayerSplitForNode
-} from './layerSplitPrecise'
-import {
-  applyComponentLibraryToFallbackLayers,
-  readUpstreamUiComponentLibrary,
-  resolveUpstreamComponentCandidates
-} from './uiComponentLib'
-import {
-  buildVlmUiControlDetectionPrompt,
-  parseVlmUiControlDetectionResponse,
-  type UiControlType,
-  type UiVlmDetectedControlHint
-} from '../uiControlSpec'
 import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
 import type { GenerateImageLayer } from '../../modelProvider'
 import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../domain'
@@ -89,7 +68,7 @@ import { resolveMentionSources } from './context'
 import { collectIncomingImageItems } from './mediaInputs'
 import { resolveImageProcessTool } from '../nodeRole'
 import { executeComposeNode, executeCutoutNode, executeImageTransformNode } from './imageLocal'
-import { fail, isAppError } from '@shared/errors/appError'
+import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 
 /**
@@ -1075,12 +1054,8 @@ async function detectSmartCropRegionViaVlmIfAvailable(
     const system =
       'You are an expert film director and global art historian (covering both Chinese handscroll paintings and Western oil/fresco masterpieces). First identify the painting tradition ("culture": "chinese" for Chinese/Eastern ink & color paintings, or "western" for Western oil paintings, frescoes, Renaissance/Baroque/Impressionist works). For Chinese handscrolls, follow right-to-left narrative flow; for Western single-canvas masterpieces, follow focal-perspective narrative flow (Act 1: foreground/left wing ensemble -> Act 2: central focal protagonists -> Act 3: right wing/background depth). Flexibly select the most natural 16:9 medium or medium-close-up camera framing region (adjust cropW between 0.18 and 0.48 and cropH between 0.50 and 0.88 so figures and key props are framed harmoniously without cutting off heads or actions). Name the scene with a poetic 4-to-6 character Chinese title. Output ONLY valid JSON: {"culture": "chinese", "sceneName": "场景名", "cropX": 0.0, "cropY": 0.12, "cropW": 0.28, "cropH": 0.72, "sceneSummary": "画面主体人物交谈动作与艺术史场景解说简述"} where cropX, cropY, cropW, cropH are normalized [0, 1] coordinates.' // cjk-ok
     const prompt = `${instruction}${aspectHint}\nDefault reference window: cropX=${baseCrop.cropX.toFixed(2)}, cropY=${baseCrop.cropY.toFixed(2)}, cropW=${baseCrop.cropW.toFixed(2)}, cropH=${baseCrop.cropH.toFixed(2)}. Return JSON only.`
-    const visionModel =
-      ctx.node.params.visionModel?.trim() || ctx.node.params.generateModel?.trim() || undefined
-    const visionProviderInstanceId =
-      ctx.node.params.visionProviderInstanceId?.trim() ||
-      ctx.node.params.generateProviderInstanceId?.trim() ||
-      undefined
+    const visionModel = ctx.node.params.generateModel?.trim() || undefined
+    const visionProviderInstanceId = ctx.node.params.generateProviderInstanceId?.trim() || undefined
     const res = await ctx.generateText({
       prompt,
       system,
@@ -1446,185 +1421,6 @@ function layersFromApiResult(
   }
 }
 
-function extractApiLayerHintsFromResult(
-  apiLayers: GenerateImageLayer[] | undefined,
-  canvasWidth: number,
-  canvasHeight: number
-): Array<{
-  name?: string
-  description?: string
-  left: number
-  top: number
-  width: number
-  height: number
-}> {
-  if (!apiLayers?.length) return []
-  const hints: Array<{
-    name?: string
-    description?: string
-    left: number
-    top: number
-    width: number
-    height: number
-  }> = []
-  for (const [idx, layer] of apiLayers.entries()) {
-    const z = typeof layer.zIndex === 'number' ? layer.zIndex : idx
-    if (z <= 0) continue
-    const abs = layer.boundingBox?.absolute
-    const norm = layer.boundingBox?.normalized
-    let left = 0
-    let top = 0
-    let width = 0
-    let height = 0
-    if (abs && abs.length >= 4) {
-      left = Math.round(abs[0])
-      top = Math.round(abs[1])
-      width = Math.max(1, Math.round(abs[2] - abs[0]))
-      height = Math.max(1, Math.round(abs[3] - abs[1]))
-    } else if (norm && norm.length >= 4 && canvasWidth > 0 && canvasHeight > 0) {
-      left = Math.round((norm[0] / 1000) * canvasWidth)
-      top = Math.round((norm[1] / 1000) * canvasHeight)
-      width = Math.max(1, Math.round(((norm[2] - norm[0]) / 1000) * canvasWidth))
-      height = Math.max(1, Math.round(((norm[3] - norm[1]) / 1000) * canvasHeight))
-    }
-    if (width > 4 && height > 4) {
-      hints.push({
-        ...(layer.name?.trim() ? { name: layer.name.trim() } : {}),
-        ...(layer.description?.trim() ? { description: layer.description.trim() } : {}),
-        left,
-        top,
-        width,
-        height
-      })
-    }
-  }
-  return hints
-}
-
-async function detectUiControlsViaVlmIfAvailable(
-  ctx: NodeExecuteContext,
-  sourceUrl: string,
-  userHint: string,
-  sourceTitle: string | undefined,
-  canvasWidth: number,
-  canvasHeight: number
-): Promise<UiVlmDetectedControlHint[]> {
-  if (!ctx.generateText || !sourceUrl) return []
-  try {
-    let cw = canvasWidth
-    let ch = canvasHeight
-    if ((cw <= 0 || ch <= 0) && ctx.inspectImageSize) {
-      try {
-        const size = await ctx.inspectImageSize({ sourceDataUrl: sourceUrl })
-        if (size && size.width > 0 && size.height > 0) {
-          cw = size.width
-          ch = size.height
-        }
-      } catch {
-        // ignore size inspection error
-      }
-    }
-    const { system, prompt } = buildVlmUiControlDetectionPrompt({
-      locale: ctx.locale,
-      userHint,
-      sourceTitle
-    })
-    const visionModel = ctx.node.params.visionModel?.trim() || undefined
-    const visionProviderInstanceId = ctx.node.params.visionProviderInstanceId?.trim() || undefined
-    const res = await ctx.generateText({
-      prompt,
-      system,
-      images: [sourceUrl],
-      // 未指定模型时路由到支持图片输入、视觉定位强的模型（默认文本模型往往不支持看图）
-      visionGrounding: true,
-      ...(visionModel ? { model: visionModel } : {}),
-      ...(visionProviderInstanceId ? { providerInstanceId: visionProviderInstanceId } : {})
-    })
-    if (!res?.text?.trim()) return []
-    return parseVlmUiControlDetectionResponse(res.text, cw || 1024, ch || 1024)
-  } catch {
-    return []
-  }
-}
-
-function mergeUiControlHints(
-  apiHints: Array<{
-    name?: string
-    description?: string
-    left: number
-    top: number
-    width: number
-    height: number
-    controlType?: UiControlType
-    ocrText?: string
-  }>,
-  vlmHints: UiVlmDetectedControlHint[]
-): Array<{
-  name?: string
-  description?: string
-  left: number
-  top: number
-  width: number
-  height: number
-  controlType?: UiControlType
-  ocrText?: string
-}> {
-  if (!vlmHints.length) return apiHints
-  if (!apiHints.length) return vlmHints
-  const merged = vlmHints.map((h) => ({ ...h }))
-  for (const apiHint of apiHints) {
-    let matched = false
-    for (const existing of merged) {
-      const ix0 = Math.max(existing.left, apiHint.left)
-      const iy0 = Math.max(existing.top, apiHint.top)
-      const ix1 = Math.min(existing.left + existing.width, apiHint.left + apiHint.width)
-      const iy1 = Math.min(existing.top + existing.height, apiHint.top + apiHint.height)
-      if (ix1 > ix0 && iy1 > iy0) {
-        const inter = (ix1 - ix0) * (iy1 - iy0)
-        const minArea = Math.min(existing.width * existing.height, apiHint.width * apiHint.height)
-        if (inter >= Math.max(1, minArea) * 0.45) {
-          matched = true
-          if (!existing.name && apiHint.name) existing.name = apiHint.name
-          if (!existing.description && apiHint.description) {
-            existing.description = apiHint.description
-          }
-          break
-        }
-      }
-    }
-    if (!matched) {
-      merged.push({ ...apiHint })
-    }
-  }
-  return merged
-}
-
-async function resolveCanvasSafeBaseDataUrl(
-  ctx: NodeExecuteContext,
-  rawUrl: string | undefined,
-  stamp: number,
-  suffix = 'cleanBase'
-): Promise<string | undefined> {
-  const trimmed = rawUrl?.trim() || ''
-  if (!trimmed) return undefined
-  if (isCanvasSafeImageSrc(trimmed)) return trimmed
-  if (!ctx.saveRunMedia || !ctx.resolveImageUrls) return undefined
-  try {
-    const [materialized] = await materializeGeneratedBatch(
-      ctx,
-      [{ id: `layerSplit:${ctx.node.id}:${stamp}:${suffix}`, dataUrl: trimmed }],
-      `layerSplit:${ctx.node.id}:${stamp}:${suffix}`
-    )
-    const rel = materialized?.relativePath?.trim()
-    if (!rel) return undefined
-    const resolved = await ctx.resolveImageUrls([{ relativePath: rel }])
-    const safeUrl = resolved[0]?.trim()
-    return safeUrl && isCanvasSafeImageSrc(safeUrl) ? safeUrl : undefined
-  } catch {
-    return undefined
-  }
-}
-
 async function composeLayerSplitOutput(
   ctx: NodeExecuteContext,
   state: ImageLayerSplitState,
@@ -1672,110 +1468,9 @@ async function composeLayerSplitOutput(
   }
 }
 
-function layersFromUiWidgetDecomposition(
-  ctx: NodeExecuteContext,
-  stamp: number,
-  decomposed: {
-    width: number
-    height: number
-    baseDataUrl: string
-    widgets: Array<{
-      name: string
-      description?: string
-      left: number
-      top: number
-      width: number
-      height: number
-      dataUrl: string
-      visible?: boolean
-      uiControlId?: string
-      uiControlName?: string
-      uiControlType?: import('../uiControlSpec').UiControlType
-      uiPartRole?: import('../uiControlSpec').UiControlPartRole
-      nineSliceBorders?: [number, number, number, number]
-      editableText?: import('../uiControlSpec').UiEditableTextMeta
-    }>
-  },
-  fallbackForegroundUrl: string,
-  overrideBaseUrl?: string
-): {
-  layers: ImageLayerSplitLayer[]
-  batch: GraphImageItem[]
-  canvasWidth: number
-  canvasHeight: number
-} {
-  const cw = Math.max(1, decomposed.width)
-  const ch = Math.max(1, decomposed.height)
-  // 优先采用经 ROI 掩码抗幻觉融合与局部色差校准后的 decomposed.baseDataUrl，兜底再使用原始 overrideBaseUrl
-  const baseUrl = decomposed.baseDataUrl?.trim() || overrideBaseUrl?.trim() || fallbackForegroundUrl
-  const apiLayers: ExtendedApiLayer[] = [
-    {
-      url: baseUrl,
-      zIndex: 0,
-      size: `${cw}x${ch}`,
-      name: 'Base',
-      uiPartRole: 'canvas-base'
-    }
-  ]
-
-  if (decomposed.widgets.length > 0) {
-    for (const [idx, widget] of decomposed.widgets.entries()) {
-      const x1 = Math.max(0, Math.round(widget.left))
-      const y1 = Math.max(0, Math.round(widget.top))
-      const x2 = Math.min(cw, x1 + Math.max(1, Math.round(widget.width)))
-      const y2 = Math.min(ch, y1 + Math.max(1, Math.round(widget.height)))
-      const normX1 = Math.round((x1 / cw) * 1000)
-      const normY1 = Math.round((y1 / ch) * 1000)
-      const normX2 = Math.round((x2 / cw) * 1000)
-      const normY2 = Math.round((y2 / ch) * 1000)
-      apiLayers.push({
-        url: widget.dataUrl,
-        zIndex: idx + 1,
-        size: `${Math.max(1, x2 - x1)}x${Math.max(1, y2 - y1)}`,
-        name: widget.name || `Widget_${idx + 1}`,
-        description: widget.description || '',
-        boundingBox: {
-          absolute: [x1, y1, x2, y2],
-          normalized: [normX1, normY1, normX2, normY2]
-        },
-        ...(widget.visible !== undefined ? { visible: widget.visible } : {}),
-        ...(widget.uiControlId ? { uiControlId: widget.uiControlId } : {}),
-        ...(widget.uiControlName ? { uiControlName: widget.uiControlName } : {}),
-        ...(widget.uiControlType ? { uiControlType: widget.uiControlType } : {}),
-        ...(widget.uiPartRole ? { uiPartRole: widget.uiPartRole } : {}),
-        ...(widget.nineSliceBorders ? { nineSliceBorders: widget.nineSliceBorders } : {}),
-        ...(widget.editableText ? { editableText: widget.editableText } : {})
-      })
-    }
-  } else {
-    apiLayers.push({
-      url: fallbackForegroundUrl,
-      zIndex: 1,
-      size: `${cw}x${ch}`,
-      name: 'UI_Foreground',
-      boundingBox: {
-        absolute: [0, 0, cw, ch],
-        normalized: [0, 0, 1000, 1000]
-      }
-    })
-  }
-
-  return layersFromApiResult(
-    ctx,
-    stamp,
-    {
-      images: apiLayers.map((l) => l.url),
-      layers: apiLayers
-    },
-    { width: cw, height: ch }
-  )
-}
-
 /**
- * UI 图层分离：支持 4 种拆层引擎策略（auto / ai-inpaint-slice / ai-layers / local-slice）与任意图片模型，
- * 并行调度 VLM 多模态 UI 控件检测与真实 OCR 文本识别（16 类 HTML5 / Unity UI Toolkit 标准控件），
- * 自动拆解控件内部子结构（如按钮文字、按钮常态背景、按下效果、滑动条轨道/填充/手柄），
- * 并通过 ROI 掩码抗幻觉底板融合与二次边缘去杂色生成商用级二级嵌套 PSD 文件。
+ * UI 图层分离：调用 Seedream Pro（5.0 / 5.5+）原生 `layer_decomposition` 接口分离干净底图与独立透明图层，
+ * 自动归入游戏 UI 标准 PSD 分组（可选接入上游共享组件库替换同款控件），并直出分层 `.psd` 文件。
  */
 export async function executeLayerSplitNode(
   ctx: NodeExecuteContext
@@ -1783,20 +1478,17 @@ export async function executeLayerSplitNode(
   const { sourceUrl, sourceTitle, sourceLayerPrompt } = await resolveLayerSplitSourceInfo(ctx)
   const prev = readImageLayerSplitFromNode(ctx.node.params)
   const effectiveUserPrompt = prev.prompt.trim() || sourceLayerPrompt || ''
-  const model = ctx.node.params.generateModel?.trim() || undefined
-  const providerInstanceId = ctx.node.params.generateProviderInstanceId?.trim() || undefined
-  const upstreamCompLib = readUpstreamUiComponentLibrary(ctx.inputs['in-components'])
+  const rawModel = ctx.node.params.generateModel?.trim() || ''
+  const rawProviderId = ctx.node.params.generateProviderInstanceId?.trim() || ''
+  const effectiveModel =
+    rawModel && isNativeLayerDecompositionModel(rawModel) ? rawModel : undefined
+  const effectiveProviderId = effectiveModel ? rawProviderId || undefined : undefined
+  const effectiveMaxLayers = prev.maxLayers && prev.maxLayers >= 2 ? prev.maxLayers : undefined
   const fingerprint = layerSplitFingerprint(sourceUrl, effectiveUserPrompt, prev.resolution, {
-    splitMode: prev.splitMode,
-    model,
-    providerInstanceId,
-    visionModelKey: [
-      ctx.node.params.visionProviderInstanceId?.trim(),
-      ctx.node.params.visionModel?.trim()
-    ]
-      .filter(Boolean)
-      .join(':'),
-    componentLibraryKey: uiComponentLibraryFingerprintKey(upstreamCompLib.items)
+    splitMode: 'ai-layers',
+    model: effectiveModel,
+    providerInstanceId: effectiveProviderId,
+    maxLayers: effectiveMaxLayers
   })
   const canReuse =
     prev.layers.length > 0 &&
@@ -1836,249 +1528,53 @@ export async function executeLayerSplitNode(
   }
 
   if (!reused) {
-    const strategy = resolveEffectiveUiLayerSplitStrategy(prev.splitMode, model)
-    const { candidates: upstreamCompCandidates } =
-      upstreamCompLib.items.length > 0
-        ? await resolveUpstreamComponentCandidates(ctx, stamp)
-        : { candidates: [] }
-    let mapped: {
-      layers: ImageLayerSplitLayer[]
-      batch: GraphImageItem[]
-      canvasWidth: number
-      canvasHeight: number
-    } | null = null
-    /** 精准拆层自带元素树分组；为 null 时走游戏 UI 自动归类 */
-    let preciseGroups: ImageLayerSplitGroup[] | null = null
-    let embeddedComponentLibrary: UiSharedComponentItem[] = []
-
-    if (prefersPreciseUiLayerSplit(prev.splitMode)) {
-      const explicit = prev.splitMode === 'precise'
-      if (canRunPreciseLayerSplit(ctx)) {
-        try {
-          const precise = await runPreciseLayerSplitForNode(ctx, {
-            sourceUrl,
-            sourceTitle,
-            userHint: effectiveUserPrompt,
-            model,
-            providerInstanceId,
-            resolution: prev.resolution,
-            stamp,
-            ...(upstreamCompCandidates.length ? { components: upstreamCompCandidates } : {}),
-            toCanvasSafeUrl: (url, suffix) => resolveCanvasSafeBaseDataUrl(ctx, url, stamp, suffix)
-          })
-          mapped = precise
-          preciseGroups = precise.groups
-          embeddedComponentLibrary = precise.componentLibrary ?? []
-        } catch (err) {
-          if ((err as Error)?.name === 'AbortError' || ctx.signal?.aborted) throw err
-          if (isAppError(err)) throw err
-          const detail =
-            err instanceof PreciseSplitError ? err.code : String((err as Error)?.message ?? err)
-          ctx.log?.(`[precise-split] failed: ${detail}`, 'error')
-          console.warn('[graph] precise layer split failed', err)
-          throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail })
-        }
-      } else if (explicit) {
-        throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail: 'no vision capability' })
-      }
+    if (!ctx.generateImage) {
+      throw fail(SHARED_ERRORS.capabilityImageGenerate)
     }
 
-    if (mapped) {
-      // 精准拆层已完成
-    } else if (strategy === 'local-slice') {
-      if (ctx.decomposeImageUiLayers) {
-        const vlmHints = await detectUiControlsViaVlmIfAvailable(
-          ctx,
-          sourceUrl,
-          effectiveUserPrompt,
-          sourceTitle,
-          prev.canvasWidth,
-          prev.canvasHeight
-        )
-        const decomposed = await ctx.decomposeImageUiLayers({
-          sourceDataUrl: sourceUrl,
-          ...(vlmHints.length ? { apiLayerHints: vlmHints } : {})
-        })
-        mapped = layersFromUiWidgetDecomposition(ctx, stamp, decomposed, sourceUrl)
-      } else {
-        mapped = layersFromApiResult(
-          ctx,
-          stamp,
-          { images: [sourceUrl, sourceUrl] },
-          { width: prev.canvasWidth || 1024, height: prev.canvasHeight || 1024 }
-        )
-      }
-    } else if (strategy === 'ai-inpaint-slice') {
-      if (!ctx.generateImage) {
-        throw fail(SHARED_ERRORS.capabilityImageGenerate)
-      }
-      const inpaintPrompt = buildUiCleanBaseInpaintPrompt(effectiveUserPrompt, {
-        locale: ctx.locale,
-        sourceTitle
-      })
-      const normalizedRes =
-        prev.resolution === '1.5K' || prev.resolution === 'auto' ? '2K' : prev.resolution
-      const vlmHintsPromise = detectUiControlsViaVlmIfAvailable(
-        ctx,
-        sourceUrl,
-        effectiveUserPrompt,
-        sourceTitle,
-        prev.canvasWidth,
-        prev.canvasHeight
-      )
-      vlmHintsPromise.catch(() => [])
-      const result = await ctx.generateImage({
-        prompt: inpaintPrompt,
-        model,
-        providerInstanceId,
-        resolution: normalizedRes,
-        inputReferences: [sourceUrl]
-      })
-      const vlmHints = await vlmHintsPromise
-      if (ctx.signal?.aborted) {
-        throw new DOMException('Aborted', 'AbortError')
-      }
-      const cleanBaseUrl = result.layers?.[0]?.url?.trim() || result.images?.[0]?.trim() || ''
-      if (ctx.decomposeImageUiLayers && cleanBaseUrl) {
-        const safeBaseDataUrl = await resolveCanvasSafeBaseDataUrl(ctx, cleanBaseUrl, stamp)
-        const rawApiLayerHints = extractApiLayerHintsFromResult(
-          result.layers,
-          prev.canvasWidth || 1024,
-          prev.canvasHeight || 1024
-        )
-        const apiLayerHints = mergeUiControlHints(rawApiLayerHints, vlmHints)
-        const decomposed = await ctx.decomposeImageUiLayers({
-          sourceDataUrl: sourceUrl,
-          ...(safeBaseDataUrl ? { cleanBaseDataUrl: safeBaseDataUrl } : {}),
-          ...(apiLayerHints.length ? { apiLayerHints } : {})
-        })
-        mapped = layersFromUiWidgetDecomposition(
-          ctx,
-          stamp,
-          decomposed,
-          sourceUrl,
-          safeBaseDataUrl || cleanBaseUrl || undefined
-        )
-      } else if (result.layers?.length && result.layers.length >= 2) {
-        mapped = layersFromApiResult(ctx, stamp, result, {
-          width: prev.canvasWidth,
-          height: prev.canvasHeight
-        })
-      } else {
-        if (!cleanBaseUrl) {
-          throw fail(SHARED_ERRORS.layerSplitNoLayers)
-        }
-        mapped = layersFromApiResult(
-          ctx,
-          stamp,
-          {
-            images: [cleanBaseUrl, ...(result.images?.slice(1) ?? []), sourceUrl]
-          },
-          {
-            width: prev.canvasWidth || 1024,
-            height: prev.canvasHeight || 1024
-          }
-        )
-      }
-    } else {
-      // 'ai-layers'：调用原生 layerDecomposition，并结合标准 UI 控件识别与子部件结构拆解引擎生成按控件组织的 PSD
-      if (!ctx.generateImage) {
-        throw fail(SHARED_ERRORS.capabilityImageGenerate)
-      }
-      const effectivePrompt = resolveEffectiveLayerSplitPrompt(effectiveUserPrompt, {
-        locale: ctx.locale,
-        sourceTitle
-      })
-      const [result, vlmHints] = await Promise.all([
-        ctx.generateImage({
-          prompt: effectivePrompt,
-          model,
-          providerInstanceId,
-          resolution: prev.resolution,
-          inputReferences: [sourceUrl],
-          layerDecomposition: true
-        }),
-        detectUiControlsViaVlmIfAvailable(
-          ctx,
-          sourceUrl,
-          effectiveUserPrompt,
-          sourceTitle,
-          prev.canvasWidth,
-          prev.canvasHeight
-        )
-      ])
-      if (ctx.signal?.aborted) {
-        throw new DOMException('Aborted', 'AbortError')
-      }
-      const rawBaseUrl = result.layers?.[0]?.url?.trim() || result.images?.[0]?.trim() || ''
-      if (ctx.decomposeImageUiLayers && rawBaseUrl) {
-        const safeBaseDataUrl = await resolveCanvasSafeBaseDataUrl(ctx, rawBaseUrl, stamp)
-        const rawApiLayerHints = extractApiLayerHintsFromResult(
-          result.layers,
-          prev.canvasWidth || 1024,
-          prev.canvasHeight || 1024
-        )
-        const apiLayerHints = mergeUiControlHints(rawApiLayerHints, vlmHints)
-        const decomposed = await ctx.decomposeImageUiLayers({
-          sourceDataUrl: sourceUrl,
-          cleanBaseDataUrl: safeBaseDataUrl,
-          ...(apiLayerHints.length ? { apiLayerHints } : {})
-        })
-        mapped = layersFromUiWidgetDecomposition(
-          ctx,
-          stamp,
-          decomposed,
-          sourceUrl,
-          safeBaseDataUrl || rawBaseUrl
-        )
-      } else if (result.layers?.length || (result.images?.length ?? 0) >= 2) {
-        mapped = layersFromApiResult(ctx, stamp, result, {
-          width: prev.canvasWidth,
-          height: prev.canvasHeight
-        })
-      } else {
-        throw fail(SHARED_ERRORS.layerSplitNoLayers)
-      }
+    const effectivePrompt = resolveEffectiveLayerSplitPrompt(effectiveUserPrompt, {
+      locale: ctx.locale,
+      sourceTitle
+    })
+    const result = await ctx.generateImage({
+      prompt: effectivePrompt,
+      model: effectiveModel,
+      providerInstanceId: effectiveProviderId,
+      resolution: prev.resolution,
+      inputReferences: [sourceUrl],
+      layerDecomposition: true,
+      ...(effectiveMaxLayers ? { layerDecompositionMaxImages: effectiveMaxLayers } : {})
+    })
+    if (ctx.signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError')
     }
-
+    if ((result.layers?.length ?? 0) < 2 && (result.images?.length ?? 0) < 2) {
+      throw fail(SHARED_ERRORS.layerSplitNoLayers)
+    }
+    const mapped = layersFromApiResult(ctx, stamp, result, {
+      width: prev.canvasWidth,
+      height: prev.canvasHeight
+    })
     if (!mapped || !mapped.layers.length) {
       throw fail(SHARED_ERRORS.layerSplitEmpty)
     }
-    if (!preciseGroups) {
-      await purifySolidBgFallbackSplitLayers(ctx, mapped, (url, suffix) =>
-        resolveCanvasSafeBaseDataUrl(ctx, url, stamp, suffix)
-      )
-    }
-    if (
-      !preciseGroups &&
-      upstreamCompCandidates.length > 0 &&
-      embeddedComponentLibrary.length === 0
-    ) {
-      embeddedComponentLibrary = await applyComponentLibraryToFallbackLayers(
-        ctx,
-        stamp,
-        mapped,
-        upstreamCompCandidates
-      )
-    }
+
     layerBatch = mapped.batch
     const selectedId =
       mapped.layers.find((layer) => !isLayerSplitBase(layer))?.id || mapped.layers[0]?.id || ''
     const rawState: ImageLayerSplitState = {
       ...prev,
+      splitMode: 'ai-layers',
       prompt: effectiveUserPrompt,
       selectedId,
       canvasWidth: mapped.canvasWidth,
       canvasHeight: mapped.canvasHeight,
       layers: sortLayersForCompose(mapped.layers),
-      groups: preciseGroups ?? [],
-      ...(embeddedComponentLibrary.length
-        ? { componentLibrary: embeddedComponentLibrary }
-        : { componentLibrary: undefined }),
+      groups: [],
+      componentLibrary: undefined,
       sourceFingerprint: fingerprint
     }
-    // 精准拆层按元素树嵌套分组；其余引擎自动按游戏 UI 规范归类 PSD 文件夹（顶栏与装饰 / 交互控件与按钮 / 面板与容器底框）
-    state = preciseGroups ? rawState : autoGroupLayersForGameUi(rawState, ctx.locale)
+    state = autoGroupLayersForGameUi(rawState, ctx.locale)
   }
 
   const materializedLayers = await materializeGeneratedBatch(

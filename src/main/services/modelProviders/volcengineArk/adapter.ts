@@ -28,6 +28,7 @@ import {
 } from '@shared/modelProviders/volcengineArk/imageSize'
 import { rewriteAtMentionsForVolcengineArkImagePrompt } from '@shared/modelProviders/volcengineArk/imagePromptMentions'
 import { parseVolcengineArkImageLayers } from '@shared/modelProviders/volcengineArk/layerDecomposition'
+import { isNativeLayerDecompositionModel } from '@shared/graph/imageLayerSplit'
 import { rewriteAtMentionsForVolcengineArkVideoPrompt } from '@shared/modelProviders/volcengineArk/videoPromptMentions'
 import { fail, defErr } from '@shared/errors/appError'
 import { PROVIDER_ERRORS } from '../catalog'
@@ -204,12 +205,21 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
     const allowedResolutions = (
       caps as { supported_parameters?: { resolution?: { values?: string[] } } } | null
     )?.supported_parameters?.resolution?.values
-    // 仅 Seedream 5.x（或未显式命中旧代的 ep-* 接入点）原生支持 layer_decomposition
+    // Seedream Pro（5.0 / 5.5+）或未显式命中旧代的 ep-* 接入点原生支持 layer_decomposition
     const useNativeLayerDecomposition =
       Boolean(input.layerDecomposition) &&
-      (profileId === 'seedream-5' || profileId === null || isOpaqueVolcengineArkEndpointId(modelId))
+      (profileId === 'seedream-5' ||
+        isNativeLayerDecompositionModel(modelId) ||
+        profileId === null ||
+        isOpaqueVolcengineArkEndpointId(modelId))
     if (useNativeLayerDecomposition) {
       body.layer_decomposition = true
+      if (input.layerDecompositionMaxImages && input.layerDecompositionMaxImages >= 2) {
+        const cap = /seedream[-_.\s]*v?5[-_.\s]*0/i.test(modelId) ? 16 : 100
+        body.layer_decomposition_options = {
+          max_images: Math.max(2, Math.min(cap, Math.round(input.layerDecompositionMaxImages)))
+        }
+      }
       const size = input.resolution?.trim()
       if (size) body.size = size
     } else {

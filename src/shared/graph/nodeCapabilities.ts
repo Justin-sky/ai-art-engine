@@ -741,34 +741,14 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
       'Maps to canvas node `ui.split` (for breaking down a full game system spec into a structured UI manifest; if the user only wants a single UI screen split into a layered PSD, use `asset.image` → `image.layerSplit` instead): ports `in`:text (game doc or UI spec), `in-image`:image (optional wireframe) → `out`:text (spec), `out-manifest`:uiManifest (to wire into `ui.gen` `in-manifest`).'
   }),
   {
-    id: 'ui.componentLib',
-    kind: 'node',
-    titleZh: 'UI 共享组件库提取',
-    titleEn: 'UI shared component library',
-    usageZh:
-      '对应画布节点 `ui.componentLib`（从 1 张或多张 UI 效果图中自动聚类、去字、去遮挡并提取共享 UI 组件母本库，如按钮、道具槽、页签、角标、九宫格底框）：端口 `in`:image（支持多连单张 UI 图）、`in-images`:images（可直接连入 `ui.gen` 的 `out` 整批界面图）、`in-components`:uiComponents（可选增量合并上游组件库）→ `out`:uiComponents（连入下游 `image.layerSplit` 的 `in-components` 端口，将同款组件替换为纯净母本并导出共享 PSD 智能对象）、`out-images`:images（全部提取出的纯净组件母本 PNG 图集）。',
-    usageEn:
-      'Maps to canvas node `ui.componentLib` (clusters, de-texts, and de-occludes 1 or multiple UI mockups into clean canonical UI component masters with 9-slice metadata and PSD Smart Object GUIDs): ports `in`:image (multi-image), `in-images`:images (batch from `ui.gen` `out`), `in-components`:uiComponents (optional base library) → `out`:uiComponents (connect to `image.layerSplit` `in-components` for clean master replacement and shared PSD Smart Objects), `out-images`:images (clean master PNGs).'
-  },
-  {
-    id: 'ui.atlasCompose',
-    kind: 'node',
-    titleZh: '图集拼装 UI / PSD 组装',
-    titleEn: 'UI atlas compose & PSD assembly',
-    usageZh:
-      '对应画布节点 `ui.atlasCompose`（图集拼装 UI 工作台 & PSD 导出，双击进入类 PS 分层编辑界面）：直接用工程中已有的 UI 图集/切图或共享组件库拼装成完整分层 UI 界面，无需先重新绘制整张界面图。端口 `in-components`:uiComponents（连入 `ui.componentLib` 共享组件库）、`in`:image（支持多连整张 Sprite Sheet 图集或单张 UI 切图，节点会自动切分图集连通域并识别九宫格）、`in-images`:images（批量切图序列）、`in-text`:text（可选，界面需求描述或系统策划案）→ `out`:image（拼装合成预览图）、`out-all`:images（全部分层 PNG 序列）、`out-psd`:text（自动生成的 `.psd` 分层源文件路径，写入 `params.layerSplitPsdRelativePath`，包含全部独立元素图层、游戏 UI 分组文件夹、共享智能对象与可编辑文字层）。双击节点可进入类 PS 界面手动拖拽/缩放/新增图集元素并直接导出 PSD。',
-    usageEn:
-      'Maps to canvas node `ui.atlasCompose` (UI Atlas Compose & PSD Assembly workbench; double-click to open the PS-like layered editor): assembles a multi-layer UI screen directly from existing Sprite Atlas images or `ui.componentLib` components without AI-regenerating a flat mockup. Ports `in-components`:uiComponents (from `ui.componentLib`), `in`:image (sprite sheet or UI slice images; auto-slices sprite sheets and detects 9-slice borders), `in-images`:images (batch slices), `in-text`:text (optional UI layout prompt or GDD) → `out`:image (composite preview), `out-all`:images (all layered PNGs), `out-psd`:text (auto-generated `.psd` file path saved to `params.layerSplitPsdRelativePath` with separate element layers, Smart Objects, and editable text layers).'
-  },
-  {
     id: 'image.layerSplit',
     kind: 'node',
     titleZh: '图层分离 / PSD 拆分',
     titleEn: 'Layer split & PSD export',
     usageZh:
-      '对应画布节点 `image.layerSplit`（图层分离工作台 & PSD 导出，双击可进入全屏图层分离编辑台）：端口 `in`:image（输入单张 UI 界面图、海报或插画）、`in-components`:uiComponents（可选，连入 `ui.componentLib` 共享组件库，拆层时自动用纯净母本替换同款控件并输出共享 PSD 智能对象与去重引擎切图）→ `out`:image（图层合成预览图）、`out-all`:images（分离出的背景底图与全部独立透明 PNG 图层序列）、`out-psd`:text（自动生成的 `.psd` 分层源文件路径，同时写入 `params.layerSplitPsdRelativePath`，包含完整图层树、可编辑文字层、共享智能对象与游戏 UI 自动分组文件夹）。当用户要求“提取共享组件库再拆分 UI 图层/PSD”时，搭建 `ui.componentLib` → `image.layerSplit`（`in-components`）即可。',
+      '对应画布节点 `image.layerSplit`（图层分离工作台 & PSD 导出，双击可进入全屏图层分离编辑台）：端口 `in`:image（输入单张 UI 界面图、海报或插画）→ `out`:image（图层合成预览图）、`out-all`:images（分离出的背景底图与全部独立透明 PNG 图层序列）、`out-psd`:text（自动生成的 `.psd` 分层源文件路径，同时写入 `params.layerSplitPsdRelativePath`，包含完整图层树、可编辑文字层与游戏 UI 自动分组文件夹）。',
     usageEn:
-      'Maps to canvas node `image.layerSplit` (Layer Split & PSD Export workbench; double-click to open the full-screen layer editor): ports `in`:image (input UI mockup, poster, or illustration), `in-components`:uiComponents (optional shared component library from `ui.componentLib` to replace matching controls with clean masters and emit shared PSD Smart Objects) → `out`:image (composite preview), `out-all`:images (clean background plate + all isolated transparent PNG layers), `out-psd`:text (auto-generated `.psd` file path, also saved to `params.layerSplitPsdRelativePath`, with full layer hierarchy, editable text layers, Smart Objects, and auto-grouped game UI folders).'
+      'Maps to canvas node `image.layerSplit` (Layer Split & PSD Export workbench; double-click to open the full-screen layer editor): ports `in`:image (input UI mockup, poster, or illustration) → `out`:image (composite preview), `out-all`:images (clean background plate + all isolated transparent PNG layers), `out-psd`:text (auto-generated `.psd` file path, also saved to `params.layerSplitPsdRelativePath`, with full layer hierarchy, editable text layers, and auto-grouped game UI folders).'
   },
   fromNodeSystemDefault('image.upscale', '高清放大', 'Upscale', defaultUpscaleSystemPrompt, {
     usageZh: IMAGE_PROCESS_USAGE_ZH,

@@ -139,14 +139,7 @@ export const GraphPortType = {
    * film.cast 产出，film.shot / film.render 按镜头出场名单自动取参考图锁一致性。
    * 单向放宽 `filmCast → text`。
    */
-  filmCast: 'filmCast',
-  /**
-   * UI 共享组件库（`UiComponentLibrary`，schema `aiart.ui-component-library@1`）：
-   * 从 1 或多张 UI 效果图中提炼去字、去遮挡的标准共享组件母本（按钮、道具槽、页签、角标、九宫格底框），
-   * 由 `ui.componentLib` 产出并送入 `image.layerSplit`（`in-components`）完成同款替换与 PSD 智能对象共享。
-   * 单向放宽 `uiComponents → text`。
-   */
-  uiComponents: 'uiComponents'
+  filmCast: 'filmCast'
 } as const
 
 /** 目录 JSON 端口 / 运行时 kind（与 GraphPortType 同名） */
@@ -256,8 +249,6 @@ export type GraphNodeTypeId =
   | 'image.transform'
   | 'image.gridSplit'
   | 'image.layerSplit'
-  | 'ui.componentLib'
-  | 'ui.atlasCompose'
   | 'image.toPrompt'
   | 'decisions.judge'
   | 'svg.gen'
@@ -388,11 +379,10 @@ export interface GraphNodeParams {
   transcribeModel?: string
   transcribeProviderInstanceId?: string
   /**
-   * UI 精准拆层（image.layerSplit / splitMode = precise|auto）的**多模态版面解析**模型覆盖。
-   * 留空 = 自动挑选视觉定位最强的已启用文本模型（Gemini 优先，见 `pickVisionGroundingProvider`）。
+   * UI 图层分离节点的**单图层重绘修复**模型覆盖（与拆图用的 Seedream Pro `generateModel` 独立保存）。
    */
-  visionModel?: string
-  visionProviderInstanceId?: string
+  repairModel?: string
+  repairProviderInstanceId?: string
   /**
    * 加工节点备选模型链：首选模型调用失败（限流/不可用/超时）时依次自动切换。
    * 每项为 modelKey（providerInstanceId::model），按数组顺序尝试。
@@ -1319,12 +1309,6 @@ export interface GraphNodeParams {
   filmStoryboard?: string
   /** 影视流水线：角色 / 场景 / 道具设定库 JSON（schema `aiart.film-cast@1`），film.cast 写回 */
   filmCast?: string
-  /** UI 流水线：共享组件库 JSON（schema `aiart.ui-component-library@1`），ui.componentLib 写回 */
-  uiComponentLibrary?: string
-  /** UI 共享组件库提取策略：auto（单图提全部复用控件/多图提重复组件）| repeated | all-controls */
-  uiComponentExtractMode?: 'auto' | 'repeated' | 'all-controls'
-  /** UI 共享组件库源输入指纹（未变且未强制重跑时直接复用） */
-  uiComponentLibSourceHash?: string
   /** 影视流水线：film.render 每镜产物缓存 JSON（shotId → 关键帧 / 视频 / 指纹 / 质检） */
   filmRenders?: string
   /** 分镜拆解：目标镜头数（0 = 由剧情节奏自动决定） */

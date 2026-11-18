@@ -50,8 +50,7 @@ function projectValueForPort(
   if (
     value.kind === 'semanticTimeline' ||
     value.kind === 'storyboard' ||
-    value.kind === 'filmCast' ||
-    value.kind === 'uiComponents'
+    value.kind === 'filmCast'
   ) {
     return { kind: 'text', text: value.text }
   }
@@ -527,7 +526,6 @@ async function executeOneNode(
     resolveVideoFrameImageUrls: options.resolveVideoFrameImageUrls,
     resolveStyleImageUrls: options.resolveStyleImageUrls,
     resolveProjectStyleImages: options.resolveProjectStyleImages,
-    resolveProjectUiAtlasResources: options.resolveProjectUiAtlasResources,
     resolveProjectGenerateSeed: options.resolveProjectGenerateSeed,
     enrichStyleImages: options.enrichStyleImages,
     resolveImageGenerateCapabilities: options.resolveImageGenerateCapabilities,

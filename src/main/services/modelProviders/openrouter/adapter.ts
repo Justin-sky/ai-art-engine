@@ -25,6 +25,10 @@ import {
   toOpenRouterInputReferenceBody
 } from '@shared/modelProvider'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
+import {
+  parseVolcengineArkImageLayers,
+  type VolcengineArkImageRow
+} from '@shared/modelProviders/volcengineArk/layerDecomposition'
 import { supportsNativeTransparentImageModel } from '@shared/graph/userPromptSchemes'
 import { isOpenRouterMusicModel } from '@shared/modelProviders/openrouter/audioModality'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
@@ -236,16 +240,47 @@ export const openRouterAdapter: ModelProviderAdapter = {
     input: GenerateImageInput
   ): Promise<GenerateImageResult> {
     const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
+    const rewrittenPrompt = rewriteAtMentionsForImagePrompt(input.prompt)
     const body: Record<string, unknown> = {
       model: modelId,
-      // 多参考图（input_references）需用「图n」对齐；应用内统一 @n，此处转换
-      prompt: rewriteAtMentionsForImagePrompt(input.prompt)
+      // 多参考图（input_references）需用「图n」对齐；应用内统一 @n，此处转换。
+      // OpenRouter `/images` 要求 prompt 非空（minLength: 1）。
+      prompt:
+        rewrittenPrompt.trim() ||
+        (input.layerDecomposition
+          ? 'Decompose this image into a clean base background and standalone transparent layers.'
+          : rewrittenPrompt)
     }
-    if (input.aspectRatio) body.aspect_ratio = input.aspectRatio
-    if (input.resolution) body.resolution = input.resolution
+    if (input.aspectRatio && !input.layerDecomposition) body.aspect_ratio = input.aspectRatio
+    if (input.resolution) {
+      const cleanRes = input.resolution.trim()
+      if (!input.layerDecomposition || cleanRes.toLowerCase() !== 'auto') {
+        body.resolution = cleanRes
+      }
+    }
     if (input.quality?.trim()) body.quality = input.quality.trim()
-    if (input.n && input.n >= 1) body.n = Math.floor(input.n)
+    if (!input.layerDecomposition && input.n && input.n >= 1) body.n = Math.floor(input.n)
     if (input.seed != null) body.seed = input.seed
+    if (input.layerDecomposition) {
+      // OpenRouter `/images` 要求将 Seedream 的 `layer_decomposition` 及必填的
+      // `layer_decomposition_options.max_images`（范围 2~16）放在 `provider.options.seed` 下透传；
+      // 写在顶层会被网关静默丢弃并退化为单张重绘。
+      const maxImages =
+        input.layerDecompositionMaxImages && input.layerDecompositionMaxImages >= 2
+          ? Math.max(2, Math.min(16, Math.round(input.layerDecompositionMaxImages)))
+          : 16
+      body.provider = {
+        only: ['seed'],
+        options: {
+          seed: {
+            layer_decomposition: true,
+            layer_decomposition_options: {
+              max_images: maxImages
+            }
+          }
+        }
+      }
+    }
     if (input.transparentBackground && supportsNativeTransparentImageModel(modelId)) {
       body.background = 'transparent'
     }
@@ -270,12 +305,25 @@ export const openRouterAdapter: ModelProviderAdapter = {
 
     try {
       const { data } = await client.post<{
-        data?: Array<{ b64_json?: string; url?: string; image_url?: { url?: string } }>
-        images?: Array<{ b64_json?: string; url?: string; image_url?: { url?: string } }>
+        data?: Array<VolcengineArkImageRow & { image_url?: { url?: string } }>
+        images?: Array<VolcengineArkImageRow & { image_url?: { url?: string } }>
         model?: string
       }>('/images', body)
 
       const rows = data.data ?? data.images ?? []
+      if (input.layerDecomposition) {
+        const normalizedRows: VolcengineArkImageRow[] = rows.map((row) => ({
+          ...row,
+          url: row.url || row.image_url?.url
+        }))
+        const parsed = parseVolcengineArkImageLayers(normalizedRows)
+        if (!parsed.images.length) throw fail(PROVIDER_ERRORS.noImageResult)
+        return {
+          images: parsed.images,
+          layers: parsed.layers,
+          model: data.model ?? modelId
+        }
+      }
       const images = rows
         .map((row) => {
           if (row.b64_json) return `data:image/png;base64,${row.b64_json}`

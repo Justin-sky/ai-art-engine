@@ -62,8 +62,7 @@ export function portsCompatible(source: GraphPortDataType, target: GraphPortData
     source === GraphPortType.texts ||
     source === GraphPortType.semanticTimeline ||
     source === GraphPortType.storyboard ||
-    source === GraphPortType.filmCast ||
-    source === GraphPortType.uiComponents
+    source === GraphPortType.filmCast
   )
 }
 

@@ -570,25 +570,25 @@ describe('ui.split', () => {
     })
     expect(node.params.uiSelectedLayerPrompt).toBe('拆分为透明背景、左上角色头像框、右下技能按钮')
 
-    // Feed out-selected directly into image.layerSplit with empty prompt
+    // Feed out-selected directly into image.layerSplit with empty prompt (Seedream Pro native layerDecomposition)
     const splitNode = createNodeFromType('image.layerSplit', { x: 200, y: 0 })
-    splitNode.params.imageLayerSplit = {
-      ...splitNode.params.imageLayerSplit!,
-      splitMode: 'local-slice'
-    }
-    const decomposeImageUiLayers = vi.fn(async () => ({
-      width: 200,
-      height: 100,
-      baseDataUrl: 'data:image/png;base64,BG',
-      widgets: [
+    const generateSplitImage = vi.fn(async () => ({
+      model: 'doubao-seedream-5-5-pro',
+      images: ['data:image/png;base64,BG', 'data:image/png;base64,W1'],
+      layers: [
         {
+          url: 'data:image/png;base64,BG',
+          zIndex: 0,
+          size: '200x100',
+          name: 'Base'
+        },
+        {
+          url: 'data:image/png;base64,W1',
+          zIndex: 1,
+          size: '40x40',
           name: '角色头像框',
           description: '左上头像框',
-          left: 10,
-          top: 10,
-          width: 40,
-          height: 40,
-          dataUrl: 'data:image/png;base64,W1',
+          boundingBox: { absolute: [10, 10, 50, 50] },
           nineSliceBorders: [8, 8, 8, 8] as [number, number, number, number]
         }
       ]
@@ -599,11 +599,14 @@ describe('ui.split', () => {
       inputs: {
         in: [out['out-selected']!]
       },
-      decomposeImageUiLayers,
+      generateImage: generateSplitImage,
       patchNode: vi.fn()
     } as unknown as NodeExecuteContext
 
     await executeLayerSplitNode(splitCtx)
+    expect(generateSplitImage).toHaveBeenCalledWith(
+      expect.objectContaining({ layerDecomposition: true })
+    )
     expect(splitNode.params.imageLayerSplit?.prompt).toBe(
       '拆分为透明背景、左上角色头像框、右下技能按钮'
     )
@@ -615,5 +618,54 @@ describe('ui.split', () => {
     expect(styled).toContain('国风仙侠')
     expect(styled).toContain('背包界面')
     expect(applyUiGenStylePreset('背包界面', 'auto', 'zh-CN')).toBe('背包界面')
+  })
+
+  it('executeLayerSplitNode forwards maxLayers as layerDecompositionMaxImages and uses official split prompt', async () => {
+    const splitNode = createNodeFromType('image.layerSplit', { x: 0, y: 0 })
+    splitNode.params.imageLayerSplit = {
+      prompt: '',
+      resolution: '2K',
+      maxLayers: 30,
+      splitMode: 'ai-layers',
+      selectedId: '',
+      canvasWidth: 0,
+      canvasHeight: 0,
+      layers: [],
+      groups: [],
+      sourceFingerprint: ''
+    }
+    const generateSplitImage = vi.fn(async () => ({
+      model: 'doubao-seedream-5-5-pro',
+      images: ['data:image/png;base64,BG', 'data:image/png;base64,W1'],
+      layers: [
+        { url: 'data:image/png;base64,BG', zIndex: 0, size: '200x100', name: 'Base' },
+        {
+          url: 'data:image/png;base64,W1',
+          zIndex: 1,
+          size: '40x40',
+          name: 'Btn',
+          boundingBox: { absolute: [10, 10, 50, 50] }
+        }
+      ]
+    }))
+    const splitCtx = {
+      node: splitNode,
+      locale: 'zh-CN',
+      inputs: {
+        in: [{ kind: 'image', dataUrl: 'data:image/png;base64,SRC', title: '主界面' }]
+      },
+      generateImage: generateSplitImage,
+      patchNode: vi.fn()
+    } as unknown as NodeExecuteContext
+
+    await executeLayerSplitNode(splitCtx)
+    expect(generateSplitImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        layerDecomposition: true,
+        layerDecompositionMaxImages: 30,
+        prompt: expect.stringContaining('每个元素作为独立可编辑图层输出')
+      })
+    )
+    expect(splitNode.params.imageLayerSplit?.maxLayers).toBe(30)
   })
 })

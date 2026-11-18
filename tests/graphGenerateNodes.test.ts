@@ -55,8 +55,6 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'film.workbench',
   'film.shot',
   'ui.split',
-  'ui.componentLib',
-  'ui.atlasCompose',
   'comic.page',
   'model.pose',
   'model.rigSkin',

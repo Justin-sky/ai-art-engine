@@ -878,7 +878,6 @@ import {
   type SnapConnectCandidate,
   canScopeAcceptDraggedAsset,
   cloneGraphDocument,
-  collectProjectUiAtlasResources,
   buildGraphClipboardPayload,
   applyGraphClipboardPayload,
   serializeGraphClipboardPayload,
@@ -1041,13 +1040,12 @@ import {
   readIconPackFromNode,
   readImageLayerSplitFromNode,
   isLayerSplitBase,
+  isNativeLayerDecompositionModel,
   nestLayerSplitResult,
   mapDecompositionToLayers,
   placeLayersInParentRect,
   layerSplitGroupForSource,
-  buildUiCleanBaseInpaintPrompt,
   resolveEffectiveLayerSplitPrompt,
-  resolveEffectiveUiLayerSplitStrategy,
   isCanvasSafeImageSrc,
   supportsNativeTransparentImageModel,
   applyRepairedLayerToState,
@@ -1062,8 +1060,6 @@ import {
   isGraphOutputTerminalNode,
   parseFilmCast,
   parseFilmRenderCache,
-  parseUiComponentLibrary,
-  resolveChatUiAtlasSearchDirs,
   summarizeReferenceListForLog,
   GraphPortType,
   PORTRAIT_FACES_VERSION,
@@ -1073,13 +1069,12 @@ import {
   extractGraphFromPngBytes
 } from '@shared/graph'
 import { buildZeroKeyLiveDemoGraph } from '@shared/chatShowcaseStarters'
-import { decomposeImageUiLayers, uiRgbaCodec } from '../features/graph/model/composeImageLayerStack'
+import { uiRgbaCodec } from '../features/graph/model/composeImageLayerStack'
 import { buildRecipePosterPngDataUrl } from '../features/graph/model/recipePosterExport'
 import { isVideoJobActive, type VideoJobRecord } from '@shared/videoJob'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { getActiveChatProjectScopeSnapshot } from '../composables/useChatHistory'
 import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
 import { promptAlert } from '../composables/useStudioPrompt'
 import { useEditorKernel } from '../editor/kernel'
@@ -2074,39 +2069,6 @@ const {
   resolveHostAssetName: () => graphAsset.value?.name?.trim() || undefined,
   resolveHostAssetId: () => props.assetId?.trim() || undefined,
   resolveProjectStyleImages: () => normalizeProjectStyleImages(project.config?.styleImages),
-  resolveProjectUiAtlasResources: async (input) => {
-    const scopeSnap = getActiveChatProjectScopeSnapshot(project.rootPath)
-    const base = collectProjectUiAtlasResources({
-      graphs: [buildGraphJson()],
-      assets: scopeSnap.activeProject ? [] : project.assets,
-      folders: project.folders
-    })
-    const searchDirs = resolveChatUiAtlasSearchDirs({
-      activeProject: scopeSnap.activeProject,
-      allProjects: scopeSnap.allProjects,
-      workspaceRootPath: scopeSnap.workspaceRootPath || project.rootPath,
-      prompt: input?.prompt
-    })
-    if (searchDirs.length > 0 && typeof window.studio?.scanProjectOutputs === 'function') {
-      try {
-        const scanned = await window.studio.scanProjectOutputs({
-          sinceMs: 0,
-          uiAtlasSearchDirs: searchDirs,
-          uiAtlasPrompt: input?.prompt
-        })
-        const diskImages = scanned?.uiAtlasImages ?? []
-        if (diskImages.length > 0) {
-          return {
-            componentLibraries: base.componentLibraries,
-            images: [...diskImages, ...base.images].slice(0, 16)
-          }
-        }
-      } catch {
-        // Ignore disk scan failure
-      }
-    }
-    return base
-  },
   resolveWorldElementOutputs: (node) => {
     const worldId = props.assetId?.trim()
     if (!worldId || !isWorldElementPipelineHost.value) return []
@@ -4107,8 +4069,6 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'game.levelMap',
       'ui.split',
       'ui.gen',
-      'ui.componentLib',
-      'ui.atlasCompose',
       'image.layerSplit'
     ]
   },
@@ -4218,51 +4178,36 @@ const rootAddableMenuItems = computed(() => {
       : linkSource?.typeId === 'asset.novel'
         ? ['asset.novel', 'asset.screenplay', 'asset.gameSystem', 'text.translate']
         : linkSource?.typeId === 'game.economy'
-          ? [
-              'game.numerical',
-              'novel.outline',
-              'asset.novel',
-              'asset.gameSystem',
-              'ui.split',
-              'ui.atlasCompose'
-            ]
+          ? ['game.numerical', 'novel.outline', 'asset.novel', 'asset.gameSystem', 'ui.split']
           : linkSource?.typeId === 'game.numerical'
-            ? ['novel.outline', 'asset.novel', 'asset.gameSystem', 'ui.split', 'ui.atlasCompose']
+            ? ['novel.outline', 'asset.novel', 'asset.gameSystem', 'ui.split']
             : linkSource?.typeId === 'asset.gameSystem'
-              ? ['ui.split', 'ui.atlasCompose', 'asset.novel', 'asset.screenplay']
-              : linkSource?.typeId === 'ui.componentLib'
-                ? ['ui.atlasCompose', 'image.layerSplit']
-                : linkTarget?.typeId === 'ui.atlasCompose'
-                  ? menu.linkToPortId === 'in-components'
-                    ? ['ui.componentLib', 'image.layerSplit']
-                    : menu.linkToPortId === 'in-text'
-                      ? ['asset.gameSystem', 'ui.split', 'text.plain']
-                      : ['image.plain', 'asset.image', 'ui.componentLib']
-                  : linkTarget?.typeId === 'game.numerical'
+              ? ['ui.split', 'asset.novel', 'asset.screenplay']
+              : linkTarget?.typeId === 'game.numerical'
+                ? menu.linkToPortId === 'in-economy'
+                  ? ['game.economy', 'text.plain']
+                  : ['game.economy', 'text.plain']
+                : linkTarget?.typeId === 'asset.gameSystem'
+                  ? menu.linkToPortId === 'in-economy'
+                    ? ['game.economy', 'text.plain']
+                    : menu.linkToPortId === 'in-numerical'
+                      ? ['game.numerical', 'text.plain']
+                      : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
+                  : linkTarget?.typeId === 'novel.outline'
                     ? menu.linkToPortId === 'in-economy'
                       ? ['game.economy', 'text.plain']
-                      : ['game.economy', 'text.plain']
-                    : linkTarget?.typeId === 'asset.gameSystem'
+                      : menu.linkToPortId === 'in-numerical'
+                        ? ['game.numerical', 'text.plain']
+                        : ['text.plain', 'game.economy', 'game.numerical']
+                    : linkTarget?.typeId === 'asset.novel'
                       ? menu.linkToPortId === 'in-economy'
                         ? ['game.economy', 'text.plain']
                         : menu.linkToPortId === 'in-numerical'
                           ? ['game.numerical', 'text.plain']
-                          : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
-                      : linkTarget?.typeId === 'novel.outline'
-                        ? menu.linkToPortId === 'in-economy'
-                          ? ['game.economy', 'text.plain']
-                          : menu.linkToPortId === 'in-numerical'
-                            ? ['game.numerical', 'text.plain']
-                            : ['text.plain', 'game.economy', 'game.numerical']
-                        : linkTarget?.typeId === 'asset.novel'
-                          ? menu.linkToPortId === 'in-economy'
-                            ? ['game.economy', 'text.plain']
-                            : menu.linkToPortId === 'in-numerical'
-                              ? ['game.numerical', 'text.plain']
-                              : menu.linkToPortId === 'in-outline'
-                                ? ['novel.outline', 'text.plain']
-                                : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
-                          : []
+                          : menu.linkToPortId === 'in-outline'
+                            ? ['novel.outline', 'text.plain']
+                            : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
+                      : []
   if (!promotedOrder.length) return base
   const byType = new Map(addableMenuItems.value.map((item) => [item.typeId, item]))
   const promoted = promotedOrder
@@ -9750,8 +9695,8 @@ const layerSplit = reactive({
   layerUrls: {} as Record<string, string>,
   generateModel: '',
   generateProviderInstanceId: '',
-  visionModel: '',
-  visionProviderInstanceId: '',
+  repairModel: '',
+  repairProviderInstanceId: '',
   splitting: false,
   splitError: '',
   repairing: false,
@@ -9781,133 +9726,14 @@ async function onLayerSplitOpen(nodeId: string): Promise<void> {
   if (!node) return
   layerSplit.nodeId = nodeId
   const initialSetup = readImageLayerSplitFromNode(node.params)
-  const upstreamComponentUrls: Record<string, string> = {}
-
-  // Hydrate componentLibrary from upstream ui.componentLib nodes or project-wide UI atlas resources if not yet embedded
-  if (!initialSetup.componentLibrary?.length) {
-    const incomingCompItems: NonNullable<ImageLayerSplitState['componentLibrary']> = []
-    for (const edge of graph.edges) {
-      if (edge.target !== nodeId) continue
-      const srcNode = graph.nodes.find((n) => n.id === edge.source)
-      if (!srcNode) continue
-      const parsedLib = parseUiComponentLibrary(srcNode.params.uiComponentLibrary ?? '')
-      if (parsedLib?.items?.length) {
-        incomingCompItems.push(...parsedLib.items)
-        const srcUrls = await resolveGeneratedImageUrls(srcNode.id)
-        Object.assign(upstreamComponentUrls, srcUrls)
-      }
-    }
-    if (!incomingCompItems.length && node.typeId === 'ui.atlasCompose') {
-      const scopeSnap = getActiveChatProjectScopeSnapshot(project.rootPath)
-      const discovered = collectProjectUiAtlasResources({
-        graphs: [buildGraphJson()],
-        assets: scopeSnap.activeProject ? [] : project.assets,
-        folders: project.folders,
-        excludeNodeId: nodeId
-      })
-      for (const lib of discovered.componentLibraries) {
-        incomingCompItems.push(...lib.items)
-      }
-      const promptHint =
-        initialSetup.prompt?.trim() ||
-        node.params.generateInstruction?.trim() ||
-        node.params.text?.trim() ||
-        ''
-      const searchDirs = resolveChatUiAtlasSearchDirs({
-        activeProject: scopeSnap.activeProject,
-        allProjects: scopeSnap.allProjects,
-        workspaceRootPath: scopeSnap.workspaceRootPath || project.rootPath,
-        prompt: promptHint
-      })
-      let diskImages: GraphImageItem[] = []
-      if (searchDirs.length > 0 && typeof window.studio?.scanProjectOutputs === 'function') {
-        try {
-          const scanned = await window.studio.scanProjectOutputs({
-            sinceMs: 0,
-            uiAtlasSearchDirs: searchDirs,
-            uiAtlasPrompt: promptHint
-          })
-          diskImages = scanned?.uiAtlasImages ?? []
-        } catch {
-          // Ignore disk scan failure
-        }
-      }
-      const combinedImages = [...diskImages, ...discovered.images].slice(0, 16)
-      for (let i = 0; i < combinedImages.length; i++) {
-        const img = combinedImages[i]!
-        const resolved = await resolveGraphImageUrls([img])
-        const url = resolved[0]?.trim() || img.dataUrl?.trim() || ''
-        if (!url) continue
-        const compId = `proj_atlas_img_${i + 1}`
-        upstreamComponentUrls[compId] = url
-        incomingCompItems.push({
-          id: compId,
-          psdGuid: `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
-          name: img.title?.trim() || `Atlas_${i + 1}`,
-          exportName: `Atlas_${i + 1}`,
-          kind: 'panel',
-          canonicalWidth: 160,
-          canonicalHeight: 96,
-          scalePolicy: 'nine-slice',
-          nineSliceBorders: [16, 16, 16, 16],
-          imageId: compId,
-          imageUrl: url,
-          ...(img.relativePath ? { imageRelativePath: img.relativePath } : {}),
-          sourceCount: 1
-        })
-      }
-    }
-    if (incomingCompItems.length > 0) {
-      initialSetup.componentLibrary = incomingCompItems
-    }
-  }
-
-  // For ui.atlasCompose, ensure an initial 1920x1080 canvas base layer exists when opened before first run
-  if (node.typeId === 'ui.atlasCompose' && initialSetup.layers.length === 0) {
-    const cw = initialSetup.canvasWidth > 0 ? initialSetup.canvasWidth : 1920
-    const ch = initialSetup.canvasHeight > 0 ? initialSetup.canvasHeight : 1080
-    const baseId = `atlasBase:${nodeId}`
-    const canvas = document.createElement('canvas')
-    canvas.width = cw
-    canvas.height = ch
-    const c2d = canvas.getContext('2d')
-    if (c2d) {
-      const grad = c2d.createRadialGradient(cw * 0.5, ch * 0.45, 40, cw * 0.5, ch * 0.5, cw * 0.65)
-      grad.addColorStop(0, '#22283a')
-      grad.addColorStop(1, '#121521')
-      c2d.fillStyle = grad
-      c2d.fillRect(0, 0, cw, ch)
-      upstreamComponentUrls[baseId] = canvas.toDataURL('image/png')
-    }
-    initialSetup.canvasWidth = cw
-    initialSetup.canvasHeight = ch
-    initialSetup.layers = [
-      {
-        id: baseId,
-        imageId: baseId,
-        zIndex: 0,
-        name: 'Base',
-        description: 'Canvas Base Backdrop',
-        visible: true,
-        left: 0,
-        top: 0,
-        width: cw,
-        height: ch,
-        role: 'canvas-base',
-        originalAbsolute: [0, 0, cw, ch],
-        originalNormalized: [0, 0, 1000, 1000]
-      }
-    ]
-  }
-
   layerSplit.setup = initialSetup
   layerSplit.sourceUrl = ''
   layerSplit.sourceLoading = true
-  layerSplit.layerUrls = { ...upstreamComponentUrls }
+  layerSplit.layerUrls = {}
   layerSplit.generateModel = node.params.generateModel ?? ''
   layerSplit.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
-  layerSplit.visionModel = node.params.visionModel ?? ''
-  layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
+  layerSplit.repairModel = node.params.repairModel ?? ''
+  layerSplit.repairProviderInstanceId = node.params.repairProviderInstanceId ?? ''
   layerSplit.splitting = false
   layerSplit.splitError = ''
   layerSplit.repairing = false
@@ -9926,7 +9752,7 @@ async function onLayerSplitOpen(nodeId: string): Promise<void> {
   )
   const urls = await resolveGeneratedImageUrls(nodeId)
   if (layerSplit.open && layerSplit.nodeId === nodeId) {
-    layerSplit.layerUrls = { ...upstreamComponentUrls, ...urls }
+    layerSplit.layerUrls = { ...urls }
     layerSplit.sourceLoading = false
   }
 }
@@ -9941,8 +9767,8 @@ function closeLayerSplit(): void {
   layerSplit.layerUrls = {}
   layerSplit.generateModel = ''
   layerSplit.generateProviderInstanceId = ''
-  layerSplit.visionModel = ''
-  layerSplit.visionProviderInstanceId = ''
+  layerSplit.repairModel = ''
+  layerSplit.repairProviderInstanceId = ''
   layerSplit.splitting = false
   layerSplit.splitError = ''
   layerSplit.repairing = false
@@ -9975,8 +9801,8 @@ function previewLayerSplit(payload: {
   imageLayerSplit: ImageLayerSplitState
   generateModel: string
   generateProviderInstanceId: string
-  visionModel?: string
-  visionProviderInstanceId?: string
+  repairModel?: string
+  repairProviderInstanceId?: string
   extraGeneratedImages?: GraphImageItem[]
 }): void {
   if (layerSplit.splitting || layerSplit.repairing) return
@@ -9988,13 +9814,13 @@ function previewLayerSplit(payload: {
     imageLayerSplit: payload.imageLayerSplit,
     generateModel: payload.generateModel,
     generateProviderInstanceId: payload.generateProviderInstanceId,
-    visionModel: payload.visionModel ?? node.params.visionModel ?? '',
-    visionProviderInstanceId:
-      payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? '',
+    repairModel: payload.repairModel ?? node.params.repairModel ?? '',
+    repairProviderInstanceId:
+      payload.repairProviderInstanceId ?? node.params.repairProviderInstanceId ?? '',
     ...(generatedImages ? { generatedImages } : {})
   }
-  layerSplit.visionModel = node.params.visionModel ?? ''
-  layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
+  layerSplit.repairModel = node.params.repairModel ?? ''
+  layerSplit.repairProviderInstanceId = node.params.repairProviderInstanceId ?? ''
   scheduleSave()
   graphEditorHosts.bumpRevision()
 }
@@ -10003,8 +9829,8 @@ function saveLayerSplit(payload: {
   imageLayerSplit: ImageLayerSplitState
   generateModel: string
   generateProviderInstanceId: string
-  visionModel?: string
-  visionProviderInstanceId?: string
+  repairModel?: string
+  repairProviderInstanceId?: string
   extraGeneratedImages?: GraphImageItem[]
 }): void {
   const nodeId = layerSplit.nodeId
@@ -10017,16 +9843,16 @@ function saveLayerSplit(payload: {
     imageLayerSplit: payload.imageLayerSplit,
     generateModel: payload.generateModel,
     generateProviderInstanceId: payload.generateProviderInstanceId,
-    visionModel: payload.visionModel ?? node.params.visionModel ?? '',
-    visionProviderInstanceId:
-      payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? '',
+    repairModel: payload.repairModel ?? node.params.repairModel ?? '',
+    repairProviderInstanceId:
+      payload.repairProviderInstanceId ?? node.params.repairProviderInstanceId ?? '',
     ...(generatedImages ? { generatedImages } : {})
   }
   layerSplit.setup = payload.imageLayerSplit
   layerSplit.generateModel = payload.generateModel
   layerSplit.generateProviderInstanceId = payload.generateProviderInstanceId
-  layerSplit.visionModel = node.params.visionModel ?? ''
-  layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
+  layerSplit.repairModel = node.params.repairModel ?? ''
+  layerSplit.repairProviderInstanceId = node.params.repairProviderInstanceId ?? ''
   scheduleSave()
   graphEditorHosts.bumpRevision()
   recordGraphChange('layerSplit', before)
@@ -10088,9 +9914,9 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
     imageLayerSplit: state,
     generateModel: payload.generateModel,
     generateProviderInstanceId: payload.generateProviderInstanceId,
-    visionModel: payload.visionModel ?? node.params.visionModel ?? '',
-    visionProviderInstanceId:
-      payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? ''
+    repairModel: payload.repairModel ?? node.params.repairModel ?? '',
+    repairProviderInstanceId:
+      payload.repairProviderInstanceId ?? node.params.repairProviderInstanceId ?? ''
   }
 
   const nodeTitle = resolveGraphNodeDisplayTitle(node, {
@@ -10129,19 +9955,15 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
     )
   }
 
-  const model = payload.generateModel?.trim() || undefined
-  const providerInstanceId = payload.generateProviderInstanceId?.trim() || undefined
-  const strategy = resolveEffectiveUiLayerSplitStrategy(payload.splitMode ?? state.splitMode, model)
-  const effectivePrompt =
-    strategy === 'ai-inpaint-slice'
-      ? buildUiCleanBaseInpaintPrompt(payload.prompt, {
-          locale: String(locale.value),
-          sourceTitle: layerLabel
-        })
-      : resolveEffectiveLayerSplitPrompt(payload.prompt, {
-          locale: String(locale.value),
-          sourceTitle: layerLabel
-        })
+  const rawModel = payload.generateModel?.trim() || ''
+  const rawProviderId = payload.generateProviderInstanceId?.trim() || ''
+  const model = rawModel && isNativeLayerDecompositionModel(rawModel) ? rawModel : undefined
+  const providerInstanceId = model ? rawProviderId || undefined : undefined
+  const effectivePrompt = resolveEffectiveLayerSplitPrompt(payload.prompt, {
+    locale: String(locale.value),
+    sourceTitle: layerLabel
+  })
+  const maxLayers = payload.maxLayers && payload.maxLayers >= 2 ? payload.maxLayers : undefined
   const apiRequest = {
     prompt: effectivePrompt,
     model,
@@ -10150,142 +9972,60 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
     inputReferenceCount: 1,
     inputReferences: [{ source: 'port' as const, name: layerLabel }],
     inputReferenceUrls: summarizeReferenceListForLog([sourceUrl]),
-    layerDecomposition: strategy === 'ai-layers'
+    layerDecomposition: true,
+    ...(maxLayers ? { layerDecompositionMaxImages: maxLayers } : {})
   }
 
   try {
     logBridge.onNodeUpdate(node.id, { status: 'running' })
     const stamp = Date.now()
-    let mapped: ReturnType<typeof mapDecompositionToLayers>
-
-    if (strategy === 'local-slice') {
-      const decomposed = await decomposeImageUiLayers({ sourceDataUrl: sourceUrl })
-      const cw = Math.max(1, decomposed.width)
-      const ch = Math.max(1, decomposed.height)
-      const apiLayers = [
-        {
-          url: decomposed.baseDataUrl,
-          zIndex: 0,
-          size: `${cw}x${ch}`,
-          name: 'Base'
-        },
-        ...decomposed.widgets.map((w, idx) => ({
-          url: w.dataUrl,
-          zIndex: idx + 1,
-          size: `${w.width}x${w.height}`,
-          name: w.name,
-          description: w.description || '',
-          boundingBox: {
-            absolute: [w.left, w.top, w.left + w.width, w.top + w.height],
-            normalized: [
-              Math.round((w.left / cw) * 1000),
-              Math.round((w.top / ch) * 1000),
-              Math.round(((w.left + w.width) / cw) * 1000),
-              Math.round(((w.top + w.height) / ch) * 1000)
-            ]
-          }
-        }))
-      ]
-      mapped = mapDecompositionToLayers({
-        idPrefix: `layerSplit:${node.id}:${stamp}:nest`,
-        apiLayers,
-        images: apiLayers.map((l) => l.url),
-        canvasHint: { width: parent.width, height: parent.height },
-        asCanvasBase: false
+    const apiStarted = Date.now()
+    let result
+    try {
+      result = await window.studio.generateImage({
+        prompt: effectivePrompt,
+        model,
+        providerInstanceId,
+        resolution: payload.resolution,
+        inputReferences: [sourceUrl],
+        layerDecomposition: true,
+        ...(maxLayers ? { layerDecompositionMaxImages: maxLayers } : {})
       })
-    } else {
-      const apiStarted = Date.now()
-      let result
-      try {
-        result = await window.studio.generateImage({
-          prompt: effectivePrompt,
-          model,
-          providerInstanceId,
-          resolution:
-            strategy === 'ai-inpaint-slice' &&
-            (payload.resolution === '1.5K' || payload.resolution === 'auto')
-              ? '2K'
-              : payload.resolution,
-          inputReferences: [sourceUrl],
-          layerDecomposition: strategy === 'ai-layers'
-        })
-        logBridge.recordApiCall({
-          kind: 'generateImage',
-          request: apiRequest,
-          response: {
-            model: result.model,
-            imageCount: result.layers?.length || result.images?.length || 0,
-            referenceNotes: result.referenceNotes
-          },
-          durationMs: Math.max(0, Date.now() - apiStarted)
-        })
-      } catch (err) {
-        const raw = err instanceof Error ? err.message : String(err)
-        const error = formatProviderErrorForLog(raw, String(locale.value))
-        logBridge.recordApiCall({
-          kind: 'generateImage',
-          request: apiRequest,
-          error,
-          durationMs: Math.max(0, Date.now() - apiStarted)
-        })
-        throw new Error(error)
-      }
-      if (!layerSplit.open || layerSplit.nodeId !== nodeId) {
-        finishLog(true)
-        return
-      }
-      if (result.layers?.length && result.layers.length >= 2) {
-        mapped = mapDecompositionToLayers({
-          idPrefix: `layerSplit:${node.id}:${stamp}:nest`,
-          apiLayers: result.layers,
-          images: result.images,
-          canvasHint: { width: parent.width, height: parent.height },
-          asCanvasBase: false
-        })
-      } else {
-        const cleanBaseUrl = result.images?.[0]?.trim() || ''
-        if (!cleanBaseUrl) {
-          throw fail(SHARED_ERRORS.layerSplitNoLayers)
-        }
-        const decomposed = await decomposeImageUiLayers({
-          sourceDataUrl: sourceUrl,
-          cleanBaseDataUrl: isCanvasSafeImageSrc(cleanBaseUrl) ? cleanBaseUrl : undefined
-        })
-        const cw = Math.max(1, decomposed.width)
-        const ch = Math.max(1, decomposed.height)
-        const apiLayers = [
-          {
-            url: cleanBaseUrl || decomposed.baseDataUrl,
-            zIndex: 0,
-            size: `${cw}x${ch}`,
-            name: 'Base'
-          },
-          ...decomposed.widgets.map((w, idx) => ({
-            url: w.dataUrl,
-            zIndex: idx + 1,
-            size: `${w.width}x${w.height}`,
-            name: w.name,
-            description: w.description || '',
-            boundingBox: {
-              absolute: [w.left, w.top, w.left + w.width, w.top + w.height],
-              normalized: [
-                Math.round((w.left / cw) * 1000),
-                Math.round((w.top / ch) * 1000),
-                Math.round(((w.left + w.width) / cw) * 1000),
-                Math.round(((w.top + w.height) / ch) * 1000)
-              ]
-            }
-          }))
-        ]
-        mapped = mapDecompositionToLayers({
-          idPrefix: `layerSplit:${node.id}:${stamp}:nest`,
-          apiLayers,
-          images: apiLayers.map((l) => l.url),
-          canvasHint: { width: parent.width, height: parent.height },
-          asCanvasBase: false
-        })
-      }
+      logBridge.recordApiCall({
+        kind: 'generateImage',
+        request: apiRequest,
+        response: {
+          model: result.model,
+          imageCount: result.layers?.length || result.images?.length || 0,
+          referenceNotes: result.referenceNotes
+        },
+        durationMs: Math.max(0, Date.now() - apiStarted)
+      })
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err)
+      const error = formatProviderErrorForLog(raw, String(locale.value))
+      logBridge.recordApiCall({
+        kind: 'generateImage',
+        request: apiRequest,
+        error,
+        durationMs: Math.max(0, Date.now() - apiStarted)
+      })
+      throw new Error(error)
     }
+    if (!layerSplit.open || layerSplit.nodeId !== nodeId) {
+      finishLog(true)
+      return
+    }
+    if ((result.layers?.length ?? 0) < 2 && (result.images?.length ?? 0) < 2) {
+      throw fail(SHARED_ERRORS.layerSplitNoLayers)
+    }
+    const mapped = mapDecompositionToLayers({
+      idPrefix: `layerSplit:${node.id}:${stamp}:nest`,
+      apiLayers: result.layers,
+      images: result.images,
+      canvasHint: { width: parent.width, height: parent.height },
+      asCanvasBase: false
+    })
     if (!mapped.layers.length) {
       throw fail(SHARED_ERRORS.layerSplitEmpty)
     }
@@ -10335,15 +10075,15 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
       imageLayerSplit: nextState,
       generateModel: payload.generateModel,
       generateProviderInstanceId: payload.generateProviderInstanceId,
-      visionModel: payload.visionModel ?? node.params.visionModel ?? '',
-      visionProviderInstanceId:
-        payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? ''
+      repairModel: payload.repairModel ?? node.params.repairModel ?? '',
+      repairProviderInstanceId:
+        payload.repairProviderInstanceId ?? node.params.repairProviderInstanceId ?? ''
     }
     layerSplit.setup = nextState
     layerSplit.generateModel = payload.generateModel
     layerSplit.generateProviderInstanceId = payload.generateProviderInstanceId
-    layerSplit.visionModel = node.params.visionModel ?? ''
-    layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
+    layerSplit.repairModel = node.params.repairModel ?? ''
+    layerSplit.repairProviderInstanceId = node.params.repairProviderInstanceId ?? ''
     layerSplit.layerUrls = await resolveGeneratedImageUrls(nodeId)
     scheduleSave()
     graphEditorHosts.bumpRevision()
@@ -10393,9 +10133,9 @@ async function repairSelectedLayerSplit(payload: ImageLayerSplitRepairRequest): 
     imageLayerSplit: state,
     generateModel: payload.generateModel,
     generateProviderInstanceId: payload.generateProviderInstanceId,
-    visionModel: payload.visionModel ?? node.params.visionModel ?? '',
-    visionProviderInstanceId:
-      payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? ''
+    repairModel: payload.repairModel ?? node.params.repairModel ?? '',
+    repairProviderInstanceId:
+      payload.repairProviderInstanceId ?? node.params.repairProviderInstanceId ?? ''
   }
 
   const nodeTitle = resolveGraphNodeDisplayTitle(node, {
@@ -10437,8 +10177,10 @@ async function repairSelectedLayerSplit(payload: ImageLayerSplitRepairRequest): 
     )
   }
 
-  const model = payload.generateModel?.trim() || undefined
-  const providerInstanceId = payload.generateProviderInstanceId?.trim() || undefined
+  const model = payload.repairModel?.trim() || payload.generateModel?.trim() || undefined
+  const providerInstanceId = payload.repairModel?.trim()
+    ? payload.repairProviderInstanceId?.trim() || undefined
+    : payload.generateProviderInstanceId?.trim() || undefined
   const effectiveResolution = normalizeLayerRepairResolution(payload.resolution)
 
   try {
@@ -10585,9 +10327,9 @@ async function repairSelectedLayerSplit(payload: ImageLayerSplitRepairRequest): 
       imageLayerSplit: nextState,
       generateModel: payload.generateModel,
       generateProviderInstanceId: payload.generateProviderInstanceId,
-      visionModel: payload.visionModel ?? node.params.visionModel ?? '',
-      visionProviderInstanceId:
-        payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? ''
+      repairModel: payload.repairModel ?? node.params.repairModel ?? '',
+      repairProviderInstanceId:
+        payload.repairProviderInstanceId ?? node.params.repairProviderInstanceId ?? ''
     }
     scheduleSave()
     graphEditorHosts.bumpRevision()
@@ -10603,8 +10345,8 @@ async function repairSelectedLayerSplit(payload: ImageLayerSplitRepairRequest): 
       layerSplit.setup = nextState
       layerSplit.generateModel = payload.generateModel
       layerSplit.generateProviderInstanceId = payload.generateProviderInstanceId
-      layerSplit.visionModel = node.params.visionModel ?? ''
-      layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
+      layerSplit.repairModel = node.params.repairModel ?? ''
+      layerSplit.repairProviderInstanceId = node.params.repairProviderInstanceId ?? ''
       layerSplit.historyBefore = buildGraphJson()
       layerSplit.repairDoneMessage = doneMsg
     }
@@ -10625,7 +10367,10 @@ watch(
     if (!layerSplit.open || !layerSplit.nodeId) return ''
     const node = graph.nodes.find((n) => n.id === layerSplit.nodeId)
     if (!node) return ''
-    return `${node.params.imageLayerSplit?.sourceFingerprint ?? ''}|${node.params.generatedImages?.length ?? 0}`
+    const fp = node.params.imageLayerSplit?.sourceFingerprint ?? ''
+    if (!fp) return ''
+    const layerIds = (node.params.imageLayerSplit?.layers ?? []).map((l) => l.id).join(',')
+    return `${fp}|${node.params.generatedImages?.length ?? 0}|${layerIds}`
   },
   async (key) => {
     if (!layerSplit.open || !key) return
@@ -10634,6 +10379,17 @@ watch(
     if (!node) return
     layerSplit.setup = readImageLayerSplitFromNode(node.params)
     layerSplit.layerUrls = await resolveGeneratedImageUrls(nodeId)
+    if (!layerSplit.sourceUrl) {
+      await fillEditorSourceUrl(
+        nodeId,
+        (url) => {
+          layerSplit.sourceUrl = url
+          layerSplit.sourceLoading = false
+        },
+        () => layerSplit.open && layerSplit.nodeId === nodeId,
+        { preferUpstream: true }
+      )
+    }
   }
 )
 
@@ -11728,30 +11484,6 @@ async function refreshFocusStagePreviewUrls(): Promise<void> {
     }
     if (resolved) continue
 
-    if (
-      typeof node.params.uiComponentLibrary === 'string' &&
-      node.params.uiComponentLibrary.trim()
-    ) {
-      const compLib = parseUiComponentLibrary(node.params.uiComponentLibrary)
-      for (const entry of compLib?.items ?? []) {
-        const inlineUrl = entry.imageUrl?.trim() || ''
-        if (inlineUrl.startsWith('data:') && isPlayableOrRenderableMediaUrl(inlineUrl)) {
-          focusStagePreviewUrls[node.id] = inlineUrl
-          resolved = true
-          break
-        }
-        const rel =
-          entry.imageRelativePath?.trim() || (!inlineUrl.startsWith('data:') ? inlineUrl : '')
-        const url = await resolveMediaUrlFromRelPath(rel)
-        if (url) {
-          focusStagePreviewUrls[node.id] = url
-          resolved = true
-          break
-        }
-      }
-    }
-    if (resolved) continue
-
     // SVG 节点内联源码
     const svgRaw =
       typeof (node.params as Record<string, unknown>)?.svgCode === 'string'
@@ -11877,7 +11609,7 @@ function onFocusDiveNode(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   onFocusSelectNode(nodeId)
-  if (node.typeId === 'image.layerSplit' || node.typeId === 'ui.atlasCompose') {
+  if (node.typeId === 'image.layerSplit') {
     void onLayerSplitOpen(nodeId)
     return
   }
@@ -11982,7 +11714,6 @@ function onFocusDiveNode(nodeId: string): void {
     node.typeId === 'novel.outline' ||
     node.typeId === 'asset.novel' ||
     node.typeId === 'asset.screenplay' ||
-    node.typeId === 'ui.componentLib' ||
     isGameProductionNode(node)
   ) {
     const viewId =
@@ -11992,9 +11723,7 @@ function onFocusDiveNode(nodeId: string): void {
           ? ('novel.workbench' as const)
           : node.typeId === 'asset.screenplay'
             ? ('screenplay.workbench' as const)
-            : node.typeId === 'ui.componentLib'
-              ? ('ui.componentLib' as const)
-              : ('game.workbench' as const)
+            : ('game.workbench' as const)
     const meta = { viewId, hostId: graphHostId.value, nodeId }
     const title = node.title?.trim() || graphTypeLabel(node.typeId ?? '')
     if (editorDive?.rootKey) {

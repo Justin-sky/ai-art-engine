@@ -158,3 +158,146 @@ export function imageExtFromMime(
   if (lower.includes('png')) return 'png'
   return fallback
 }
+
+function decodeBase64Prefix(b64: string, maxChars: number): Uint8Array | null {
+  const clean = b64
+    .trim()
+    .replace(/^data:[^,]*,/, '')
+    .replace(/\s+/g, '')
+  if (clean.length < 16) return null
+  const sliceLen = Math.min(clean.length, maxChars) - (Math.min(clean.length, maxChars) % 4)
+  if (sliceLen < 4) return null
+  const sub = clean.slice(0, sliceLen)
+  try {
+    if (typeof Buffer !== 'undefined') {
+      return new Uint8Array(Buffer.from(sub, 'base64'))
+    }
+    if (typeof atob === 'function') {
+      const bin = atob(sub)
+      const out = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+      return out
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+/**
+ * 从光栅图像头部字节快速解析像素宽高（支持 PNG / WebP / GIF / JPEG）。
+ */
+export function sniffImageDimensionsFromBytes(
+  buf: Uint8Array | Buffer | null | undefined
+): { width: number; height: number } | null {
+  if (!buf || buf.length < 10) return null
+  // PNG: IHDR at bytes 16..23
+  if (
+    buf.length >= 24 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  ) {
+    const width = ((buf[16]! << 24) | (buf[17]! << 16) | (buf[18]! << 8) | buf[19]!) >>> 0
+    const height = ((buf[20]! << 24) | (buf[21]! << 16) | (buf[22]! << 8) | buf[23]!) >>> 0
+    if (width > 0 && height > 0) return { width, height }
+    return null
+  }
+  // GIF
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+    const width = buf[6]! | (buf[7]! << 8)
+    const height = buf[8]! | (buf[9]! << 8)
+    if (width > 0 && height > 0) return { width, height }
+    return null
+  }
+  // WebP: RIFF....WEBP
+  if (
+    buf.length >= 30 &&
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    const c0 = buf[12]
+    const c1 = buf[13]
+    const c2 = buf[14]
+    const c3 = buf[15]
+    // VP8 (lossy)
+    if (c0 === 0x56 && c1 === 0x50 && c2 === 0x38 && c3 === 0x20) {
+      const width = (buf[26]! | (buf[27]! << 8)) & 0x3fff
+      const height = (buf[28]! | (buf[29]! << 8)) & 0x3fff
+      if (width > 0 && height > 0) return { width, height }
+    }
+    // VP8L (lossless)
+    if (c0 === 0x56 && c1 === 0x50 && c2 === 0x38 && c3 === 0x4c) {
+      const b0 = buf[21]!
+      const b1 = buf[22]!
+      const b2 = buf[23]!
+      const b3 = buf[24]!
+      const width = 1 + (((b1 & 0x3f) << 8) | b0)
+      const height = 1 + (((b3 & 0x0f) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6))
+      if (width > 0 && height > 0) return { width, height }
+    }
+    // VP8X (extended)
+    if (c0 === 0x56 && c1 === 0x50 && c2 === 0x38 && c3 === 0x58) {
+      const width = 1 + (buf[24]! | (buf[25]! << 8) | (buf[26]! << 16))
+      const height = 1 + (buf[27]! | (buf[28]! << 8) | (buf[29]! << 16))
+      if (width > 0 && height > 0) return { width, height }
+    }
+    return null
+  }
+  // JPEG: scan markers for SOF0..SOF3 / SOF5..SOF7 / SOF9..SOF11 / SOF13..SOF15
+  if (buf[0] === 0xff && buf[1] === 0xd8) {
+    let offset = 2
+    while (offset + 8 < buf.length) {
+      if (buf[offset] !== 0xff) {
+        offset += 1
+        continue
+      }
+      while (offset < buf.length && buf[offset] === 0xff) offset += 1
+      if (offset >= buf.length) break
+      const marker = buf[offset]!
+      offset += 1
+      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) continue
+      if (offset + 1 >= buf.length) break
+      const segLen = (buf[offset]! << 8) | buf[offset + 1]!
+      if (segLen < 2) break
+      const isSof =
+        (marker >= 0xc0 && marker <= 0xc3) ||
+        (marker >= 0xc5 && marker <= 0xc7) ||
+        (marker >= 0xc9 && marker <= 0xcb) ||
+        (marker >= 0xcd && marker <= 0xcf)
+      if (isSof && offset + 6 < buf.length) {
+        const height = (buf[offset + 3]! << 8) | buf[offset + 4]!
+        const width = (buf[offset + 5]! << 8) | buf[offset + 6]!
+        if (width > 0 && height > 0) return { width, height }
+        return null
+      }
+      offset += segLen
+    }
+  }
+  return null
+}
+
+/**
+ * 从 Base64 或 Data URL 头部快速解析像素宽高（无需解码整张大图）。
+ */
+export function sniffImageDimensionsFromBase64(
+  b64OrDataUrl: string | null | undefined
+): { width: number; height: number } | null {
+  if (!b64OrDataUrl) return null
+  const head = decodeBase64Prefix(b64OrDataUrl, 128)
+  if (!head) return null
+  const fast = sniffImageDimensionsFromBytes(head)
+  if (fast) return fast
+  if (head[0] === 0xff && head[1] === 0xd8) {
+    const jpegHead = decodeBase64Prefix(b64OrDataUrl, 65536)
+    return sniffImageDimensionsFromBytes(jpegHead)
+  }
+  return null
+}

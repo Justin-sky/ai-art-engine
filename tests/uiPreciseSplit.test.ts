@@ -333,12 +333,11 @@ describe('uiPreciseSplit · executor mapping', () => {
     expect(button.zIndex).toBeLessThan(label.zIndex)
   })
 
-  it('auto / precise prefer the precise pipeline, legacy modes do not', () => {
-    expect(prefersPreciseUiLayerSplit('auto')).toBe(true)
-    expect(prefersPreciseUiLayerSplit('precise')).toBe(true)
-    expect(prefersPreciseUiLayerSplit(undefined)).toBe(true)
-    expect(prefersPreciseUiLayerSplit('ai-inpaint-slice')).toBe(false)
-    expect(prefersPreciseUiLayerSplit('local-slice')).toBe(false)
+  it('disables legacy LLM/OCR precise split in image.layerSplit in favor of Seedream Pro native API', () => {
+    expect(prefersPreciseUiLayerSplit('auto')).toBe(false)
+    expect(prefersPreciseUiLayerSplit('precise')).toBe(false)
+    expect(prefersPreciseUiLayerSplit(undefined)).toBe(false)
+    expect(prefersPreciseUiLayerSplit('ai-layers')).toBe(false)
   })
 })
 

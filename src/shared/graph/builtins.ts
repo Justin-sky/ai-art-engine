@@ -76,8 +76,6 @@ import {
   executeIconPackNode,
   executePortraitNode,
   executeLayerSplitNode,
-  executeUiComponentLibNode,
-  executeUiAtlasComposeNode,
   executeMediaReviewNode,
   executeMediaReworkNode,
   executeUiSplitNode,
@@ -2375,14 +2373,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      {
-        id: 'in-components',
-        direction: 'in',
-        dataType: GraphPortType.uiComponents,
-        multiple: true,
-        label: 'Components',
-        labelKey: 'graph.port.uiComponentsIn'
-      },
       ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
@@ -2397,8 +2387,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       },
       generateModel: '',
       generateProviderInstanceId: '',
-      visionModel: '',
-      visionProviderInstanceId: ''
+      repairModel: '',
+      repairProviderInstanceId: ''
     }),
     addable: true,
     deletable: true,
@@ -2408,144 +2398,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executeLayerSplitNode
-  },
-  {
-    typeId: 'ui.componentLib',
-    category: 'note',
-    label: 'UI component library',
-    icon: '🧩',
-    defaultTitle: 'UI component library',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      {
-        id: 'in',
-        direction: 'in',
-        dataType: GraphPortType.image,
-        multiple: true,
-        label: 'UI Screen',
-        labelKey: 'graph.port.uiScreenImage'
-      },
-      {
-        id: 'in-images',
-        direction: 'in',
-        dataType: GraphPortType.images,
-        multiple: true,
-        label: 'UI Batch',
-        labelKey: 'graph.port.uiScreenImages'
-      },
-      {
-        id: 'in-components',
-        direction: 'in',
-        dataType: GraphPortType.uiComponents,
-        multiple: true,
-        label: 'Base Lib',
-        labelKey: 'graph.port.uiComponentsIn'
-      },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.uiComponents,
-        multiple: true,
-        label: 'Components',
-        labelKey: 'graph.port.uiComponentsOut'
-      },
-      {
-        id: 'out-images',
-        direction: 'out',
-        dataType: GraphPortType.images,
-        multiple: true,
-        label: 'Component Sheets',
-        labelKey: 'graph.port.uiComponentImages'
-      }
-    ],
-    defaultParams: () => ({
-      uiComponentLibrary: '',
-      uiComponentExtractMode: 'auto',
-      uiComponentLibSourceHash: '',
-      generateInstruction: '',
-      generateModel: '',
-      generateProviderInstanceId: '',
-      visionModel: '',
-      visionProviderInstanceId: ''
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.uiComponentLib',
-    card: 'media',
-    assetType: 'image',
-    contributeToGeneration: false,
-    execute: executeUiComponentLibNode
-  },
-  {
-    typeId: 'ui.atlasCompose',
-    category: 'note',
-    label: 'UI atlas compose',
-    icon: '🧱',
-    defaultTitle: 'UI atlas compose',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      {
-        id: 'in-components',
-        direction: 'in',
-        dataType: GraphPortType.uiComponents,
-        multiple: true,
-        label: 'Components',
-        labelKey: 'graph.port.uiComponentsIn'
-      },
-      {
-        id: 'in',
-        direction: 'in',
-        dataType: GraphPortType.image,
-        multiple: true,
-        label: 'Atlas / Slice',
-        labelKey: 'graph.port.uiAtlasImage'
-      },
-      {
-        id: 'in-images',
-        direction: 'in',
-        dataType: GraphPortType.images,
-        multiple: true,
-        label: 'Slices',
-        labelKey: 'graph.port.uiAtlasImages'
-      },
-      {
-        id: 'in-text',
-        direction: 'in',
-        dataType: GraphPortType.text,
-        multiple: true,
-        label: 'UI Spec',
-        labelKey: 'graph.port.uiComposePrompt'
-      },
-      ...galleryOutPorts(GraphPortType.image)
-    ],
-    defaultParams: () => ({
-      imageLayerSplit: {
-        prompt: '',
-        resolution: '2K',
-        selectedId: '',
-        canvasWidth: 1920,
-        canvasHeight: 1080,
-        layers: [],
-        sourceFingerprint: ''
-      },
-      uiComponentLibrary: '',
-      generateInstruction: '',
-      generateModel: '',
-      generateProviderInstanceId: '',
-      visionModel: '',
-      visionProviderInstanceId: ''
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.layerSplit',
-    card: 'media',
-    assetType: 'image',
-    contributeToGeneration: false,
-    execute: executeUiAtlasComposeNode
   },
   {
     typeId: 'prompt.optimize',

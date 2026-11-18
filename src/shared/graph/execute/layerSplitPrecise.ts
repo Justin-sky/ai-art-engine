@@ -84,8 +84,6 @@ export async function runPreciseLayerSplitForNode(
   }
   const { stamp } = input
   const nodeId = ctx.node.id
-  const visionModel = ctx.node.params.visionModel?.trim() || undefined
-  const visionProviderInstanceId = ctx.node.params.visionProviderInstanceId?.trim() || undefined
 
   const safeSource = await input.toCanvasSafeUrl(input.sourceUrl, 'source')
   if (!safeSource) throw new Error('PRECISE_SPLIT_SOURCE_UNREADABLE')
@@ -113,9 +111,7 @@ export async function runPreciseLayerSplitForNode(
         system: req.system,
         prompt: req.prompt,
         images: req.images,
-        visionGrounding: true,
-        ...(visionModel ? { model: visionModel } : {}),
-        ...(visionProviderInstanceId ? { providerInstanceId: visionProviderInstanceId } : {})
+        visionGrounding: true
       })
       return res?.text ?? ''
     },

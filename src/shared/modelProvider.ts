@@ -1135,8 +1135,10 @@ export interface GenerateImageInput {
   inputReferenceMeta?: GraphImageReferenceMeta[]
   /** 透明背景：勾选后若模型原生支持透明通道则请求生成透明图，不支持则按常规生成不透明图（生图后不做去背景后处理） */
   transparentBackground?: boolean
-  /** Seedream 5.0 Pro：图层分离（layer_decomposition） */
+  /** Seedream Pro：图层分离（layer_decomposition） */
   layerDecomposition?: boolean
+  /** 图层分离最大输出张数上限（含底图，对应 `layer_decomposition_options.max_images`；缺省由渠道默认） */
+  layerDecompositionMaxImages?: number
 }
 
 export interface GenerateImageLayer {

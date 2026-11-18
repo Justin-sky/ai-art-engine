@@ -36,6 +36,10 @@ import {
 import { PROVIDER_ERRORS } from './catalog'
 import { fail, defErr, defErrSimple, formatBi } from '@shared/errors/appError'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
+import {
+  parseVolcengineArkImageLayers,
+  type VolcengineArkImageRow
+} from '@shared/modelProviders/volcengineArk/layerDecomposition'
 import { supportsNativeTransparentImageModel } from '@shared/graph/userPromptSchemes'
 import { annotateProviderTarget } from '@shared/modelProviders/providerFailureDiagnostics'
 
@@ -893,6 +897,36 @@ export async function generateOpenAiCompatibleImage(
   const size = resolveOpenAiImageSize(input.resolution, input.aspectRatio, modelId, outputFormat)
 
   try {
+    if (input.layerDecomposition) {
+      const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
+      const body: Record<string, unknown> = {
+        model: modelId,
+        response_format: 'url',
+        watermark: false,
+        layer_decomposition: true
+      }
+      if (input.layerDecompositionMaxImages && input.layerDecompositionMaxImages >= 2) {
+        body.layer_decomposition_options = {
+          max_images: Math.max(2, Math.min(100, Math.round(input.layerDecompositionMaxImages)))
+        }
+      }
+      if (prompt.trim()) body.prompt = prompt
+      const rawSize = input.resolution?.trim()
+      if (rawSize) body.size = rawSize
+      if (input.seed != null) body.seed = input.seed
+      if (input.inputReferences?.length) {
+        const refs = input.inputReferences.map((url) => url.trim()).filter(Boolean)
+        if (refs.length) body.image = refs.length === 1 ? refs[0] : refs
+      }
+      const { data } = await client.post<{ data?: VolcengineArkImageRow[] }>(
+        '/images/generations',
+        body
+      )
+      const { images, layers } = parseVolcengineArkImageLayers(data.data)
+      if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)
+      return { images, layers, model: modelId }
+    }
+
     if (input.inputReferences?.length) {
       const refs = input.inputReferences.map((ref) => ref.trim()).filter(Boolean)
       const multi = refs.length > 1 && supportsMultipleEditImages(modelId)

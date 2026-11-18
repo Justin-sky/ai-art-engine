@@ -13,9 +13,12 @@ import {
   isLayerSplitLayerDrawable,
   isNativeLayerDecompositionModel,
   layerSplitFingerprint,
+  mapDecompositionToLayers,
   nestLayerSplitResult,
   normalizedToRect,
   normalizeImageLayerSplit,
+  normalizeLayerSplitMaxLayers,
+  UI_LAYER_SPLIT_PRESETS,
   orderLayerSplitTreeForPsd,
   placeLayersInParentRect,
   renameLayerSplitItem,
@@ -617,26 +620,29 @@ describe('imageLayerSplit', () => {
     expect(topEntry?.anchor).toBe('top-center')
   })
 
-  it('resolves split strategy across models and splitMode', () => {
+  it('identifies Seedream Pro (5.0 / 5.5+ / ep-*) models and always resolves ai-layers strategy', () => {
     expect(isNativeLayerDecompositionModel('')).toBe(true)
     expect(isNativeLayerDecompositionModel('doubao-seedream-5-0-260128')).toBe(true)
+    expect(isNativeLayerDecompositionModel('doubao-seedream-5-5-pro-260828')).toBe(true)
+    expect(isNativeLayerDecompositionModel('bytedance-seed/seedream-5.5-pro')).toBe(true)
+    expect(isNativeLayerDecompositionModel('seedream_5_5_pro')).toBe(true)
+    expect(isNativeLayerDecompositionModel('doubao-seedream-6-0-pro')).toBe(true)
+    expect(isNativeLayerDecompositionModel('seedream-pro')).toBe(true)
     expect(isNativeLayerDecompositionModel('ep-20260416-custom')).toBe(true)
+    expect(isNativeLayerDecompositionModel('doubao-seedream-5-0-lite')).toBe(false)
     expect(isNativeLayerDecompositionModel('doubao-seedream-4-5-251128')).toBe(false)
     expect(isNativeLayerDecompositionModel('gemini-2.5-flash-image')).toBe(false)
     expect(isNativeLayerDecompositionModel('gpt-image-1')).toBe(false)
 
-    expect(resolveEffectiveUiLayerSplitStrategy('auto', 'doubao-seedream-5-0-260128')).toBe(
+    expect(resolveEffectiveUiLayerSplitStrategy('auto', 'doubao-seedream-5-5-pro')).toBe(
       'ai-layers'
     )
-    expect(resolveEffectiveUiLayerSplitStrategy('auto', 'gemini-2.5-flash-image')).toBe(
-      'ai-inpaint-slice'
+    expect(resolveEffectiveUiLayerSplitStrategy('local-slice', 'gemini-2.5-flash-image')).toBe(
+      'ai-layers'
     )
-    expect(resolveEffectiveUiLayerSplitStrategy('local-slice', 'doubao-seedream-5-0-260128')).toBe(
-      'local-slice'
+    expect(resolveEffectiveUiLayerSplitStrategy('ai-inpaint-slice', 'doubao-seedream-5-0')).toBe(
+      'ai-layers'
     )
-    expect(
-      resolveEffectiveUiLayerSplitStrategy('ai-inpaint-slice', 'doubao-seedream-5-0-260128')
-    ).toBe('ai-inpaint-slice')
 
     const inpaintPrompt = buildUiCleanBaseInpaintPrompt('', {
       locale: 'zh-CN',
@@ -716,9 +722,9 @@ describe('imageLayerSplit', () => {
     expect(localResult.baseRgba[btnCenterIdx]!).toBeLessThan(80)
   })
 
-  it('executes executeLayerSplitNode with any general image model (ai-inpaint-slice) and local-slice mode', async () => {
+  it('executes executeLayerSplitNode strictly via Seedream Pro native layerDecomposition and ignores non-Seedream model overrides', async () => {
     let generateCalled = 0
-    let lastLayerDecompFlag: boolean | undefined
+    let lastReq: { model?: string; layerDecomposition?: boolean } = {}
 
     const baseCtx = {
       inputs: {
@@ -730,37 +736,40 @@ describe('imageLayerSplit', () => {
         ]
       },
       locale: 'zh-CN',
-      generateImage: async (req: { layerDecomposition?: boolean }) => {
+      generateImage: async (req: { model?: string; layerDecomposition?: boolean }) => {
         generateCalled += 1
-        lastLayerDecompFlag = req.layerDecomposition
+        lastReq = req
         return {
-          images: ['data:image/png;base64,CLEAN_BASE'],
-          model: 'gemini-2.5-flash-image'
+          images: [
+            'data:image/png;base64,CLEAN_BASE',
+            'data:image/png;base64,W1',
+            'data:image/png;base64,W2'
+          ],
+          layers: [
+            {
+              url: 'data:image/png;base64,CLEAN_BASE',
+              zIndex: 0,
+              size: '1080x1920',
+              name: 'Base'
+            },
+            {
+              url: 'data:image/png;base64,W1',
+              zIndex: 1,
+              size: '1000x90',
+              name: '顶栏横幅条_1',
+              boundingBox: { absolute: [40, 30, 1040, 120] }
+            },
+            {
+              url: 'data:image/png;base64,W2',
+              zIndex: 2,
+              size: '400x110',
+              name: '交互按钮_2',
+              boundingBox: { absolute: [340, 1600, 740, 1710] }
+            }
+          ],
+          model: req.model || 'doubao-seedream-5-5-pro'
         }
       },
-      decomposeImageUiLayers: async () => ({
-        width: 1080,
-        height: 1920,
-        baseDataUrl: 'data:image/png;base64,CLEAN_BASE',
-        widgets: [
-          {
-            name: '顶栏横幅条_1',
-            left: 40,
-            top: 30,
-            width: 1000,
-            height: 90,
-            dataUrl: 'data:image/png;base64,W1'
-          },
-          {
-            name: '交互按钮_2',
-            left: 340,
-            top: 1600,
-            width: 400,
-            height: 110,
-            dataUrl: 'data:image/png;base64,W2'
-          }
-        ]
-      }),
       composeImageLayerStack: async () => ({
         dataUrl: 'data:image/png;base64,COMPOSITE',
         width: 1080,
@@ -775,58 +784,55 @@ describe('imageLayerSplit', () => {
       }
     }
 
-    // 1) 选择非 Seedream-5 通用模型（如 gemini-2.5-flash-image），splitMode='auto' 自动走 ai-inpaint-slice
-    const nodeAi: {
-      id: string
-      typeId: string
-      title: string
-      position: { x: number; y: number }
-      params: Record<string, unknown> & {
-        imageLayerSplit: ReturnType<typeof normalizeImageLayerSplit>
-      }
-    } = {
+    // 1) 即使旧存档中残留了非 Seedream 模型（如 gemini-2.5-flash-image），也自动忽略并强制走 Seedream Pro 原生 layerDecomposition
+    const nodeLegacy = {
       id: 'split-node-1',
       typeId: 'image.layerSplit',
       title: 'UI 图层分离',
       position: { x: 0, y: 0 },
       params: {
         generateModel: 'gemini-2.5-flash-image',
-        imageLayerSplit: normalizeImageLayerSplit({ splitMode: 'auto', resolution: '2K' })
+        imageLayerSplit: normalizeImageLayerSplit({ resolution: '2K' })
       }
     }
     const aiOut = await executeLayerSplitNode({
       ...(baseCtx as unknown as Parameters<typeof executeLayerSplitNode>[0]),
-      node: nodeAi as unknown as Parameters<typeof executeLayerSplitNode>[0]['node']
+      node: nodeLegacy as unknown as Parameters<typeof executeLayerSplitNode>[0]['node']
     })
     expect(generateCalled).toBe(1)
-    expect(lastLayerDecompFlag).toBeUndefined()
-    const savedStateAi = nodeAi.params.imageLayerSplit
+    expect(lastReq.layerDecomposition).toBe(true)
+    expect(lastReq.model).toBeUndefined()
+    const savedStateAi = nodeLegacy.params.imageLayerSplit
     expect(savedStateAi.layers).toHaveLength(3)
     expect(savedStateAi.groups.map((g) => g.name)).toEqual(['02_交互控件与按钮', '01_顶栏与装饰'])
-    expect(String(nodeAi.params.layerSplitPsdRelativePath ?? '')).toMatch(/\.psd$/)
+    expect(
+      String((nodeLegacy.params as Record<string, unknown>).layerSplitPsdRelativePath ?? '')
+    ).toMatch(/\.psd$/)
     expect(aiOut['out-psd']).toMatchObject({
       kind: 'text',
       text: expect.stringMatching(/\.psd$/)
     })
 
-    // 2) 选择 local-slice 模式：零 API 调用直接完成拆层与 PSD 分组
+    // 2) 显式指定 Seedream 5.5 Pro 模型：原样透传 model 并执行原生拆层
     generateCalled = 0
-    const nodeLocal = {
+    const nodeSeedream55 = {
       id: 'split-node-2',
       typeId: 'image.layerSplit',
       title: 'UI 图层分离',
       position: { x: 0, y: 0 },
       params: {
-        imageLayerSplit: normalizeImageLayerSplit({ splitMode: 'local-slice', resolution: '2K' })
+        generateModel: 'doubao-seedream-5-5-pro',
+        imageLayerSplit: normalizeImageLayerSplit({ resolution: '2K' })
       }
     }
     await executeLayerSplitNode({
       ...(baseCtx as unknown as Parameters<typeof executeLayerSplitNode>[0]),
-      node: nodeLocal
+      node: nodeSeedream55 as unknown as Parameters<typeof executeLayerSplitNode>[0]['node']
     })
-    expect(generateCalled).toBe(0)
-    expect(nodeLocal.params.imageLayerSplit.layers).toHaveLength(3)
-    expect(nodeLocal.params.imageLayerSplit.groups.length).toBeGreaterThanOrEqual(2)
+    expect(generateCalled).toBe(1)
+    expect(lastReq.layerDecomposition).toBe(true)
+    expect(lastReq.model).toBe('doubao-seedream-5-5-pro')
+    expect(nodeSeedream55.params.imageLayerSplit.layers).toHaveLength(3)
   })
 
   it('contour matting clears exterior corners of circular/rounded widgets while preserving interior highlights, and peels child buttons from parent panels', () => {
@@ -1154,5 +1160,135 @@ describe('parseVolcengineArkImageLayers', () => {
         normalized: [187, 59, 808, 188]
       }
     })
+  })
+
+  it('maps OpenRouter nested data[].layer metadata, sniffs PNG dimensions from b64_json, and filters Flash/Lite models', () => {
+    // Minimal PNG header (8-byte sig + 16-byte IHDR start) for 640x360
+    const pngHeader = Buffer.from([
+      0x89,
+      0x50,
+      0x4e,
+      0x47,
+      0x0d,
+      0x0a,
+      0x1a,
+      0x0a,
+      0x00,
+      0x00,
+      0x00,
+      0x0d,
+      0x49,
+      0x48,
+      0x44,
+      0x52,
+      0x00,
+      0x00,
+      0x02,
+      0x80, // width = 640
+      0x00,
+      0x00,
+      0x01,
+      0x68, // height = 360
+      0x08,
+      0x06,
+      0x00,
+      0x00,
+      0x00
+    ]).toString('base64')
+
+    const parsed = parseVolcengineArkImageLayers([
+      {
+        b64_json: pngHeader,
+        media_type: 'image/png',
+        layer: {
+          z_index: 0,
+          background: 'opaque',
+          name: 'Base backdrop',
+          description: 'Clean scroll background'
+        }
+      },
+      {
+        b64_json: pngHeader,
+        media_type: 'image/png',
+        layer: {
+          z_index: 1,
+          background: 'transparent',
+          bounding_box: {
+            absolute: [120, 60, 520, 180],
+            normalized: [188, 167, 813, 500]
+          },
+          name: 'Primary CTA button',
+          description: 'Golden button'
+        }
+      }
+    ])
+
+    expect(parsed.layers).toHaveLength(2)
+    expect(parsed.layers[0]).toMatchObject({
+      zIndex: 0,
+      size: '640x360',
+      name: 'Base backdrop'
+    })
+    expect(parsed.layers[1]).toMatchObject({
+      zIndex: 1,
+      name: 'Primary CTA button',
+      boundingBox: {
+        absolute: [120, 60, 520, 180],
+        normalized: [188, 167, 813, 500]
+      }
+    })
+
+    const mapped = mapDecompositionToLayers({
+      idPrefix: 'test:or',
+      apiLayers: parsed.layers,
+      images: parsed.images,
+      canvasHint: { width: 0, height: 0 },
+      asCanvasBase: true
+    })
+    expect(mapped.canvasWidth).toBe(640)
+    expect(mapped.canvasHeight).toBe(360)
+    expect(mapped.layers[1]).toMatchObject({
+      left: 120,
+      top: 60,
+      width: 400,
+      height: 120
+    })
+
+    expect(isNativeLayerDecompositionModel('bytedance-seed/seedream-5-5')).toBe(true)
+    expect(isNativeLayerDecompositionModel('bytedance-seed/seedream-5-0-pro')).toBe(true)
+    expect(isNativeLayerDecompositionModel('bytedance-seed/seedream-5-0-flash')).toBe(false)
+    expect(isNativeLayerDecompositionModel('bytedance-seed/seedream-5-0-lite')).toBe(false)
+  })
+
+  it('normalizes maxLayers, includes maxLayers in fingerprint, and keeps official presets concise', () => {
+    expect(normalizeLayerSplitMaxLayers(0)).toBe(0)
+    expect(normalizeLayerSplitMaxLayers(-5)).toBe(0)
+    expect(normalizeLayerSplitMaxLayers(1)).toBe(2)
+    expect(normalizeLayerSplitMaxLayers(16)).toBe(16)
+    expect(normalizeLayerSplitMaxLayers(150)).toBe(100)
+
+    const fpAuto = layerSplitFingerprint('data:image/png;base64,abc', 'split', '2K', {
+      model: 'bytedance-seed/seedream-5-5'
+    })
+    const fp8 = layerSplitFingerprint('data:image/png;base64,abc', 'split', '2K', {
+      model: 'bytedance-seed/seedream-5-5',
+      maxLayers: 8
+    })
+    expect(fp8).not.toBe(fpAuto)
+    expect(fp8).toContain('|m:8')
+
+    expect(UI_LAYER_SPLIT_PRESETS.map((p) => p.id)).toEqual([
+      'auto-all',
+      'ui-standard',
+      'ui-hud',
+      'ui-popup',
+      'ui-inventory',
+      'ui-card'
+    ])
+    for (const preset of UI_LAYER_SPLIT_PRESETS) {
+      expect(preset.promptZh.length).toBeLessThanOrEqual(120)
+      expect(preset.promptZh).toContain('独立可编辑图层')
+      expect(preset.promptEn.toLowerCase()).toContain('independent editable transparent layer')
+    }
   })
 })

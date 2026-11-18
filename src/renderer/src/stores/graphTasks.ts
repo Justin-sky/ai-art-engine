@@ -3,13 +3,11 @@ import { defineStore } from 'pinia'
 import {
   applyEpisodeReviewMarks,
   cloneGraphDocument,
-  collectProjectUiAtlasResources,
   collectUpstreamNodeIds,
   findAllOutputNodes,
   getNodeType,
   mapHostInnerStatesToOutputs,
   mapHostBoundaryStatesToOutputs,
-  resolveChatUiAtlasSearchDirs,
   resolveNodeHostInterface,
   resolveNodeType,
   runGraph,
@@ -27,7 +25,6 @@ import {
 } from '@shared/graph'
 import { isDraftAssetId, normalizeProjectStyleImages, resolveMediaOutputDir } from '@shared/domain'
 import { persistAssetRecord } from '../composables/useAssetRecord'
-import { getActiveChatProjectScopeSnapshot } from '../composables/useChatHistory'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import {
   clearLiveCanvasRunStates,
@@ -1261,7 +1258,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               if (
                 patch.params.filmStoryboard !== undefined ||
                 patch.params.filmCast !== undefined ||
-                patch.params.uiComponentLibrary !== undefined ||
                 patch.params.filmRenders !== undefined ||
                 patch.params.filmReviewReport !== undefined ||
                 patch.params.comicPage !== undefined ||
@@ -1362,7 +1358,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               inputReferences: input.inputReferenceMeta,
               inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
               transparentBackground: input.transparentBackground || undefined,
-              layerDecomposition: input.layerDecomposition || undefined
+              layerDecomposition: input.layerDecomposition || undefined,
+              layerDecompositionMaxImages: input.layerDecompositionMaxImages || undefined
             }
             logBridge.appendMessage(String(i18n.global.t('graph.logs.submitImage')))
             try {
@@ -1950,41 +1947,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           resolveStyleImageUrls,
           resolveProjectStyleImages: () =>
             normalizeProjectStyleImages(useProjectStore().config?.styleImages),
-          resolveProjectUiAtlasResources: async (input) => {
-            const proj = useProjectStore()
-            const scopeSnap = getActiveChatProjectScopeSnapshot(proj.rootPath)
-            const base = collectProjectUiAtlasResources({
-              graphs: [task.graph],
-              // When in a specific project session (e.g. Client_Harmmy), do not mix in unrelated global workspace assets
-              assets: scopeSnap.activeProject ? [] : proj.assets,
-              folders: proj.folders
-            })
-            const searchDirs = resolveChatUiAtlasSearchDirs({
-              activeProject: scopeSnap.activeProject,
-              allProjects: scopeSnap.allProjects,
-              workspaceRootPath: scopeSnap.workspaceRootPath || proj.rootPath,
-              prompt: input?.prompt
-            })
-            if (searchDirs.length > 0 && typeof window.studio?.scanProjectOutputs === 'function') {
-              try {
-                const scanned = await window.studio.scanProjectOutputs({
-                  sinceMs: 0,
-                  uiAtlasSearchDirs: searchDirs,
-                  uiAtlasPrompt: input?.prompt
-                })
-                const diskImages = scanned?.uiAtlasImages ?? []
-                if (diskImages.length > 0) {
-                  return {
-                    componentLibraries: base.componentLibraries,
-                    images: [...diskImages, ...base.images].slice(0, 16)
-                  }
-                }
-              } catch {
-                // Ignore disk scan failure
-              }
-            }
-            return base
-          },
           resolveProjectGenerateSeed: () => useProjectStore().config?.generateSeed,
           enrichStyleImages: (images) =>
             enrichStyleImagesWithLibraryPrompts(images, String(i18n.global.locale.value)),

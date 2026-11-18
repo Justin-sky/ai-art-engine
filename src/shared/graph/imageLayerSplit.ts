@@ -19,9 +19,11 @@ import {
   type UiLayerBlendMode
 } from './uiControlSpec'
 
-export const LAYER_SPLIT_MAX_LAYERS = 96
+export const LAYER_SPLIT_MAX_LAYERS = 100
 export const LAYER_SPLIT_Z_MAX = 4096
 export const LAYER_SPLIT_RESOLUTIONS = ['auto', '1K', '1.5K', '2K'] as const
+/** 最大拆分层数下拉档位（0 表示自动跟随渠道默认上限） */
+export const LAYER_SPLIT_MAX_LAYERS_OPTIONS = [0, 4, 8, 12, 16, 30, 50, 100] as const
 export const LAYER_SPLIT_COMPOSITE_SUFFIX = 'composite'
 
 /** 渲染进程 canvas/`Image()` 可直接加载；TOS https 会被 CORS 拦住，必须先落盘再读 data URL */
@@ -40,46 +42,23 @@ export function isCanvasSafeImageSrc(url: string | undefined | null): boolean {
 export type LayerSplitResolution = (typeof LAYER_SPLIT_RESOLUTIONS)[number]
 
 /**
- * UI 图层分离引擎模式：
- * - 'auto': 智能自动（识别 UI 标准控件 → 拆解控件结构子部件 → 生成二级嵌套 PSD）
- * - 'ai-inpaint-slice': 通用图片模型底板重绘 + 标准 UI 控件结构拆解（按钮背景/文字/按下态、滑块轨道/填充/手柄、面板底框/正文）
- * - 'ai-layers': 原生多图层 API 拆解 + 标准 UI 控件结构二次精拆
- * - 'local-slice': 本地零 API 智能 UI 控件识别与结构拆解
- * - 'precise': 精准拆层（本地 OCR + 多模态大模型结构化布局树 + 按遮挡层级逐层剥离底板），
- *   详见 `uiPreciseSplit/pipeline.ts`；'auto' 在具备视觉模型时优先走此模式
+ * UI 图层分离引擎模式（统一使用 Seedream Pro 原生 `layer_decomposition` 接口拆层；
+ * 旧存档中的模式字符串统一兼容归一化为 `'ai-layers'`）。
  */
-export const UI_LAYER_SPLIT_MODES = [
-  'auto',
-  'precise',
-  'ai-inpaint-slice',
-  'ai-layers',
-  'local-slice'
-] as const
+export const UI_LAYER_SPLIT_MODES = ['ai-layers'] as const
 
-export type UiLayerSplitMode = (typeof UI_LAYER_SPLIT_MODES)[number]
+export type UiLayerSplitMode =
+  (typeof UI_LAYER_SPLIT_MODES)[number] | 'auto' | 'precise' | 'ai-inpaint-slice' | 'local-slice'
 
-export function normalizeLayerSplitMode(value: unknown): UiLayerSplitMode {
-  const raw = String(value ?? '').trim()
-  if (
-    raw === 'auto' ||
-    raw === 'precise' ||
-    raw === 'ai-inpaint-slice' ||
-    raw === 'ai-layers' ||
-    raw === 'local-slice'
-  ) {
-    return raw
-  }
-  return 'auto'
+export function normalizeLayerSplitMode(_value?: unknown): 'ai-layers' {
+  return 'ai-layers'
 }
 
 /**
- * 是否优先尝试精准拆层（OCR + 多模态）。
- * - 'precise'：必须走精准拆层，失败直接报错
- * - 'auto'：优先精准拆层，失败（无视觉模型 / 无元素）时回退到 {@link resolveEffectiveUiLayerSplitStrategy}
+ * UI 图层分离统一使用 Seedream Pro 原生 `layer_decomposition` 接口，不再走多模态 LLM + OCR 精准拆层。
  */
-export function prefersPreciseUiLayerSplit(splitMode?: UiLayerSplitMode): boolean {
-  const mode = normalizeLayerSplitMode(splitMode)
-  return mode === 'precise' || mode === 'auto'
+export function prefersPreciseUiLayerSplit(_splitMode?: UiLayerSplitMode): boolean {
+  return false
 }
 
 /** 画布像素矩形：left/top 为左上角，width/height 为贴图尺寸 */
@@ -158,7 +137,9 @@ export interface ImageLayerSplitGroup {
 export interface ImageLayerSplitState {
   prompt: string
   resolution: string
-  /** 拆层引擎模式（缺省 'auto'） */
+  /** 最大输出图层数上限（含底图，0 或缺省表示自动使用渠道默认上限） */
+  maxLayers?: number
+  /** 拆层引擎模式（缺省 'ai-layers'） */
   splitMode?: UiLayerSplitMode
   selectedId: string
   canvasWidth: number
@@ -175,11 +156,12 @@ export interface ImageLayerSplitNestedRequest {
   layerId: string
   prompt: string
   resolution: string
+  maxLayers?: number
   splitMode?: UiLayerSplitMode
   generateModel: string
   generateProviderInstanceId: string
-  visionModel?: string
-  visionProviderInstanceId?: string
+  repairModel?: string
+  repairProviderInstanceId?: string
   imageLayerSplit: ImageLayerSplitState
 }
 
@@ -189,8 +171,8 @@ export interface ImageLayerSplitRepairRequest {
   resolution: string
   generateModel: string
   generateProviderInstanceId: string
-  visionModel?: string
-  visionProviderInstanceId?: string
+  repairModel?: string
+  repairProviderInstanceId?: string
   transparentBackground?: boolean
   layerDataUrl?: string
   imageLayerSplit: ImageLayerSplitState
@@ -200,7 +182,8 @@ export interface ImageLayerSplitRepairRequest {
 export const DEFAULT_IMAGE_LAYER_SPLIT: ImageLayerSplitState = {
   prompt: '',
   resolution: '2K',
-  splitMode: 'auto',
+  maxLayers: 0,
+  splitMode: 'ai-layers',
   selectedId: '',
   canvasWidth: 0,
   canvasHeight: 0,
@@ -229,6 +212,12 @@ export function normalizeLayerSplitResolution(value: unknown): string {
   if (upper === '1.5K') return '1.5K'
   if (upper === '1K' || upper === '2K') return upper
   return normalizeExpandResolution(raw)
+}
+
+export function normalizeLayerSplitMaxLayers(value: unknown): number {
+  const n = Math.round(Number(value))
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.max(2, Math.min(100, n))
 }
 
 function clampInt(n: unknown, fallback: number, min = 0, max = 1_000_000): number {
@@ -316,8 +305,7 @@ export function layerSplitFingerprint(
     splitMode?: string
     model?: string
     providerInstanceId?: string
-    /** 精准拆层的多模态模型覆盖（仅设置时计入指纹，兼容旧指纹） */
-    visionModelKey?: string
+    maxLayers?: number
     /** 上游共享组件库指纹（仅接入组件库时计入，兼容旧指纹） */
     componentLibraryKey?: string
   }
@@ -329,14 +317,14 @@ export function layerSplitFingerprint(
   if (!extra) return base
   const mode = normalizeLayerSplitMode(extra.splitMode)
   const modelKey = `${extra.providerInstanceId?.trim() ?? ''}:${extra.model?.trim() ?? ''}`
-  const visionKey = extra.visionModelKey?.trim() || ''
+  const maxKey = extra.maxLayers && extra.maxLayers >= 2 ? `m:${Math.round(extra.maxLayers)}` : ''
   const compKey = extra.componentLibraryKey?.trim() || ''
   const withExtras = (fp: string): string => {
-    let out = visionKey ? `${fp}|v:${visionKey}` : fp
+    let out = maxKey ? `${fp}|${maxKey}` : fp
     if (compKey) out = `${out}|c:${compKey}`
     return out
   }
-  if (mode === 'auto' && modelKey === ':') return withExtras(base)
+  if (modelKey === ':') return withExtras(base)
   return withExtras(`${base}|${mode}|${modelKey}`)
 }
 
@@ -642,6 +630,7 @@ export function normalizeImageLayerSplit(
   return {
     prompt: typeof base.prompt === 'string' ? base.prompt : '',
     resolution: normalizeLayerSplitResolution(base.resolution),
+    maxLayers: normalizeLayerSplitMaxLayers(base.maxLayers),
     splitMode: normalizeLayerSplitMode(base.splitMode),
     selectedId,
     canvasWidth: clampInt(base.canvasWidth, 0, 0),
@@ -1159,6 +1148,31 @@ export function mapDecompositionToLayers(input: {
   if (parsedSize) {
     canvasWidth = parsedSize.width
     canvasHeight = parsedSize.height
+  } else if (canvasWidth <= 0 || canvasHeight <= 0) {
+    const baseAbs = tuple4(base?.boundingBox?.absolute)
+    if (baseAbs && baseAbs[2] - baseAbs[0] > 1 && baseAbs[3] - baseAbs[1] > 1) {
+      canvasWidth = Math.round(baseAbs[2] - baseAbs[0])
+      canvasHeight = Math.round(baseAbs[3] - baseAbs[1])
+    } else {
+      for (const row of apiLayers) {
+        const abs = tuple4(row.boundingBox?.absolute)
+        const norm = tuple4(row.boundingBox?.normalized)
+        if (!abs || !norm) continue
+        const dw = abs[2] - abs[0]
+        const dh = abs[3] - abs[1]
+        const nw = norm[2] - norm[0]
+        const nh = norm[3] - norm[1]
+        if (dw > 4 && nw >= 20 && dh > 4 && nh >= 20) {
+          canvasWidth = Math.round((dw * 1000) / nw)
+          canvasHeight = Math.round((dh * 1000) / nh)
+          break
+        }
+      }
+    }
+    if (canvasWidth <= 0 || canvasHeight <= 0) {
+      canvasWidth = 1024
+      canvasHeight = 1024
+    }
   }
 
   const layers: ImageLayerSplitLayer[] = []
@@ -1292,7 +1306,7 @@ export function nestLayerSplitResult(input: {
 }
 
 export type UiLayerSplitPresetId =
-  'ui-standard' | 'ui-hud' | 'ui-popup' | 'ui-inventory' | 'ui-card'
+  'auto-all' | 'ui-standard' | 'ui-hud' | 'ui-popup' | 'ui-inventory' | 'ui-card'
 
 export interface UiLayerSplitPreset {
   id: UiLayerSplitPresetId
@@ -1300,13 +1314,25 @@ export interface UiLayerSplitPreset {
   promptEn: string
 }
 
+/**
+ * 遵循火山方舟 / ByteDance Seed 官方 `layer_decomposition` 提示词规范：
+ * 简短明确（≤120 字），强调「每个元素作为独立可编辑透明图层输出」与「保持边缘干净无残留」，
+ * 避免按少数几个大类笼统枚举导致多个按钮/图标被合并在同一图层或漏拆角色立绘。
+ */
 export const DEFAULT_UI_LAYER_SPLIT_PROMPT_ZH =
-  '将游戏 UI 界面分层拆解为：底层背景与主面板底框、装饰边框与顶栏横幅、次级内容容器与槽位格子、独立交互按钮与关闭按钮、顶部图标徽章与货币角标，所有组件层需保持边缘干净与透明背景' // cjk-ok 游戏 UI 拆层默认指令
+  '精准识别并拆解游戏 UI 界面中的元素，分别拆出背景底图、主面板与子容器底框、角色立绘主体、每个交互按钮、图标徽章、标题文字与装饰元素，每个元素作为独立可编辑图层输出，保持边缘干净无残留。' // cjk-ok 游戏 UI 拆层官方风格默认指令
 
 export const DEFAULT_UI_LAYER_SPLIT_PROMPT_EN =
-  'Decompose this game UI screen into clean transparent layers: base background & main panel frame, decorative header banner & corner ornaments, content container cards & item slots, interactive CTA buttons & close button, and top icons, badges & currency widgets.'
+  'Precisely decompose this game UI screen into layers: separate the background base, main panel and sub-container frames, character portrait or subject, each interactive button, icon badge, title text, and decorative element, outputting every element as an independent editable transparent layer with clean residue-free edges.'
 
 export const UI_LAYER_SPLIT_PRESETS: readonly UiLayerSplitPreset[] = [
+  {
+    id: 'auto-all',
+    promptZh:
+      '精准拆解画面中的所有主体、背景底图、前景文字与装饰元素，每个元素作为独立可编辑图层输出，保持边缘干净无残留。', // cjk-ok 通用全元素官方风格拆层预设
+    promptEn:
+      'Precisely decompose all subjects, background base, foreground text, and decorative elements in the image, outputting each element as an independent editable transparent layer with clean residue-free edges.'
+  },
   {
     id: 'ui-standard',
     promptZh: DEFAULT_UI_LAYER_SPLIT_PROMPT_ZH,
@@ -1315,30 +1341,30 @@ export const UI_LAYER_SPLIT_PRESETS: readonly UiLayerSplitPreset[] = [
   {
     id: 'ui-hud',
     promptZh:
-      '拆解游戏战斗 HUD 界面图层：底层场景背景、左上角色头像框与血条/蓝条槽、右上小地图与资源货币栏、右下技能轮盘与普攻按钮、顶部首领血条与状态图标，各组件层均保持边缘干净与透明背景', // cjk-ok 游戏 HUD 拆层预设
+      '精准识别并拆解游戏战斗 HUD 界面：分别拆出底层场景背景、角色头像框、每根血条与蓝条槽、小地图与货币资源栏、每个独立技能按钮与状态图标，每个控件作为独立可编辑图层输出，保持边缘干净无残留。', // cjk-ok 游戏 HUD 拆层预设
     promptEn:
-      'Decompose game battle HUD layers: underlying scene backdrop, top-left avatar frame with HP/MP bars, top-right minimap & currency bar, bottom-right skill wheel & attack buttons, top boss HP bar & buff icons, all widget layers with clean edges and transparent background.'
+      'Precisely decompose this game battle HUD: separate the scene backdrop, avatar frame, each HP/MP bar, minimap and currency bar, and each individual skill button and buff icon as independent editable transparent layers with clean edges.'
   },
   {
     id: 'ui-popup',
     promptZh:
-      '拆解游戏弹窗对话框图层：半透明遮罩与弹窗主底板、顶部标题横幅丝带与角花装饰、中部奖励槽位与内嵌子面板、底部确认/取消主次按钮与右上关闭按钮，各图层均保持边缘干净与透明背景', // cjk-ok 游戏弹窗拆层预设
+      '精准识别并拆解游戏弹窗对话框：分别拆出背景遮罩与弹窗主底板、顶部标题横幅与角花装饰、中部每个奖励槽位与内嵌子面板、底部每个操作按钮与右上关闭按钮，每个元素作为独立可编辑图层输出，保持边缘干净无残留。', // cjk-ok 游戏弹窗拆层预设
     promptEn:
-      'Decompose game modal popup layers: modal main frame & backdrop, top ribbon title banner & corner ornaments, center reward slots & inset sub-panel, bottom confirm/cancel buttons & top-right close button, all layers with clean edges and transparent background.'
+      'Precisely decompose this game modal popup: separate the backdrop and main modal frame, top ribbon banner and corner ornaments, each center reward slot and inset sub-panel, and each bottom button and close button as independent editable transparent layers with clean edges.'
   },
   {
     id: 'ui-inventory',
     promptZh:
-      '拆解背包与养成界面图层：全屏底板与立绘展示台、左侧页签导航栏、右侧网格物品槽位矩阵与滚动容器、底部强化/穿戴操作按钮与顶部资源栏，各组件层均保持边缘干净与透明背景', // cjk-ok 游戏背包养成拆层预设
+      '精准识别并拆解游戏背包养成界面：分别拆出背景底图与角色立绘、左侧每个页签按钮、右侧物品槽位与容器面板、顶部资源栏及底部操作按钮，每个元素作为独立可编辑图层输出，保持边缘干净无残留。', // cjk-ok 游戏背包养成拆层预设
     promptEn:
-      'Decompose RPG inventory & progression UI layers: fullscreen background & character stage, left tab navigation bar, right item grid slots & scroll panel, bottom upgrade/equip action buttons & top resource bar, all widget layers with clean edges and transparent background.'
+      'Precisely decompose this RPG inventory UI: separate the background base and character portrait, each tab button, item grid slots and container panel, top resource bar, and bottom action buttons as independent editable transparent layers with clean edges.'
   },
   {
     id: 'ui-card',
     promptZh:
-      '拆解抽卡与商店界面图层：史诗舞台背景、核心卡池横幅与角色立绘展示框、稀有度徽章与价格标签、底部单抽/十连抽高亮按钮与顶部代币栏，各组件层均保持边缘干净与透明背景', // cjk-ok 游戏抽卡商店拆层预设
+      '精准识别并拆解抽卡与商店界面：分别拆出舞台背景底图、核心卡池立绘主体与展示底框、每个稀有度徽章与价格角标、顶部资源栏及底部每个抽卡或购买按钮，每个元素作为独立可编辑图层输出，保持边缘干净无残留。', // cjk-ok 游戏抽卡商店拆层预设
     promptEn:
-      'Decompose gacha & shop UI layers: epic stage background, main banner & featured character frame, rarity badges & price tags, bottom single/10x pull CTA buttons & top currency bar, all widget layers with clean edges and transparent background.'
+      'Precisely decompose this gacha and shop UI: separate the stage background, featured character portrait and display frame, each rarity badge and price tag, top currency bar, and each pull or buy button as independent editable transparent layers with clean edges.'
   }
 ]
 
@@ -1963,38 +1989,37 @@ export function buildUiCleanBaseInpaintPrompt(
 }
 
 /**
- * 判断指定的图片模型是否原生支持 API 级 `layer_decomposition`（如火山方舟 Seedream 5.0 Pro 或自定义 ep- 接入点）。
- * 当模型未指定（空字符串）时返回 true，以保持默认 Seedream 5.0 Pro 行为；
- * 当明确指定了 Gemini / GPT-Image / Flux / Qwen / Seedream 4.x 等常规图片模型时返回 false。
+ * 判断指定的图片模型是否支持 Seedream Pro 原生 `layer_decomposition`（含 Seedream 5.0 Pro / 5.5 Pro / 6.x+ / 任意 Seedream Pro 变体及火山方舟 `ep-*` 接入点）。
+ * 当模型未指定（空字符串）时返回 true，由主进程自动路由到已启用的 Seedream Pro 模型；
+ * 当明确指定了 Lite 版或 Gemini / GPT-Image / Flux / Qwen / Seedream 4.x 非 Pro 等常规图片模型时返回 false。
  */
-export function isNativeLayerDecompositionModel(model?: string): boolean {
+export function isNativeLayerDecompositionModel(model?: string, displayName?: string): boolean {
   const m = model?.trim().toLowerCase() ?? ''
   if (!m) return true
-  if (m.includes('seedream-5') || m.includes('seedream5') || m.startsWith('ep-')) {
+  const combined = `${m} ${displayName?.trim().toLowerCase() ?? ''}`.trim()
+  if (/(?:^|[-_.\s/])(?:lite|flash)(?:\b|[-_.\s]|$)/i.test(combined)) {
+    return false
+  }
+  if (/^(?:ep[-_]|.*\/ep[-_])[a-z0-9]/i.test(m)) {
+    return true
+  }
+  if (
+    /seedream.*(?:^|[-_.\s])pro(?:\b|[-_.\s]|$)/i.test(combined) ||
+    /seedream[-_.\s]*v?(?:[5-9]|\d{2,})(?:\b|[-_.\s]|$)/i.test(combined)
+  ) {
     return true
   }
   return false
 }
 
 /**
- * 根据用户选择的拆层模式 (`splitMode`) 与当前选中的生图模型 (`model`)，
- * 决定实际执行的拆层引擎策略：
- * - `'ai-layers'`: 调用模型原生 `layer_decomposition` API
- * - `'ai-inpaint-slice'`: 调用任意生图模型擦除前景生成干净底板 + 智能连通域软抠图切分
- * - `'local-slice'`: 零 API 极速本地连通域切分 + 边界纹理修补底板
- *
- * 注意：`'precise'` / `'auto'` 先由执行器尝试精准拆层（见 {@link prefersPreciseUiLayerSplit}），
- * 此函数返回的是其回退 / 嵌套再拆时使用的传统策略。
+ * UI 图层分离统一执行原生 Seedream Pro `layer_decomposition`（`'ai-layers'`）。
  */
 export function resolveEffectiveUiLayerSplitStrategy(
-  splitMode?: UiLayerSplitMode,
-  model?: string
-): 'ai-layers' | 'ai-inpaint-slice' | 'local-slice' {
-  const mode = normalizeLayerSplitMode(splitMode)
-  if (mode === 'local-slice') return 'local-slice'
-  if (mode === 'ai-inpaint-slice') return 'ai-inpaint-slice'
-  if (mode === 'ai-layers') return 'ai-layers'
-  return isNativeLayerDecompositionModel(model) ? 'ai-layers' : 'ai-inpaint-slice'
+  _splitMode?: UiLayerSplitMode,
+  _model?: string
+): 'ai-layers' {
+  return 'ai-layers'
 }
 
 export interface ExtractedUiLayerBuffer {

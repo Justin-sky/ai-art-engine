@@ -1704,9 +1704,7 @@ export async function handleGraphEdit(payload: McpGraphEditPayload): Promise<voi
                   ? ('gameSystem.workbench' as const)
                   : diveNode.typeId === 'ui.split' || diveNode.typeId === 'ui.gen'
                     ? ('ui.split' as const)
-                    : diveNode.typeId === 'ui.componentLib'
-                      ? ('ui.componentLib' as const)
-                      : null
+                    : null
           if (diveViewId) {
             const rootKind = asset?.type === 'canvas' || !asset ? 'canvas' : 'asset'
             const expectedRootKey = editorDiveRootKey(rootKind, effectiveAssetId)

@@ -111,8 +111,6 @@ describe('graph policy', () => {
         'image.emotion',
         'image.iconPack',
         'image.layerSplit',
-        'ui.componentLib',
-        'ui.atlasCompose',
         'image.lighting',
         'image.multiAngle',
         'image.portraitTexture',

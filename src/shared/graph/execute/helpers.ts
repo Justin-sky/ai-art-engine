@@ -1,10 +1,5 @@
 import type { GraphNode, GraphNodeParams } from '../types'
 import { splitScreenplayByExplicitEpisodeMarkers } from '../screenplayFormat'
-import {
-  parseUiComponentLibrary,
-  stringifyUiComponentLibrary,
-  uiComponentItemImage
-} from '../uiComponentLibrary'
 import type {
   GraphAssetValue,
   GraphImageItem,
@@ -74,20 +69,6 @@ export function resolveGalleryOutputsFromNodeParams(
         createdAt: item.createdAt
       }
     })
-    if (options?.typeId === 'ui.componentLib') {
-      const lib = parseUiComponentLibrary(params.uiComponentLibrary ?? '')
-      if (lib?.items?.length) {
-        return {
-          out: { kind: 'uiComponents', doc: lib, text: stringifyUiComponentLibrary(lib) },
-          'out-images': { kind: 'images', items }
-        }
-      }
-      const fallbackLibItems = lib?.items?.filter((i) => uiComponentItemImage(i)) ?? []
-      void fallbackLibItems
-      return {
-        'out-images': { kind: 'images', items }
-      }
-    }
     const selectedId =
       params.selectedImageId?.trim() ||
       (options?.typeId === 'ui.gen'

@@ -5407,43 +5407,16 @@ export default {
     },
     layerSplit: {
       appMark: 'UI layer split',
-      hint: 'Supports any image model and 4 decomposition engines (Seedream 5 Native / Universal AI Base Inpaint + Smart Soft-Matte Slice / 0-API Local Smart Slice); double-click to organize folders, rename layers, and export layered PSD / JSON manifest',
+      hint: 'Uses Seedream Pro (5.0 / 5.5+) native layer decomposition to isolate a clean base plate and transparent layers, with an independent repair model for single-layer inpainting; double-click to adjust hierarchy, auto-group, and export layered PSD / JSON manifest',
       needRun:
-        'Connect an upstream UI image (recommended: wire from the Selected UI port of Generate Game UI) and run the node. The node decomposes a clean base plate plus transparent UI widget layers organized into PSD folders.',
+        'Connect an upstream image (such as a UI screen or the output of Generate Game UI) and run the node to decompose a clean base plate and standalone transparent layers organized into PSD folders.',
       noSelection: 'No layer selected',
       layers: 'Layers',
       emptyLayers: 'No layers yet. Run the node to decompose the image.',
       layerCount: '{n} layers',
-      splitMode: 'Split Engine',
-      splitModeAuto:
-        '⚡ Smart Auto (precise split first; falls back by selected model without a vision model)',
-      splitModePrecise: '🎯 Precise Split (local OCR + multimodal LLM, level-by-level peeling)',
-      splitModeAiInpaintSlice: '🎨 Universal AI Split (Any Model Clean Base + Soft-Matte Slice)',
-      splitModeAiLayers: '🧩 Native Layer API (Seedream 5.0 Pro layer_decomposition)',
-      splitModeLocalSlice: '🚀 0-API Local Smart Slice (Local BG Inpaint + Widget Cutout)',
-      splitModeHintAutoLayers:
-        'Selected model supports native API layer decomposition and auto-organizes into Game UI PSD folders',
-      splitModeHintAiInpaint:
-        'Works with any image model (Gemini / GPT / Seedream 4.x / Flux): inpaints a clean widget-free base plate first, then extracts crisp transparent UI widgets via color-unmixing soft matting',
-      splitModeHintLocalSlice:
-        'Zero cloud API calls — locally reconstructs the clean base plate and slices out all standalone UI buttons, icons, and panel frames',
-      splitModeHintPrecise:
-        'Local OCR locates text, a multimodal LLM (Gemini auto-selected by default) parses the full control tree with zoom-in re-checks on large containers; the image model above then restores occluded parts level by level, producing complete layers, editable text and a control-nested PSD. Requires a vision-capable text model enabled in Settings',
-      splitModeHintPreciseFallback:
-        'Precise split (OCR + multimodal) first; without a vision-capable text model or if parsing fails, falls back to this legacy engine:',
-      visionModelLabel: 'Multimodal LLM (Layout)',
-      visionModelAuto: '⚡ Auto (Best Vision Model + Auto-Fallback)',
-      visionModelHint:
-        'Multimodal text model for precise layout parsing & UI control detection; automatically falls back across available vision models on 429 quota limits',
-      prompt: 'Decompose prompt',
-      promptPlaceholder:
-        'Optional: describe the UI widgets to isolate (or click a preset below). Leave empty to automatically decompose base plate, frames, buttons, and ornaments for Game UI.',
-      presets: 'UI Decompose Presets',
-      presetStandard: 'Standard UI',
-      presetHud: 'Combat HUD',
-      presetPopup: 'Dialog Popup',
-      presetInventory: 'Inventory Grid',
-      presetCard: 'Gacha / Card',
+      splitModelLabel: 'Split Model (Seedream Pro)',
+      repairModelLabel: 'Repair Model (Layer Inpaint)',
+      noSeedreamProModels: 'Enable a Seedream Pro (5.0 / 5.5+) image model in Settings first',
       autoUiGroup: 'Smart UI Grouping',
       autoUiGroupHint:
         'Auto-organize layers into PSD folders (Top HUD & Ornaments / Interactive Controls & Buttons / Panels & Frames)',
@@ -5451,6 +5424,20 @@ export default {
       renameLabel: 'Layer name',
       renamePlaceholder: 'Rename selected layer or group (synced to PSD & exported files)',
       resolution: 'Resolution',
+      maxLayers: 'Max layers',
+      maxLayersAuto: 'Auto (Provider default)',
+      maxLayersCount: 'Up to {n} layers',
+      maxLayersOpenRouterCap: 'Up to {n} layers (OpenRouter max 16)',
+      prompt: 'Split prompt (optional)',
+      promptPlaceholder:
+        'Leave blank for the recommended element-by-element split prompt, or briefly specify targets e.g. "split main title and subtitle into separate layers"',
+      presets: 'Presets',
+      presetAutoAll: 'All Elements',
+      presetStandard: 'Game UI',
+      presetHud: 'Battle HUD',
+      presetPopup: 'Modal Popup',
+      presetInventory: 'Inventory',
+      presetCard: 'Gacha & Shop',
       sendBack: 'Send backward',
       bringForward: 'Bring forward',
       hideBase: 'Hide base',
@@ -5463,6 +5450,7 @@ export default {
       redecompose: 'Clear and decompose again',
       splitSelected: 'Split selected layer',
       splitting: 'Splitting selected layer…',
+      decomposing: '⏳ Decomposing layers via Seedream Pro…',
       splitNeedLayer: 'Select a layer to split further',
       splitAlready: 'This layer is already in a split group',
       splitNeedImage: 'The selected layer has no image',
@@ -5554,77 +5542,7 @@ export default {
       explode2dGap: 'Gap',
       explode2dGapHint: 'Adjust planar spacing between 2D exploded chunks',
       explodeLabels: '🏷️ Labels',
-      explodeLabelsHint: 'Show or hide layer name and size badges in exploded view',
-      componentLibTitle: 'Component library',
-      componentLibSummary:
-        '{libCount} master(s) · {matchedCount} layer(s) replaced (Smart Objects)',
-      componentSectionTitle: '🧩 Shared Component Master (PSD Smart Object)',
-      componentBindNone: '— Unbound (use raw cutout) —',
-      componentToggleMaster: '🧩 Using Master',
-      componentToggleRaw: '🖼️ Raw Cutout',
-      componentToggleTip:
-        'Toggle between the clean shared component master (exported as a shared PSD Smart Object) and raw cutout pixels',
-      componentMatchScoreTip:
-        'Match score {score}% · Shares one embedded PSD Smart Object across instances'
-    },
-    uiComponentLib: {
-      hint: 'Clusters and fuses unobstructed pixels across one or more UI screens to extract clean, text-free shared component masters. Wire its output into UI Layer Split’s Component lib port to replace repeated controls and export shared PSD Smart Objects & deduplicated engine slices',
-      extractMode: 'Extraction Scope',
-      extractModeAuto:
-        '⚡ Smart Auto (repeated controls first; includes standard buttons & slots on single screen)',
-      extractModeRepeated: '🔁 Repeated Controls Only (shared masters appearing ≥ 2 times)',
-      extractModeAllControls: '🧩 All Standard Controls (buttons, slots, tabs, badges, frames)',
-      extractHintLabel: 'Extraction Hint (Optional)',
-      extractHintPlaceholder:
-        'Optional: describe shared controls to prioritize or name (blank = auto-detect buttons, item slots, tabs, and frames)',
-      componentsTitle: 'Shared Component Masters',
-      componentCount: '{n} component(s)',
-      emptyComponents:
-        'No components extracted yet. Connect one or more UI screens (e.g. from UI Screen Gen) and run the node.',
-      sourceInstances: '×{n} fused',
-      scaleExact: 'Exact',
-      scaleUniform: 'Uniform',
-      scaleNineSlice: '9-Slice',
-      lockItem: 'Lock master (preserve on re-extract)',
-      unlockItem: 'Locked (click to unlock)',
-      removeItem: 'Remove component',
-      reextract: 'Clear Cache & Re-extract',
-      exportNamePlaceholder: 'Export name (e.g. Comp_Btn_Primary)',
-      psdSmartObjectTip: 'PSD Smart Object GUID: {guid} (shared across instances)',
-      openWorkbench: 'Open Component Workbench',
-      workbenchSubtitle:
-        'Shared Master Curation · 9-Slice Guides & Stretch Simulator · PSD Smart Object Lineage',
-      filterAll: 'All Kinds',
-      searchPlaceholder: 'Search name or export ID…',
-      exportAllPng: 'Export All Master PNGs',
-      exportSinglePng: 'Export Selected PNG',
-      exportedToast: 'Exported {n} component master PNG(s)',
-      masterStageTitle: 'Component Master & 9-Slice Guides',
-      stretchSimTitle: 'Live Scale / 9-Slice Stretch Simulator',
-      stretchWidth: 'Test Width',
-      stretchHeight: 'Test Height',
-      preset1x: '1× Canonical',
-      presetWideBtn: '1.8× Wide Button',
-      presetBanner: '2.5× Wide Banner',
-      presetPanel: '2×2 Dialog Frame',
-      propName: 'Display Name',
-      propExportName: 'Engine / Smart Object Name',
-      propKind: 'Control Kind',
-      propScalePolicy: 'Scale Policy',
-      nineSliceTitle: '9-Slice Borders (px)',
-      nineSliceTop: 'Top',
-      nineSliceRight: 'Right',
-      nineSliceBottom: 'Bottom',
-      nineSliceLeft: 'Left',
-      autoDetectNineSlice: 'Auto-Detect 9-Slice',
-      autoDetectSuccess: 'Auto-detected 9-slice borders: {borders}',
-      autoDetectFallback: 'Component is small or lacks distinct borders; applied 25% safe inset',
-      smartObjectGuidLabel: 'PSD Smart Object GUID',
-      copyGuid: 'Copy GUID',
-      copiedGuid: 'Copied',
-      zoomFit: 'Fit',
-      selectComponentHint:
-        'Select a shared component on the left to inspect and edit 9-slice settings'
+      explodeLabelsHint: 'Show or hide layer name and size badges in exploded view'
     },
     uiGen: {
       hint: 'Batch-generates Game UI screens directly on the canvas (Dual-Track: text preview + 100% layout-aligned textless base plate) or double-click to dive into the per-screen subgraph; feeds clean base plates directly into UI Layer Split for PSD export',
@@ -6223,14 +6141,8 @@ export default {
       novelOutlineOut: 'Outline',
       novelChapterOut: 'Next chap',
       outAll: 'All chapters',
-      uiComponentsIn: 'Component lib',
-      uiComponentsOut: 'Components',
-      uiComponentImages: 'Component sheets',
       uiScreenImage: 'UI screen',
       uiScreenImages: 'UI screens',
-      uiAtlasImage: 'Atlas / Slice',
-      uiAtlasImages: 'Slices',
-      uiComposePrompt: 'UI spec',
       types: {
         image: 'Image',
         images: 'Images',
@@ -6250,8 +6162,7 @@ export default {
         project: 'Project',
         semanticTimeline: 'Breakdown timeline',
         storyboard: 'Storyboard',
-        filmCast: 'Cast library',
-        uiComponents: 'UI component library'
+        filmCast: 'Cast library'
       }
     },
     media: {
@@ -6467,9 +6378,7 @@ export default {
       },
       ui: {
         split: 'UI screen split',
-        gen: 'UI screen gen',
-        componentLib: 'UI component library',
-        atlasCompose: 'UI atlas compose'
+        gen: 'UI screen gen'
       },
       anim: {
         '2d': '2D Frame Animation'
@@ -7776,13 +7685,7 @@ export default {
         hint: 'Double-click to tune keying and canvas options. Run the node to key cells to transparent and save PNGs named after the list.'
       },
       layerSplit: {
-        hint: 'Supports any image model and 4 decomposition engines (Smart Auto / Universal AI Clean Base + Soft-Matte Slice / Seedream 5 Native / 0-API Local Smart Slice); wire a UI Component Library to replace repeated controls with PSD Smart Objects and export JSON manifests.'
-      },
-      uiComponentLib: {
-        hint: 'Connect one or more UI screens to extract clean shared component masters, then wire into UI Layer Split to replace repeated controls and export shared PSD Smart Objects.'
-      },
-      atlasCompose: {
-        hint: 'Connect existing UI Sprite Atlas / slice images or a UI Component Library plus a UI layout specification to assemble a multi-layer UI screen; double-click to open the PS-like layer editor, insert or resize atlas elements, and export directly to PSD.'
+        hint: 'Uses Seedream Pro (5.0 / 5.5+) native layer decomposition to isolate a clean base plate and standalone transparent layers, with an independent repair model for single-layer inpainting; double-click to edit hierarchy and export layered PSD / JSON manifest.'
       },
       camera: {
         hint: 'Edits sync to the director deck edit preview; orbiting in the preview updates it live.',

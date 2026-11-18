@@ -433,8 +433,6 @@ export interface GraphRunSessionOptions {
   resolveAssetText?: (assetId: string) => Promise<string | undefined>
   /** 工程全局画面风格（生成节点「使用全局风格」时读取） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
-  /** 自动发现并汇总工程中的 UI 图集与组件库资源 */
-  resolveProjectUiAtlasResources?: import('@shared/graph').NodeExecuteContext['resolveProjectUiAtlasResources']
   /** 工程全局随机种子（生成节点「使用全局种子」时读取） */
   resolveProjectGenerateSeed?: () => number | undefined
   /** 世界元素四类子图口：params 为空时从 element 子图 soft 收集 */
@@ -807,6 +805,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       inputReferenceMeta?: GraphImageReferenceMeta[]
       transparentBackground?: boolean
       layerDecomposition?: boolean
+      layerDecompositionMaxImages?: number
     }) => {
       if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
@@ -825,7 +824,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         inputReferences: input.inputReferenceMeta,
         inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
         transparentBackground: input.transparentBackground || undefined,
-        layerDecomposition: input.layerDecomposition || undefined
+        layerDecomposition: input.layerDecomposition || undefined,
+        layerDecompositionMaxImages: input.layerDecompositionMaxImages || undefined
       }
       run.logBridge.appendMessage(options.t('graph.logs.submitImage'))
       try {
@@ -1655,7 +1655,6 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveStyleImageUrls: resolveStyleImageUrls,
         resolveProjectStyleImages:
           options.resolveProjectStyleImages ?? (() => [] as ProjectStyleImage[]),
-        resolveProjectUiAtlasResources: options.resolveProjectUiAtlasResources,
         resolveProjectGenerateSeed: options.resolveProjectGenerateSeed ?? (() => undefined),
         enrichStyleImages: (images) =>
           enrichStyleImagesWithLibraryPrompts(images, options.locale?.() ?? 'zh-CN'),

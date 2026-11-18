@@ -31,8 +31,7 @@ describe('GraphPortType', () => {
       // 语义时间线文档（整份 SemanticTimeline，视频拆解 → 视频重制直连）
       GraphPortType.semanticTimeline,
       GraphPortType.storyboard,
-      GraphPortType.filmCast,
-      GraphPortType.uiComponents
+      GraphPortType.filmCast
     ])
     expect(isGraphPortDataType('image')).toBe(true)
     expect(isGraphPortDataType('images')).toBe(true)

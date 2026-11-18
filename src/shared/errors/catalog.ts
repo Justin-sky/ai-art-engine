@@ -31,11 +31,11 @@ export const SHARED_ERRORS = {
     '图层分离失败：未得到有效图层',
     'Layer separation failed: no valid layers produced'
   ),
-  /** 图层分离：当前模型不支持 / 未返回图层（提示切 Seedream 5.0 Pro） */
+  /** 图层分离：当前模型不支持 / 未返回图层（提示切 Seedream Pro） */
   layerSplitNoLayers: defErrSimple(
     'graphExec.layerSplit.noLayers',
-    '当前模型未返回图层。请使用 Seedream 5.0 Pro 并开启图层分离',
-    'The current model returned no layers. Use Seedream 5.0 Pro with layer separation enabled'
+    '当前模型未返回图层。请在设置中启用并选择 Seedream Pro（5.0 / 5.5+）模型进行图层分离',
+    'The current model returned no layers. Enable and select a Seedream Pro (5.0 / 5.5+) model in Settings for layer separation'
   ),
   /** 图层分离（精准拆层）：多模态版面解析失败（无可用视觉模型 / 未识别出元素） */
   layerSplitPreciseFailed: defErr<{ detail: string }>(

@@ -274,6 +274,9 @@
           <div v-if="sourceLoading" class="stage-empty">
             {{ t('graph.editor.loadingSource') }}
           </div>
+          <div v-else-if="!hasCanvas && isNodeExecuting" class="stage-empty">
+            {{ t('graph.layerSplit.decomposing') }}
+          </div>
           <div v-else-if="!hasCanvas" class="stage-empty">
             {{ t('graph.layerSplit.needRun') }}
           </div>
@@ -292,8 +295,12 @@
             @pointerdown="onCanvasWrapPointerDown"
             @dblclick.self="resetView"
           >
-            <div v-if="splitting" class="stage-mask">
-              {{ t('graph.layerSplit.splitting') }}
+            <div v-if="splitting || isNodeExecuting" class="stage-mask">
+              {{
+                isNodeExecuting
+                  ? t('graph.layerSplit.decomposing')
+                  : t('graph.layerSplit.splitting')
+              }}
             </div>
             <svg
               v-if="exploded2d && explode2dMode === 'radial'"
@@ -637,50 +644,6 @@
                 @change="onEditableTextChange"
               />
             </div>
-            <div v-if="draft.componentLibrary?.length" class="side-component-lib">
-              <div class="nine-slice-head">
-                <span class="nine-slice-title">
-                  {{ t('graph.layerSplit.componentSectionTitle') }}
-                </span>
-                <span
-                  v-if="selectedLayer.componentId && selectedLayer.componentMatchScore != null"
-                  class="prefab-chip"
-                  :title="
-                    t('graph.layerSplit.componentMatchScoreTip', {
-                      score: Math.round(selectedLayer.componentMatchScore * 100)
-                    })
-                  "
-                >
-                  {{ Math.round(selectedLayer.componentMatchScore * 100) }}%
-                </span>
-              </div>
-              <div class="component-bind-row">
-                <select
-                  class="select comp-bind-select"
-                  :value="selectedLayer.componentId ?? ''"
-                  @change="onBindSelectedLayerComponent"
-                >
-                  <option value="">{{ t('graph.layerSplit.componentBindNone') }}</option>
-                  <option v-for="comp in draft.componentLibrary" :key="comp.id" :value="comp.id">
-                    {{ comp.name }} ({{ comp.canonicalWidth }}×{{ comp.canonicalHeight }})
-                  </option>
-                </select>
-                <button
-                  v-if="selectedLayer.componentId && selectedLayer.originalImageId"
-                  type="button"
-                  class="mini-pill"
-                  :class="{ active: !selectedLayer.keepOriginalPixels }"
-                  :title="t('graph.layerSplit.componentToggleTip')"
-                  @click="onToggleSelectedLayerComponent"
-                >
-                  {{
-                    selectedLayer.keepOriginalPixels
-                      ? t('graph.layerSplit.componentToggleRaw')
-                      : t('graph.layerSplit.componentToggleMaster')
-                  }}
-                </button>
-              </div>
-            </div>
             <div v-if="selectedLayer.qaIssues?.length" class="side-qa">
               <div class="nine-slice-head">
                 <span class="nine-slice-title qa-title">
@@ -925,37 +888,6 @@
           <p v-if="exportMessage" class="side-export" :class="{ error: exportFailed }">
             {{ exportMessage }}
           </p>
-          <div v-if="draft.componentLibrary?.length" class="atlas-palette">
-            <div class="atlas-palette-head">
-              <span class="atlas-palette-title">
-                🧩
-                {{
-                  isZhLocale
-                    ? /* cjk-ok */ `图集元素库 (${draft.componentLibrary.length}) · 点击插入图层`
-                    : `Atlas Library (${draft.componentLibrary.length}) · Click to Add Layer`
-                }}
-              </span>
-            </div>
-            <div class="atlas-palette-grid">
-              <button
-                v-for="comp in draft.componentLibrary"
-                :key="comp.id"
-                type="button"
-                class="atlas-palette-item"
-                :title="`${comp.name} (${comp.canonicalWidth}×${comp.canonicalHeight})`"
-                @click="addLayerFromAtlasComponent(comp)"
-              >
-                <img
-                  v-if="componentThumbUrl(comp)"
-                  :src="componentThumbUrl(comp)"
-                  :alt="comp.name"
-                  class="atlas-palette-thumb"
-                />
-                <span v-else class="atlas-palette-placeholder">🧩</span>
-                <span class="atlas-palette-name">{{ comp.name }}</span>
-              </button>
-            </div>
-          </div>
           <div ref="sideListEl" class="side-list">
             <p v-if="!draft.layers.length" class="side-empty">
               {{ t('graph.layerSplit.emptyLayers') }}
@@ -1057,56 +989,25 @@
       </div>
 
       <div class="bottom">
-        <div class="prompt-col">
-          <div class="preset-bar">
-            <span class="preset-title">{{ t('graph.layerSplit.presets') }}:</span>
-            <button
-              v-for="preset in presetOptions"
-              :key="preset.id"
-              type="button"
-              class="preset-chip"
-              :class="{ active: draft.prompt.trim() === preset.prompt.trim() }"
-              @click="draft.prompt = preset.prompt"
-            >
-              {{ preset.label }}
-            </button>
-          </div>
-          <textarea
-            v-model="draft.prompt"
-            class="prompt"
-            rows="2"
-            :placeholder="t('graph.layerSplit.promptPlaceholder')"
-          />
-        </div>
         <div class="toolbar">
-          <label class="tool tool-mode">
-            <span class="tool-label">{{ t('graph.layerSplit.splitMode') }}</span>
-            <select v-model="draft.splitMode" class="select">
-              <option v-for="m in splitModeOptions" :key="m.id" :value="m.id">
-                {{ m.label }}
-              </option>
-            </select>
-          </label>
-          <label
-            v-if="draft.splitMode !== 'local-slice'"
-            class="tool tool-model"
-            :title="t('graph.layerSplit.visionModelHint')"
-          >
-            <span class="tool-label">{{ t('graph.layerSplit.visionModelLabel') }}</span>
-            <select v-model="visionSelectionKey" class="select" @change="onVisionModelChange">
-              <option value="">{{ t('graph.layerSplit.visionModelAuto') }}</option>
-              <option v-for="opt in visionModelOptions" :key="opt.key" :value="opt.key">
-                {{ opt.label }}
-              </option>
-            </select>
-          </label>
           <label class="tool tool-model">
-            <span class="tool-label">{{ t('graph.inspector.generate.imageModel') }}</span>
+            <span class="tool-label">{{ t('graph.layerSplit.splitModelLabel') }}</span>
             <select v-model="selectionKey" class="select" @change="onModelChange">
               <option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
                 {{ opt.label }}
               </option>
               <option v-if="modelOptions.length === 0" value="">
+                {{ t('graph.layerSplit.noSeedreamProModels') }}
+              </option>
+            </select>
+          </label>
+          <label class="tool tool-model">
+            <span class="tool-label">{{ t('graph.layerSplit.repairModelLabel') }}</span>
+            <select v-model="repairSelectionKey" class="select" @change="onRepairModelChange">
+              <option v-for="opt in repairModelOptions" :key="opt.key" :value="opt.key">
+                {{ opt.label }}
+              </option>
+              <option v-if="repairModelOptions.length === 0" value="">
                 {{ t('graph.inspector.generate.noModels') }}
               </option>
             </select>
@@ -1117,6 +1018,45 @@
               <option v-for="r in resolutions" :key="r" :value="r">{{ r }}</option>
             </select>
           </label>
+          <label class="tool tool-max-layers">
+            <span class="tool-label">{{ t('graph.layerSplit.maxLayers') }}</span>
+            <select v-model.number="draft.maxLayers" class="select">
+              <option v-for="opt in maxLayersChoices" :key="opt" :value="opt">
+                {{ formatMaxLayersLabel(opt) }}
+              </option>
+            </select>
+          </label>
+          <div v-if="liveNode && hasInPort" class="tool tool-run">
+            <GraphNodeRunControl
+              :status="runStatus"
+              :is-running="isGraphRunning"
+              :blocked="blocked || splitting || repairing"
+              @toggle="onToggleNodeRun"
+            />
+          </div>
+        </div>
+        <div class="prompt-bar">
+          <div class="prompt-head">
+            <span class="tool-label">{{ t('graph.layerSplit.prompt') }}</span>
+            <div class="prompt-presets">
+              <button
+                v-for="preset in presetItems"
+                :key="preset.id"
+                type="button"
+                class="prompt-preset-chip"
+                :class="{ active: activePresetId === preset.id }"
+                @click="applyPreset(preset.id)"
+              >
+                {{ preset.label }}
+              </button>
+            </div>
+          </div>
+          <textarea
+            v-model="draft.prompt"
+            class="prompt-input"
+            rows="2"
+            :placeholder="t('graph.layerSplit.promptPlaceholder')"
+          />
         </div>
       </div>
     </div>
@@ -1127,6 +1067,7 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   DEFAULT_IMAGE_LAYER_SPLIT,
+  LAYER_SPLIT_MAX_LAYERS_OPTIONS,
   LAYER_SPLIT_RESOLUTIONS,
   UI_LAYER_SPLIT_PRESETS,
   applyMergedLayerSplitPair,
@@ -1146,15 +1087,16 @@ import {
   imageLayerSplitToNodePatch,
   isLayerSplitBase,
   isLayerSplitLayerDrawable,
+  isNativeLayerDecompositionModel,
   layerSplitGroupForSource,
   nudgeLayerSplit,
   normalizeImageLayerSplit,
+  normalizeLayerSplitMaxLayers,
   removeLayerSplitLayer,
   renameLayerSplitItem,
   reorderLayerSplit,
   resetLayerSplitRect,
   sortLayersForCompose,
-  toggleLayerComponentReplacement,
   toggleLayerSplitGroupCollapsed,
   toggleLayerSplitGroupVisible,
   type GraphImageItem,
@@ -1163,9 +1105,7 @@ import {
   type ImageLayerSplitRepairRequest,
   type ImageLayerSplitState,
   type LayerSplitExplode2dMode,
-  type UiLayerSplitMode,
-  type UiLayerSplitPresetId,
-  type UiSharedComponentItem
+  type UiLayerSplitPresetId
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
@@ -1178,19 +1118,21 @@ import {
 } from '../features/graph/model/composeImageLayerStack'
 import {
   loadGenerateModelOptions,
-  loadVisionModelOptions,
   preferredModelKey,
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
 import { layerSplitToPsdUint8Array } from '../features/graph/model/layerSplitPsd'
+import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { diveEditorHistory } from '../features/graph/ui/diveEditorHistory'
+import { useGraphNodeRun } from '../composables/useGraphNodeRun'
+import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 export type LayerSplitEditorSavePayload = ReturnType<typeof imageLayerSplitToNodePatch> & {
   generateModel: string
   generateProviderInstanceId: string
-  visionModel?: string
-  visionProviderInstanceId?: string
+  repairModel?: string
+  repairProviderInstanceId?: string
   extraGeneratedImages?: GraphImageItem[]
 }
 
@@ -1199,14 +1141,16 @@ type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se'
 const props = withDefaults(
   defineProps<{
     open: boolean
+    hostId?: string
+    nodeId?: string
     setup?: Partial<ImageLayerSplitState> | null
     sourceUrl?: string
     sourceLoading?: boolean
     layerUrls?: Record<string, string>
     generateModel?: string
     generateProviderInstanceId?: string
-    visionModel?: string
-    visionProviderInstanceId?: string
+    repairModel?: string
+    repairProviderInstanceId?: string
     splitting?: boolean
     splitError?: string
     repairing?: boolean
@@ -1214,14 +1158,16 @@ const props = withDefaults(
     repairDoneMessage?: string
   }>(),
   {
+    hostId: '',
+    nodeId: '',
     setup: null,
     sourceUrl: '',
     sourceLoading: false,
     layerUrls: () => ({}),
     generateModel: '',
     generateProviderInstanceId: '',
-    visionModel: '',
-    visionProviderInstanceId: '',
+    repairModel: '',
+    repairProviderInstanceId: '',
     splitting: false,
     splitError: '',
     repairing: false,
@@ -1239,6 +1185,20 @@ const emit = defineEmits<{
 }>()
 
 const { t, locale } = useStudioI18n()
+const liveNode = computed(() => {
+  void graphEditorHosts.revision.value
+  const hId = props.hostId?.trim()
+  const nId = props.nodeId?.trim()
+  if (!hId || !nId) return null
+  return graphEditorHosts.getNode(hId, nId)
+})
+const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(
+  liveNode,
+  () => props.hostId
+)
+const isNodeExecuting = computed(
+  () => runStatus.value === 'pending' || runStatus.value === 'running'
+)
 const isZhLocale = computed(() =>
   String(locale.value || '')
     .toLowerCase()
@@ -1315,12 +1275,71 @@ const modelOptions = ref<GenerateModelOption[]>([])
 const selectionKey = ref('')
 const selectedModel = ref('')
 const selectedProviderInstanceId = ref('')
-const visionModelOptions = ref<GenerateModelOption[]>([])
-const visionSelectionKey = ref('')
-const selectedVisionModel = ref('')
-const selectedVisionProviderInstanceId = ref('')
+const repairModelOptions = ref<GenerateModelOption[]>([])
+const repairSelectionKey = ref('')
+const selectedRepairModel = ref('')
+const selectedRepairProviderInstanceId = ref('')
 const handles: ResizeHandle[] = ['nw', 'ne', 'sw', 'se']
 const resolutions = LAYER_SPLIT_RESOLUTIONS
+
+const isOpenRouterSplitModel = computed(() => {
+  const m = selectedModel.value.trim()
+  if (/^bytedance-seed\//i.test(m)) return true
+  const opt = modelOptions.value.find((o) => o.key === selectionKey.value)
+  return Boolean(opt && /openrouter/i.test(opt.label))
+})
+
+const maxLayersChoices = computed(() => {
+  const cur = normalizeLayerSplitMaxLayers(draft.maxLayers)
+  const list: number[] = [...LAYER_SPLIT_MAX_LAYERS_OPTIONS]
+  if (cur >= 2 && !list.includes(cur)) {
+    list.push(cur)
+    list.sort((a, b) => a - b)
+  }
+  return list
+})
+
+function formatMaxLayersLabel(n: number): string {
+  if (!n || n < 2) return t('graph.layerSplit.maxLayersAuto')
+  if (isOpenRouterSplitModel.value && n > 16) {
+    return t('graph.layerSplit.maxLayersOpenRouterCap', { n })
+  }
+  return t('graph.layerSplit.maxLayersCount', { n })
+}
+
+const presetLabelKeyMap: Record<UiLayerSplitPresetId, string> = {
+  'auto-all': 'graph.layerSplit.presetAutoAll',
+  'ui-standard': 'graph.layerSplit.presetStandard',
+  'ui-hud': 'graph.layerSplit.presetHud',
+  'ui-popup': 'graph.layerSplit.presetPopup',
+  'ui-inventory': 'graph.layerSplit.presetInventory',
+  'ui-card': 'graph.layerSplit.presetCard'
+}
+
+const presetItems = computed(() =>
+  UI_LAYER_SPLIT_PRESETS.map((p) => ({
+    id: p.id,
+    label: t(presetLabelKeyMap[p.id]),
+    prompt: isZhLocale.value ? p.promptZh : p.promptEn
+  }))
+)
+
+const activePresetId = computed<UiLayerSplitPresetId | ''>(() => {
+  const trimmed = (draft.prompt ?? '').trim()
+  if (!trimmed) return ''
+  const hit = UI_LAYER_SPLIT_PRESETS.find(
+    (p) => p.promptZh.trim() === trimmed || p.promptEn.trim() === trimmed
+  )
+  return hit?.id ?? ''
+})
+
+function applyPreset(id: UiLayerSplitPresetId): void {
+  const preset = UI_LAYER_SPLIT_PRESETS.find((p) => p.id === id)
+  if (!preset) return
+  const target = isZhLocale.value ? preset.promptZh : preset.promptEn
+  draft.prompt = activePresetId.value === id ? '' : target
+}
+
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let exportMsgTimer: ReturnType<typeof setTimeout> | null = null
 const localHistory = reactive({
@@ -1359,8 +1378,8 @@ const dirty = computed(() => {
     extraImages.value.length > 0 ||
     selectedModel.value !== (props.generateModel ?? '') ||
     selectedProviderInstanceId.value !== (props.generateProviderInstanceId ?? '') ||
-    selectedVisionModel.value !== (props.visionModel ?? '') ||
-    selectedVisionProviderInstanceId.value !== (props.visionProviderInstanceId ?? '')
+    selectedRepairModel.value !== (props.repairModel ?? '') ||
+    selectedRepairProviderInstanceId.value !== (props.repairProviderInstanceId ?? '')
   )
 })
 
@@ -1677,25 +1696,6 @@ async function resolveLayerBytes(src: string): Promise<{ data: Uint8Array; ext: 
   }
 }
 
-const PRESET_LABEL_KEYS: Record<UiLayerSplitPresetId, string> = {
-  'ui-standard': 'graph.layerSplit.presetStandard',
-  'ui-hud': 'graph.layerSplit.presetHud',
-  'ui-popup': 'graph.layerSplit.presetPopup',
-  'ui-inventory': 'graph.layerSplit.presetInventory',
-  'ui-card': 'graph.layerSplit.presetCard'
-}
-
-const presetOptions = computed(() => {
-  const isZh = String(locale.value || '')
-    .toLowerCase()
-    .startsWith('zh')
-  return UI_LAYER_SPLIT_PRESETS.map((item) => ({
-    id: item.id,
-    label: t(PRESET_LABEL_KEYS[item.id]),
-    prompt: isZh ? item.promptZh : item.promptEn
-  }))
-})
-
 function onAutoGroupUiLayers(): void {
   if (!hasCanvas.value || splitting.value) return
   pushDraftHistory()
@@ -1740,90 +1740,6 @@ watch(
   },
   { immediate: true, deep: true }
 )
-
-function onToggleSelectedLayerComponent(): void {
-  const layer = selectedLayer.value
-  if (!layer || !layer.componentId) return
-  pushDraftHistory()
-  Object.assign(draft, toggleLayerComponentReplacement(draft, layer.id, !layer.keepOriginalPixels))
-}
-
-function componentThumbUrl(comp: UiSharedComponentItem): string {
-  const key = comp.imageId?.trim() || comp.id
-  return (
-    localLayerUrls[key]?.trim() ||
-    localLayerUrls[comp.id]?.trim() ||
-    props.layerUrls[key]?.trim() ||
-    props.layerUrls[comp.id]?.trim() ||
-    comp.imageUrl?.trim() ||
-    ''
-  )
-}
-
-function addLayerFromAtlasComponent(comp: UiSharedComponentItem): void {
-  if (!hasCanvas.value) return
-  const url = componentThumbUrl(comp)
-  if (!url) return
-  pushDraftHistory()
-  const cw = Math.max(320, draft.canvasWidth || 1920)
-  const ch = Math.max(320, draft.canvasHeight || 1080)
-  const maxZ = draft.layers.reduce((m, l) => Math.max(m, l.zIndex || 0), 0)
-  const nextZ = maxZ + 1
-  const layerId = `atlasInsert:${Date.now()}:${nextZ}`
-  const compImgId = comp.imageId?.trim() || comp.id
-  localLayerUrls[compImgId] = url
-  localLayerUrls[layerId] = url
-  extraImages.value.push({
-    id: compImgId,
-    title: comp.name,
-    dataUrl: url,
-    createdAt: new Date().toISOString()
-  })
-  const w = Math.max(24, Math.min(cw - 32, comp.canonicalWidth || 160))
-  const h = Math.max(24, Math.min(ch - 32, comp.canonicalHeight || 120))
-  const offset = ((nextZ - 1) % 6) * 24
-  const left = Math.max(0, Math.min(cw - w, Math.round((cw - w) * 0.5) + offset))
-  const top = Math.max(0, Math.min(ch - h, Math.round((ch - h) * 0.5) + offset))
-  const nineSliceBorders: [number, number, number, number] | undefined = comp.nineSliceBorders
-    ? [
-        comp.nineSliceBorders[3],
-        comp.nineSliceBorders[0],
-        comp.nineSliceBorders[1],
-        comp.nineSliceBorders[2]
-      ]
-    : undefined
-
-  const newLayer: ImageLayerSplitLayer = {
-    id: layerId,
-    imageId: compImgId,
-    zIndex: nextZ,
-    name: `${comp.name}_${nextZ}`,
-    description: `${comp.kind} (${comp.name})`,
-    visible: true,
-    left,
-    top,
-    width: w,
-    height: h,
-    role: 'layer',
-    originalAbsolute: [left, top, left + w, top + h],
-    originalNormalized: [
-      Math.round((left / cw) * 1000),
-      Math.round((top / ch) * 1000),
-      Math.round(((left + w) / cw) * 1000),
-      Math.round(((top + h) / ch) * 1000)
-    ],
-    exportName: comp.exportName,
-    prefabKey: comp.exportName,
-    componentId: comp.id,
-    componentMatchScore: 1,
-    originalImageId: compImgId,
-    componentImageId: compImgId,
-    ...(nineSliceBorders ? { nineSliceBorders } : {})
-  }
-  draft.layers = [...draft.layers, newLayer]
-  draft.selectedId = layerId
-  selectedIds.value = [layerId]
-}
 
 function renderEditableTextCanvasDataUrl(
   text: string,
@@ -1932,48 +1848,6 @@ function onEditableTextChange(event: Event): void {
             ...item.editableText!,
             text: nextText
           }
-        }
-      : item
-  )
-}
-
-function onBindSelectedLayerComponent(event: Event): void {
-  const layer = selectedLayer.value
-  if (!layer || isBase(layer)) return
-  const nextCompId = (event.target as HTMLSelectElement).value.trim()
-  pushDraftHistory()
-  if (!nextCompId) {
-    const rawImgId = layer.originalImageId || layer.imageId
-    draft.layers = draft.layers.map((item) =>
-      item.id === layer.id
-        ? {
-            ...item,
-            imageId: rawImgId,
-            componentId: undefined,
-            componentImageId: undefined,
-            keepOriginalPixels: undefined,
-            componentMatchScore: undefined
-          }
-        : item
-    )
-    return
-  }
-  const comp = draft.componentLibrary?.find((c) => c.id === nextCompId)
-  if (!comp) return
-  const compImgId = comp.imageId?.trim() || comp.id
-  const origImgId = layer.originalImageId || layer.imageId
-  draft.layers = draft.layers.map((item) =>
-    item.id === layer.id
-      ? {
-          ...item,
-          imageId: compImgId,
-          originalImageId: origImgId,
-          componentId: comp.id,
-          componentImageId: compImgId,
-          keepOriginalPixels: false,
-          ...(comp.scalePolicy === 'nine-slice' && comp.nineSliceBorders
-            ? { nineSliceBorders: [...comp.nineSliceBorders] as [number, number, number, number] }
-            : {})
         }
       : item
   )
@@ -3250,8 +3124,8 @@ function onAiRepairSelectedLayer(): void {
     resolution: draft.resolution,
     generateModel: selectedModel.value,
     generateProviderInstanceId: selectedProviderInstanceId.value,
-    visionModel: selectedVisionModel.value,
-    visionProviderInstanceId: selectedVisionProviderInstanceId.value,
+    repairModel: selectedRepairModel.value,
+    repairProviderInstanceId: selectedRepairProviderInstanceId.value,
     transparentBackground: layerRepairTransparentBg.value,
     layerDataUrl: curUrl,
     imageLayerSplit: normalizeImageLayerSplit(draft),
@@ -3560,14 +3434,6 @@ function selectGroup(groupId: string): void {
   draft.selectedId = nextId
 }
 
-const splitModeOptions = computed<Array<{ id: UiLayerSplitMode; label: string }>>(() => [
-  { id: 'auto', label: t('graph.layerSplit.splitModeAuto') },
-  { id: 'precise', label: t('graph.layerSplit.splitModePrecise') },
-  { id: 'ai-inpaint-slice', label: t('graph.layerSplit.splitModeAiInpaintSlice') },
-  { id: 'ai-layers', label: t('graph.layerSplit.splitModeAiLayers') },
-  { id: 'local-slice', label: t('graph.layerSplit.splitModeLocalSlice') }
-])
-
 function onSplitSelected(): void {
   const layer = selectedLayer.value
   if (!layer || !canSplitSelected.value) return
@@ -3579,11 +3445,12 @@ function onSplitSelected(): void {
     layerId: layer.id,
     prompt: draft.prompt,
     resolution: draft.resolution,
-    splitMode: draft.splitMode,
+    maxLayers: draft.maxLayers,
+    splitMode: 'ai-layers',
     generateModel: selectedModel.value,
     generateProviderInstanceId: selectedProviderInstanceId.value,
-    visionModel: selectedVisionModel.value,
-    visionProviderInstanceId: selectedVisionProviderInstanceId.value,
+    repairModel: selectedRepairModel.value,
+    repairProviderInstanceId: selectedRepairProviderInstanceId.value,
     imageLayerSplit: normalizeImageLayerSplit(draft)
   })
 }
@@ -3838,20 +3705,57 @@ function buildSavePayload(): LayerSplitEditorSavePayload {
     ...imageLayerSplitToNodePatch(normalizeImageLayerSplit(draft)),
     generateModel: selectedModel.value,
     generateProviderInstanceId: selectedProviderInstanceId.value,
-    visionModel: selectedVisionModel.value,
-    visionProviderInstanceId: selectedVisionProviderInstanceId.value,
+    repairModel: selectedRepairModel.value,
+    repairProviderInstanceId: selectedRepairProviderInstanceId.value,
     ...(extraImages.value.length ? { extraGeneratedImages: [...extraImages.value] } : {})
   }
 }
 
 function emitPreview(): void {
-  if (!props.open || hydrating.value || splitting.value || repairing.value) return
+  if (
+    !props.open ||
+    hydrating.value ||
+    splitting.value ||
+    repairing.value ||
+    isNodeExecuting.value
+  ) {
+    return
+  }
   if (previewTimer) clearTimeout(previewTimer)
   previewTimer = setTimeout(() => {
     previewTimer = null
-    if (!props.open || hydrating.value || splitting.value || repairing.value) return
+    if (
+      !props.open ||
+      hydrating.value ||
+      splitting.value ||
+      repairing.value ||
+      isNodeExecuting.value
+    ) {
+      return
+    }
     emit('update', buildSavePayload())
   }, 48)
+}
+
+function onToggleNodeRun(): void {
+  if (isNodeExecuting.value) {
+    toggleRun()
+    return
+  }
+  if (splitting.value || repairing.value || blocked.value) return
+  if (previewTimer) {
+    clearTimeout(previewTimer)
+    previewTimer = null
+  }
+  const payload = buildSavePayload()
+  emit('update', {
+    ...payload,
+    imageLayerSplit: {
+      ...payload.imageLayerSplit,
+      sourceFingerprint: ''
+    }
+  })
+  toggleRun()
 }
 
 function onModelChange(): void {
@@ -3860,30 +3764,32 @@ function onModelChange(): void {
   selectedProviderInstanceId.value = opt?.providerInstanceId ?? ''
 }
 
-function onVisionModelChange(): void {
-  if (!visionSelectionKey.value) {
-    selectedVisionModel.value = ''
-    selectedVisionProviderInstanceId.value = ''
-    return
-  }
-  const opt = visionModelOptions.value.find((o) => o.key === visionSelectionKey.value)
-  selectedVisionModel.value = opt?.model ?? ''
-  selectedVisionProviderInstanceId.value = opt?.providerInstanceId ?? ''
+function onRepairModelChange(): void {
+  const opt = repairModelOptions.value.find((o) => o.key === repairSelectionKey.value)
+  selectedRepairModel.value = opt?.model ?? ''
+  selectedRepairProviderInstanceId.value = opt?.providerInstanceId ?? ''
 }
 
 async function refreshModels(): Promise<void> {
-  const preferred = preferredModelKey(props.generateProviderInstanceId, props.generateModel)
-  const preferredVision = preferredModelKey(props.visionProviderInstanceId, props.visionModel)
-  const [{ options, selectedKey }, visionRes] = await Promise.all([
-    loadGenerateModelOptions('image', preferred),
-    loadVisionModelOptions(preferredVision)
+  const preferredSplit = preferredModelKey(props.generateProviderInstanceId, props.generateModel)
+  const preferredRepair = preferredModelKey(props.repairProviderInstanceId, props.repairModel)
+  const [splitRes, repairRes] = await Promise.all([
+    loadGenerateModelOptions('image', preferredSplit),
+    loadGenerateModelOptions('image', preferredRepair)
   ])
-  modelOptions.value = options
-  selectionKey.value = selectedKey || options[0]?.key || ''
+  const seedreamOpts = splitRes.options.filter((opt) =>
+    isNativeLayerDecompositionModel(opt.model, opt.label)
+  )
+  modelOptions.value = seedreamOpts
+  selectionKey.value =
+    splitRes.selectedKey && seedreamOpts.some((opt) => opt.key === splitRes.selectedKey)
+      ? splitRes.selectedKey
+      : (seedreamOpts[0]?.key ?? '')
   onModelChange()
-  visionModelOptions.value = visionRes.options
-  visionSelectionKey.value = visionRes.selectedKey
-  onVisionModelChange()
+
+  repairModelOptions.value = repairRes.options
+  repairSelectionKey.value = repairRes.selectedKey || repairRes.options[0]?.key || ''
+  onRepairModelChange()
 }
 
 watch(
@@ -3965,8 +3871,8 @@ watch(
     selectedIds.value = draft.selectedId ? [draft.selectedId] : []
     selectedModel.value = props.generateModel ?? ''
     selectedProviderInstanceId.value = props.generateProviderInstanceId ?? ''
-    selectedVisionModel.value = props.visionModel ?? ''
-    selectedVisionProviderInstanceId.value = props.visionProviderInstanceId ?? ''
+    selectedRepairModel.value = props.repairModel ?? ''
+    selectedRepairProviderInstanceId.value = props.repairProviderInstanceId ?? ''
     void refreshModels()
     void nextTick(() => {
       fitDisplay()
@@ -4037,8 +3943,8 @@ watch(
   [
     selectedModel,
     selectedProviderInstanceId,
-    selectedVisionModel,
-    selectedVisionProviderInstanceId
+    selectedRepairModel,
+    selectedRepairProviderInstanceId
   ],
   () => emitPreview()
 )
@@ -5041,10 +4947,11 @@ onBeforeUnmount(() => {
 }
 
 .toolbar {
+  flex: 1 1 100%;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .tool {
@@ -5053,6 +4960,18 @@ onBeforeUnmount(() => {
   gap: 4px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.tool-max-layers {
+  min-width: 148px;
+}
+
+.tool-run :deep(.node-run-btn:not(.compact)) {
+  width: auto;
+  min-width: 88px;
+  padding: 6px 14px;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 
 .tool-mode {
@@ -5070,6 +4989,71 @@ onBeforeUnmount(() => {
   background: var(--bg);
   color: var(--text);
   padding: 6px 8px;
+}
+
+.prompt-bar {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.prompt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.prompt-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.prompt-preset-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.prompt-preset-chip:hover {
+  border-color: #4a90e2;
+  color: var(--text);
+}
+
+.prompt-preset-chip.active {
+  border-color: #4a90e2;
+  background: rgba(74, 144, 226, 0.16);
+  color: #7ab8ff;
+}
+
+.prompt-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  max-height: 96px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 6px 9px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-family: inherit;
 }
 
 .side-layer-repair {

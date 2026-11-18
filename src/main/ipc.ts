@@ -47,10 +47,7 @@ import type {
 import { listRegisteredObjectStorageKinds, listRegisteredProviderKinds } from './runtime'
 import { projectService } from './services/projectService'
 import { readGitFileDiff, readGitStatus } from './services/gitService'
-import {
-  scanProjectOutputFiles,
-  scanUiAtlasImagesFromDirectories
-} from './services/outputScanService'
+import { scanProjectOutputFiles } from './services/outputScanService'
 import { exportScriptTimeline } from './services/timelineExportService'
 import { renderTimelineTransitionPreview } from './services/timelineTransitionPreviewService'
 import { exportAdVariants } from './services/adVariantExportService'
@@ -732,15 +729,7 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.GIT_STATUS, () => readGitStatus())
   handle(IpcChannels.GIT_FILE_DIFF, (input: GitFileDiffInput) => readGitFileDiff(input))
   handle(IpcChannels.PROJECT_SCAN_OUTPUTS, (input: ProjectScanOutputsInput) => ({
-    files: input?.uiAtlasSearchDirs?.length ? [] : scanProjectOutputFiles(input),
-    ...(input?.uiAtlasSearchDirs?.length
-      ? {
-          uiAtlasImages: scanUiAtlasImagesFromDirectories(
-            input.uiAtlasSearchDirs,
-            input.uiAtlasPrompt
-          )
-        }
-      : {})
+    files: scanProjectOutputFiles(input)
   }))
 
   handle(IpcChannels.HARNESS_STATUS, () => getHarnessStatus())

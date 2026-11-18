@@ -96,6 +96,7 @@ export interface GraphRunLogApiCall {
     lastFrameImageUrl?: string
     /** Seedream 图层分离 */
     layerDecomposition?: boolean
+    layerDecompositionMaxImages?: number
     voice?: string
     name?: string
     /** 参考视频对象存储上传摘要（不落完整签名参数） */
@@ -402,15 +403,6 @@ export function summarizeGraphValueForLog(value: GraphValue): GraphRunLogPortSna
         label: 'cast',
         itemCount: entries.length,
         imageCount: entries.filter((entry) => !!entry.imageRelativePath || !!entry.imageUrl).length
-      }
-    }
-    case 'uiComponents': {
-      const items = value.doc?.items ?? []
-      return {
-        kind: 'uiComponents',
-        label: 'components',
-        itemCount: items.length,
-        imageCount: items.filter((item) => !!item.imageRelativePath || !!item.imageUrl).length
       }
     }
     default: {

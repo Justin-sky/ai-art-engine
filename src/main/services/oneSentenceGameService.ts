@@ -73,12 +73,7 @@ export function planOneSentenceGame(
       title: typeof rawObj.title === 'string' ? rawObj.title : undefined,
       stylePreset: typeof rawObj.stylePreset === 'string' ? rawObj.stylePreset : undefined,
       artStyle: typeof rawObj.artStyle === 'string' ? rawObj.artStyle : undefined,
-      uiMode:
-        rawObj.uiMode === 'atlas_compose'
-          ? 'atlas_compose'
-          : rawObj.uiMode === 'ai_generate'
-            ? 'ai_generate'
-            : undefined
+      uiMode: 'ai_generate'
     })
     spec.title = uiBuilt.title
     return { spec, plan: uiBuilt.plan }

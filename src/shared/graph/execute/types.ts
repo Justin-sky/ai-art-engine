@@ -315,18 +315,10 @@ export interface GraphFilmCastValue {
   text: string
 }
 
-/** UI 共享组件库值（ui.componentLib 出口；image.layerSplit 的 in-components 入口） */
-export interface GraphUiComponentsValue {
-  kind: 'uiComponents'
-  doc: import('../uiComponentLibrary').UiComponentLibrary
-  text: string
-}
-
 export type GraphValue =
   | GraphSemanticTimelineValue
   | GraphFilmStoryboardValue
   | GraphFilmCastValue
-  | GraphUiComponentsValue
   | GraphAssetValue
   | GraphTextValue
   | GraphTextsValue
@@ -441,6 +433,7 @@ export interface NodeExecuteContext {
     inputReferenceMeta?: GraphImageReferenceMeta[]
     transparentBackground?: boolean
     layerDecomposition?: boolean
+    layerDecompositionMaxImages?: number
   }) => Promise<{
     images: string[]
     model: string
@@ -802,19 +795,6 @@ export interface NodeExecuteContext {
   resolveStyleImageUrls?: (images: ProjectStyleImage[]) => Promise<string[]>
   /** 读取工程全局画面风格（供生成节点「使用全局风格」） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
-  /**
-   * 自动发现并汇总当前工程中的 UI 图集 / 组件库资源（包括任意画布中的 ui.componentLib / image.iconPack 节点及工程资产库/项目目录中的图集/UI图片）。
-   * 当 `ui.atlasCompose` 未显式连接图像/组件端口时自动调用。
-   */
-  resolveProjectUiAtlasResources?: (input?: { prompt?: string }) =>
-    | Promise<{
-        componentLibraries?: import('../uiComponentLibrary').UiComponentLibrary[]
-        images?: GraphImageItem[]
-      }>
-    | {
-        componentLibraries?: import('../uiComponentLibrary').UiComponentLibrary[]
-        images?: GraphImageItem[]
-      }
   /** 读取工程全局随机种子（供生成节点「使用全局种子」） */
   resolveProjectGenerateSeed?: () => number | undefined
   /**
@@ -1614,7 +1594,6 @@ export interface GraphRunOptions {
   resolveVideoFrameImageUrls?: NodeExecuteContext['resolveVideoFrameImageUrls']
   resolveStyleImageUrls?: NodeExecuteContext['resolveStyleImageUrls']
   resolveProjectStyleImages?: NodeExecuteContext['resolveProjectStyleImages']
-  resolveProjectUiAtlasResources?: NodeExecuteContext['resolveProjectUiAtlasResources']
   resolveProjectGenerateSeed?: NodeExecuteContext['resolveProjectGenerateSeed']
   enrichStyleImages?: NodeExecuteContext['enrichStyleImages']
   resolveImageGenerateCapabilities?: NodeExecuteContext['resolveImageGenerateCapabilities']

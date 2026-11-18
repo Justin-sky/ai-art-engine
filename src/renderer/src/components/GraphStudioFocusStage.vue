@@ -222,11 +222,9 @@ import {
   filmStoryboardSummary,
   parseFilmCast,
   parseFilmStoryboard,
-  parseUiComponentLibrary,
   readImageLayerSplitFromNode,
   resolveNodeTextContent,
   topologicalSort,
-  uiComponentLibrarySummary,
   type GraphDocument,
   type GraphNode
 } from '@shared/graph'
@@ -515,16 +513,6 @@ const activeTextPreview = computed(() => {
     const cast = parseFilmCast(node.params.filmCast)
     if (cast) {
       const summary = filmCastSummary(cast)
-      if (summary.trim()) return summary.trim()
-    }
-  }
-  if (
-    typeof node.params?.uiComponentLibrary === 'string' &&
-    node.params.uiComponentLibrary.trim()
-  ) {
-    const lib = parseUiComponentLibrary(node.params.uiComponentLibrary)
-    if (lib) {
-      const summary = uiComponentLibrarySummary(lib)
       if (summary.trim()) return summary.trim()
     }
   }

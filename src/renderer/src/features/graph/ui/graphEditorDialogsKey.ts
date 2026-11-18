@@ -277,8 +277,8 @@ export type GraphEditorDialogsApi = {
     layerUrls: Record<string, string>
     generateModel: string
     generateProviderInstanceId: string
-    visionModel: string
-    visionProviderInstanceId: string
+    repairModel: string
+    repairProviderInstanceId: string
     splitting: boolean
     splitError: string
     repairing: boolean

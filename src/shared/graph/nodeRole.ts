@@ -270,11 +270,7 @@ export function isIconPackEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
 }
 
 export function isLayerSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.layerSplit' || node.typeId === 'ui.atlasCompose'
-}
-
-export function isUiAtlasComposeNode(node: Pick<GraphNode, 'typeId'> | null | undefined): boolean {
-  return node?.typeId === 'ui.atlasCompose'
+  return node.typeId === 'image.layerSplit'
 }
 
 export function isCutoutNode(node: NodeRoleTarget): boolean {

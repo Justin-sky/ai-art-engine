@@ -60,7 +60,12 @@ const isNonDevCmd = userArgs.some(
   (a) => a === 'build' || a === 'preview' || a === '--help' || a === '-h'
 )
 const hasWatchFlag = userArgs.some((a) => a === '--watch' || a === '-w' || a === '--no-watch')
-const args = [cli, ...(!isNonDevCmd && !hasWatchFlag ? ['--watch'] : []), ...userArgs]
+const args = [
+  '--max-old-space-size=6144',
+  cli,
+  ...(!isNonDevCmd && !hasWatchFlag ? ['--watch'] : []),
+  ...userArgs
+]
 
 /**
  * 低完整性标签兜底：工作区里任何可执行程序都起不来（Electron 表现得最明显——静默 0x80000003），

@@ -73,6 +73,8 @@ import {
   supportsNativeTransparentImageModel
 } from '@shared/graph/userPromptSchemes'
 import { supportsGifOutput, supportsSvgOutput } from '@shared/graph/imageGenerateParams'
+import { isNativeLayerDecompositionModel } from '@shared/graph/imageLayerSplit'
+import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { pickSpatialWorldJobs } from '@shared/videoJob'
 import { buildDecisionsRequest } from './decisions'
 import { meshOpSupported } from '@shared/meshOps'
@@ -647,7 +649,67 @@ class ModelProviderFacade {
   }
 
   async generateImage(input: GenerateImageInput): Promise<GenerateImageResult> {
-    const primary = resolveActiveProvider('image', input.providerInstanceId, input.model)
+    const providers = settingsService.get()?.models?.providers ?? []
+    let primary: { provider: ModelProviderInstance; modelId: string } | null = null
+
+    if (input.layerDecomposition) {
+      const pickSeedreamProCandidate = (): {
+        provider: ModelProviderInstance
+        modelId: string
+      } | null => {
+        const wantedProviderId = input.providerInstanceId?.trim() || ''
+        const wantedModel = input.model?.trim() || ''
+        const candidateProviders = wantedProviderId
+          ? providers.filter((p) => p.id === wantedProviderId)
+          : providers
+        for (const p of candidateProviders) {
+          if (!p.enabled) continue
+          if (!p.apiKey.trim() && !allowsEmptyApiKey(p)) continue
+          const cfg = modalityConfig(p, 'image')
+          if (wantedModel && cfg.selectedModelIds.includes(wantedModel)) {
+            const name = cfg.catalog?.[wantedModel]?.name
+            if (isNativeLayerDecompositionModel(wantedModel, name)) {
+              return { provider: p, modelId: wantedModel }
+            }
+          }
+          const ordered = [
+            ...(cfg.defaultModelId && cfg.selectedModelIds.includes(cfg.defaultModelId)
+              ? [cfg.defaultModelId]
+              : []),
+            ...cfg.selectedModelIds
+          ]
+          for (const m of ordered) {
+            const clean = m.trim()
+            if (!clean) continue
+            const name = cfg.catalog?.[clean]?.name
+            if (isNativeLayerDecompositionModel(clean, name)) {
+              return { provider: p, modelId: clean }
+            }
+          }
+        }
+        return null
+      }
+
+      try {
+        const resolved = resolveActiveProvider('image', input.providerInstanceId, input.model)
+        const resolvedName = modalityConfig(resolved.provider, 'image').catalog?.[resolved.modelId]
+          ?.name
+        if (isNativeLayerDecompositionModel(resolved.modelId, resolvedName)) {
+          primary = resolved
+        }
+      } catch {
+        /* fall through to Seedream Pro scan */
+      }
+      if (!primary) {
+        primary = pickSeedreamProCandidate()
+      }
+      if (!primary) {
+        throw fail(SHARED_ERRORS.layerSplitNoLayers)
+      }
+    } else {
+      primary = resolveActiveProvider('image', input.providerInstanceId, input.model)
+    }
+
     // 参考图统一在这里落地为 API 可用形态，并顺手压掉超限的大图（相机原图动辄 20MB，
     // 会被上游按「文件不符合要求」拒掉）；压缩说明与适配器自己的说明（如某模型只收 1 张
     // 参考图、其余未发送）合并后回传给运行日志，两者不能互相覆盖。
@@ -655,7 +717,6 @@ class ModelProviderFacade {
       input.inputReferences
     )
 
-    const providers = settingsService.get()?.models?.providers ?? []
     const requestedFormat = (input.outputFormat || '').trim().toLowerCase()
     const hasReferences = Boolean(inputReferences && inputReferences.length > 0)
 
@@ -667,7 +728,11 @@ class ModelProviderFacade {
       if (!p.enabled) return false
       if (!p.apiKey.trim() && !allowsEmptyApiKey(p)) return false
       if (hasReferences && p.providerKind === 'zhipu') return false
-      const caps = modalityConfig(p, 'image').catalog?.[clean]?.capabilities
+      const entry = modalityConfig(p, 'image').catalog?.[clean]
+      if (input.layerDecomposition && !isNativeLayerDecompositionModel(clean, entry?.name)) {
+        return false
+      }
+      const caps = entry?.capabilities
       if (requestedFormat === 'gif' && !supportsGifOutput(clean, caps)) return false
       if (requestedFormat === 'svg' && !supportsSvgOutput(clean, caps)) return false
       return true

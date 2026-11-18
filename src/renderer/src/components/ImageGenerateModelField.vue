@@ -1,6 +1,6 @@
 <template>
   <label class="model-field">
-    <span class="label">{{ t('graph.inspector.generate.imageModel') }}</span>
+    <span class="label">{{ label || t('graph.inspector.generate.imageModel') }}</span>
     <select v-model="selectionKey" class="select" @change="emitSelection">
       <option v-for="opt in selectionOptions" :key="opt.key || 'empty'" :value="opt.key">
         {{ opt.label }}
@@ -22,6 +22,9 @@ const props = defineProps<{
   open: boolean
   generateModel?: string
   generateProviderInstanceId?: string
+  label?: string
+  emptyLabel?: string
+  modelFilter?: (opt: GenerateModelOption) => boolean
 }>()
 
 const emit = defineEmits<{
@@ -35,7 +38,7 @@ const selectionKey = ref('')
 const selectionOptions = computed(() => {
   const models = modelOptions.value.map((opt) => ({ key: opt.key, label: opt.label }))
   if (models.length === 0) {
-    return [{ key: '', label: t('graph.inspector.generate.noModels') }]
+    return [{ key: '', label: props.emptyLabel || t('graph.inspector.generate.noModels') }]
   }
   return models
 })
@@ -52,8 +55,12 @@ watch(
 async function reloadSelection(): Promise<void> {
   const preferred = preferredModelKey(props.generateProviderInstanceId, props.generateModel)
   const { options, selectedKey } = await loadGenerateModelOptions('image', preferred)
-  modelOptions.value = options
-  selectionKey.value = selectedKey || options[0]?.key || ''
+  const filtered = props.modelFilter ? options.filter((opt) => props.modelFilter!(opt)) : options
+  modelOptions.value = filtered
+  selectionKey.value =
+    selectedKey && filtered.some((opt) => opt.key === selectedKey)
+      ? selectedKey
+      : (filtered[0]?.key ?? '')
   emitSelection()
 }
 

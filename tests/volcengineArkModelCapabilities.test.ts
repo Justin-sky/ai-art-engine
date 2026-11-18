@@ -8,8 +8,10 @@ import { parseVideoGenerateParamCapabilities } from '../src/shared/graph/videoGe
 import { resolveVideoGeneratePortLimits } from '../src/shared/graph/portInputLimits'
 
 describe('volcengineArk modelCapabilities', () => {
-  it('matches Seedream 5 / 4.5 / 4 profiles', () => {
+  it('matches Seedream 5 / 5.5 Pro / 4.5 / 4 profiles', () => {
     expect(resolveVolcengineArkCapabilityProfileId('doubao-seedream-5-0-lite')).toBe('seedream-5')
+    expect(resolveVolcengineArkCapabilityProfileId('doubao-seedream-5-5-pro')).toBe('seedream-5')
+    expect(resolveVolcengineArkCapabilityProfileId('seedream-5.5-pro')).toBe('seedream-5')
     expect(resolveVolcengineArkCapabilityProfileId('doubao-seedream-4-5-251128')).toBe(
       'seedream-4.5'
     )

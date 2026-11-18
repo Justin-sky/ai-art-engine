@@ -781,23 +781,19 @@ export function inferUiStylePresetFromPrompt(
   return 'dark_iron_parchment'
 }
 
-export type UiSuiteBuildMode = 'ai_generate' | 'atlas_compose'
+export type UiSuiteBuildMode = 'ai_generate'
 
 export const ONE_SENTENCE_UI_SUITE_NODE_KEYS = {
   brief: 'ui_brief',
   gameSystem: 'ui_game_system',
   uiSplit: 'ui_split',
   uiGen: 'ui_gen',
-  uiLayerSplit: 'ui_layer_split',
-  uiComponentLib: 'ui_suite_component_lib',
-  uiAtlasCompose: 'ui_suite_atlas_compose'
+  uiLayerSplit: 'ui_layer_split'
 } as const
 
 /**
  * 一句话生成「全套游戏 UI 工作流」（`buildUiSuiteGraphPlanFromPrompt`）：
- * 支持两种模式（根据用户选择）：
- * - `ai_generate`（默认）：`asset.gameSystem` → `ui.split` → `ui.gen` → `image.layerSplit`
- * - `atlas_compose`（使用已有图集拼装）：`asset.gameSystem` + `ui.componentLib` → `ui.atlasCompose`（双击进入类 PS 分层工作台并支持导出 `.psd`）
+ * `asset.gameSystem` → `ui.split` → `ui.gen` → `image.layerSplit`
  */
 export function buildUiSuiteGraphPlanFromPrompt(
   prompt: string,
@@ -817,11 +813,7 @@ export function buildUiSuiteGraphPlanFromPrompt(
     `${prompt} ${options?.artStyle ?? ''}`,
     options?.stylePreset
   )
-  const inferredAtlasMode =
-    options?.uiMode === 'atlas_compose' ||
-    (!options?.uiMode &&
-      /图集拼装|已有图集|使用图集|图集组|atlas\s*compose|from\s*atlas/i.test(prompt)) // cjk-ok
-  const uiMode: UiSuiteBuildMode = inferredAtlasMode ? 'atlas_compose' : 'ai_generate'
+  const uiMode: UiSuiteBuildMode = 'ai_generate'
   const isGenshin = stylePreset === 'celestial_star_gold'
   const isP5 = stylePreset === 'persona_rebel_red'
   const isArk = stylePreset === 'minimal_ark_tech'
@@ -846,56 +838,6 @@ export function buildUiSuiteGraphPlanFromPrompt(
           : 'high-detail fantasy game UI, clean vibrant colors, sharp silhouette')
 
   const K = ONE_SENTENCE_UI_SUITE_NODE_KEYS
-
-  if (uiMode === 'atlas_compose') {
-    const nodes: GraphPlanNodeSpec[] = [
-      {
-        key: K.brief,
-        typeId: 'note.text',
-        title: `${title} · 图集拼装说明`, // cjk-ok
-        params: {
-          text: [
-            `# ${title}（图集拼装模式）`, // cjk-ok
-            `Prompt: ${prompt}`,
-            `UI Style: ${artStylePrompt}`,
-            `图集拼装管线：1) 策划案生成（asset.gameSystem） + 2) UI 组件库/已有图集（ui.componentLib） → 3) 图集拼装 UI（ui.atlasCompose，双击打开类 PS 分层工作台，支持一键导出 .psd）` // cjk-ok
-          ].join('\n')
-        }
-      },
-      {
-        key: K.gameSystem,
-        typeId: 'asset.gameSystem',
-        title: '1. 游戏系统与UI策划案', // cjk-ok
-        params: {
-          text: `${prompt}\n美术风格要求：${artStylePrompt}` // cjk-ok
-        }
-      },
-      {
-        key: K.uiComponentLib,
-        typeId: 'ui.componentLib',
-        title: '2. 已有 UI 图集 / 组件库' // cjk-ok
-      },
-      {
-        key: K.uiAtlasCompose,
-        typeId: 'ui.atlasCompose',
-        title: '3. 图集拼装 UI（双击打开 PS 分层工作台）', // cjk-ok
-        params: {
-          text: prompt,
-          generateAspectRatio: '16:9'
-        }
-      }
-    ]
-    const edges: GraphPlanEdgeSpec[] = [
-      { from: K.gameSystem, to: K.uiAtlasCompose, fromPort: 'out', toPort: 'in-text' },
-      { from: K.uiComponentLib, to: K.uiAtlasCompose, fromPort: 'out', toPort: 'in-components' }
-    ]
-    return {
-      title,
-      stylePreset,
-      uiMode,
-      plan: { title, nodes, edges }
-    }
-  }
 
   const nodes: GraphPlanNodeSpec[] = [
     {
