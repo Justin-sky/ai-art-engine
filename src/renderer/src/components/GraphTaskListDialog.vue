@@ -279,7 +279,7 @@ import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
 type TaskTab = 'active' | 'completed'
 
-const { t } = useStudioI18n()
+const { t, te } = useStudioI18n()
 const taskStore = useGraphTaskStore()
 const project = useProjectStore()
 const mcpActivities = useMcpActivitiesStore()
@@ -383,7 +383,8 @@ function jobKindLabel(job: VideoJobRecord): string {
 }
 
 function mcpKindLabel(tool: McpActivityTool): string {
-  return t(`graph.tasks.mcpKind.${tool}`)
+  const key = `graph.tasks.mcpKind.${tool}`
+  return te(key) ? t(key) : tool
 }
 
 function mcpStatusLabel(status: McpActivityStatus): string {

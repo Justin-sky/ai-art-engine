@@ -21,7 +21,7 @@
       {{ addFeedback }}
     </p>
     <p class="meta credentials-hint">
-      {{ t(`settings.models.credentialsHint.${pendingProviderKind}`) }}
+      {{ credentialsHintText(pendingProviderKind) }}
       <a
         v-if="pendingProviderKind !== 'custom'"
         class="ext-link"
@@ -214,7 +214,7 @@
           </div>
         </label>
         <p class="meta credentials-hint">
-          {{ t(`settings.models.credentialsHint.${provider.providerKind}`) }}
+          {{ credentialsHintText(provider.providerKind) }}
           <a
             v-if="!isCustomProvider(provider)"
             class="ext-link"
@@ -506,7 +506,7 @@ const props = defineProps<{
   models: AppSettings['models']
 }>()
 
-const { t } = useStudioI18n()
+const { t, te } = useStudioI18n()
 
 /** 自定义提供商的端点类型选项（与 @shared/modelProvider 的 CustomApiStyle 对齐） */
 const CUSTOM_API_STYLES: ReadonlyArray<{ value: CustomApiStyle }> = [
@@ -783,69 +783,45 @@ function defaultModelDisplayName(provider: ModelProviderInstance, modelId: strin
   return cfg.catalog?.[modelId]?.name?.trim() || modelId
 }
 
+function credentialsHintText(kind: ModelProviderKind): string {
+  const key = `settings.models.credentialsHint.${kind}`
+  if (te(key)) return t(key)
+  return t('settings.models.credentialsHint.openrouter')
+}
+
+function resolveProviderModalityHintGroup(provider: ModelProviderInstance): string | null {
+  if (isCustomProvider(provider)) return 'customModalityHint'
+  if (provider.providerKind === 'moonshot') return 'moonshotModalityHint'
+  if (provider.providerKind === 'google') return 'googleModalityHint'
+  if (provider.providerKind === 'xai') return 'xaiModalityHint'
+  if (isLocalOpenAiProvider(provider)) return 'localModalityHint'
+  if (provider.providerKind === 'zhipu') return 'zhipuModalityHint'
+  if (provider.providerKind === 'deepseek') return 'deepseekModalityHint'
+  if (provider.providerKind === 'anthropic') return 'anthropicModalityHint'
+  if (provider.providerKind === 'openai') return 'openaiModalityHint'
+  if (provider.providerKind === 'openrouter') return 'openrouterModalityHint'
+  if (provider.providerKind === 'elevenlabs') return 'elevenLabsModalityHint'
+  if (provider.providerKind === 'volcengine-ark') return 'arkModalityHint'
+  if (provider.providerKind === 'kling') return 'klingModalityHint'
+  if (provider.providerKind === 'minimax') return 'minimaxModalityHint'
+  if (provider.providerKind === 'dashscope') return 'dashscopeModalityHint'
+  if (provider.providerKind === 'modelscope') return 'modelscopeModalityHint'
+  if (provider.providerKind === 'comfyui') return 'comfyuiModalityHint'
+  if (provider.providerKind === 'magicrouter') return 'magicrouterModalityHint'
+  if (provider.providerKind === 'typesafe') return 'typesafeModalityHint'
+  if (provider.providerKind === 'worldlabs') return 'worldlabsModalityHint'
+  return null
+}
+
 function modalityHintText(provider: ModelProviderInstance): string {
   const mod = currentModality(provider)
-  if (isCustomProvider(provider)) {
-    return t(`settings.models.customModalityHint.${mod}`)
+  const group = resolveProviderModalityHintGroup(provider)
+  if (group) {
+    const specificKey = `settings.models.${group}.${mod}`
+    if (te(specificKey)) return t(specificKey)
   }
-  if (provider.providerKind === 'moonshot') {
-    return t(`settings.models.moonshotModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'google') {
-    return t(`settings.models.googleModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'xai') {
-    return t(`settings.models.xaiModalityHint.${mod}`)
-  }
-  if (isLocalOpenAiProvider(provider)) {
-    return t(`settings.models.localModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'zhipu') {
-    return t(`settings.models.zhipuModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'deepseek') {
-    return t(`settings.models.deepseekModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'anthropic') {
-    return t(`settings.models.anthropicModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'openai') {
-    return t(`settings.models.openaiModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'openrouter') {
-    return t(`settings.models.openrouterModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'elevenlabs') {
-    return t(`settings.models.elevenLabsModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'volcengine-ark') {
-    return t(`settings.models.arkModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'kling') {
-    return t(`settings.models.klingModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'minimax') {
-    return t(`settings.models.minimaxModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'dashscope') {
-    return t(`settings.models.dashscopeModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'modelscope') {
-    return t(`settings.models.modelscopeModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'comfyui') {
-    return t(`settings.models.comfyuiModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'magicrouter') {
-    return t(`settings.models.magicrouterModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'typesafe') {
-    return t(`settings.models.typesafeModalityHint.${mod}`)
-  }
-  if (provider.providerKind === 'worldlabs') {
-    return t(`settings.models.worldlabsModalityHint.${mod}`)
-  }
-  return t(`settings.models.modalityHint.${mod}`)
+  const fallbackKey = `settings.models.modalityHint.${mod}`
+  return te(fallbackKey) ? t(fallbackKey) : ''
 }
 
 function canFetchCatalog(provider: ModelProviderInstance): boolean {

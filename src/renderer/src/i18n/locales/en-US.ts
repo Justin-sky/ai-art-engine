@@ -642,6 +642,7 @@ export default {
         lux3d: 'Get Lux3D API key:',
         worldlabs:
           'Get World Labs API key (top up credits at platform.worldlabs.ai/billing first):',
+        elevenlabs: 'Get ElevenLabs API key (xi-api-key):',
         custom:
           'Custom provider: pick an endpoint type, then enter the endpoint Base URL and API key to fetch the model list; there is no single signup page.'
       },
@@ -705,6 +706,8 @@ export default {
         model3d: '3D model generation from text and/or reference images, producing GLB assets.',
         world:
           'Spatial world generation (World Labs Marble): interactive 3D worlds (gaussian splats + mesh) from text or reference images.',
+        spatialWorld:
+          'Spatial world generation (World Labs Marble): interactive 3D worlds (gaussian splats + mesh) from text or reference images.',
         decisions:
           'Decision models (TypeSafe Jev, Liquid D1, …) return typed judgments with probabilities instead of text — noul yes/no, choice one-of, score on an ordered scale. OpenRouter uses /api/v1/models?output_modalities=decisions plus POST /api/alpha/decisions (note: not under /v1); TypeSafe direct uses GET /v1/models plus POST /v1/systemone (same protocol). Pick one here to branch on thresholds in the decisions node.'
       },
@@ -730,7 +733,9 @@ export default {
         video:
           'MiniMax video: H3 uses V2 (POST /v2/video_generation, multimodal content, 2K, 4–15s); Hailuo 2.3/02 still use V1. Default Base URL is api.minimaxi.com; video catalog is a local static list.',
         audio:
-          'MiniMax voice design via POST /v1/voice_design. Node instruction is the voice prompt; returns voice_id and preview audio. Catalog lists a local Voice Design entry.'
+          'MiniMax voice design via POST /v1/voice_design. Node instruction is the voice prompt; returns voice_id and preview audio. Catalog lists a local Voice Design entry.',
+        music:
+          'MiniMax music generation (music-3.0 score and song models): supports instrumental and lyric composition; selected models appear in the Music generation node and timeline BGM.'
       },
       dashscopeModalityHint: {
         text: 'Qwen chat via OpenAI-compatible API. Default Base URL is dashscope.aliyuncs.com/compatible-mode/v1 (/chat/completions).',
@@ -739,6 +744,8 @@ export default {
         video:
           'Wanxiang text/image-to-video via async /api/v1/services/aigc/video-generation/video-synthesis; with a first frame, img_url is sent — pick an i2v model.',
         audio:
+          'Bailian Fun-Music generation via /api/v1/services/audio/music/generation (Beijing region only). fun-music-v1 / fun-music-preview are invite-only; request access in the Bailian Model Studio.',
+        music:
           'Bailian Fun-Music generation via /api/v1/services/audio/music/generation (Beijing region only). fun-music-v1 / fun-music-preview are invite-only; request access in the Bailian Model Studio.'
       },
       modelscopeModalityHint: {
@@ -754,8 +761,17 @@ export default {
           'Speech synthesis posts to /audio/speech with model + input + voice (optional response_format / speed) — the OpenAI TTS protocol that most aggregators (new-api, one-api, …) implement, so a self-hosted gateway base URL works too. The catalog is a local static table because GET /models returns ids without voice lists. The voice is set in the voice node’s instruction panel, not here.'
       },
       openrouterModalityHint: {
+        text: 'OpenRouter multi-provider chat (Claude / GPT / Gemini / DeepSeek, etc.). Default Base URL is openrouter.ai/api/v1 via /chat/completions; the text catalog is fetched from GET /models.',
+        image:
+          'OpenRouter text-to-image and image editing (FLUX / Gemini Image / GPT Image, etc.); catalog is fetched from /api/v1/models (output_modalities includes image).',
+        video:
+          'OpenRouter shot video generation; catalog is fetched from /api/v1/videos/models with async video job submission and polling.',
         audio:
-          'Speech synthesis posts to /api/v1/audio/speech (model + input + voice), and the catalog comes from /api/v1/models?output_modalities=speech; OpenRouter’s supported_voices become the voice suggestions in the voice node’s instruction panel. The voice is set on the node, not here.'
+          'Speech synthesis posts to /api/v1/audio/speech (model + input + voice), and the catalog comes from /api/v1/models?output_modalities=speech; OpenRouter’s supported_voices become the voice suggestions in the voice node’s instruction panel. The voice is set on the node, not here.',
+        music:
+          'OpenRouter music generation (e.g. Google Lyria 3 family google/lyria-3-*) via POST /api/v1/audio/speech; selected models appear in the Music generation node and timeline BGM.',
+        decisions:
+          'OpenRouter decision models (TypeSafe Jev, Liquid D1, etc.): catalog from /api/v1/models?output_modalities=decisions and judgements via POST /api/alpha/decisions, returning typed probability answers (noul / choice / score).'
       },
       elevenLabsModalityHint: {
         audio:
@@ -815,7 +831,9 @@ export default {
       },
       worldlabsModalityHint: {
         world:
-          'World Labs (Marble): interactive 3D worlds from text / single image / multi-image. Default Base URL is api.worldlabs.ai, auth header WLT-Api-Key; generation goes POST /marble/v1/worlds:generate then polls operations/{id} (about 5 minutes). Models are marble-1.1 (standard) and marble-1.1-plus (larger worlds, more credits); the finished world contains gaussian splats (SPZ) and a GLB mesh. Top up credits at platform.worldlabs.ai/billing.'
+          'World Labs (Marble): interactive 3D worlds from text / single image / multi-image. Default Base URL is api.worldlabs.ai, auth header WLT-Api-Key; generation goes POST /marble/v1/worlds:generate then polls operations/{id} (about 5 minutes). Models are marble-1.1 (standard) and marble-1.1-plus (larger worlds, more credits); the finished world contains gaussian splats (SPZ) and a GLB mesh. Top up credits at platform.worldlabs.ai/billing.',
+        spatialWorld:
+          'World Labs (Marble): interactive 3D worlds from text / single image / multi-image. Default Base URL is api.worldlabs.ai, auth header WLT-Api-Key; generation posts to /marble/v1/worlds:generate and polls job status (about 5 minutes). Models include marble-1.1 (standard) and marble-1.1-plus (larger worlds, more credits), outputting gaussian splats (SPZ) and a GLB mesh. Top up credits at platform.worldlabs.ai/billing.'
       },
       localModalityHint: {
         text: 'Local OpenAI-compatible servers (vLLM / Ollama / LM Studio): no API key needed. Chat via /chat/completions; the model catalog is fetched from /models. Multimodal understanding works by passing images into a text node.',
@@ -4142,16 +4160,27 @@ export default {
         generate_image: 'Image',
         generate_video: 'Video',
         generate_speech: 'Voice',
+        generate_dialogue: 'Dialogue',
+        generate_sound_effect: 'Sound effect',
         generate_music: 'Music',
         generate_model3d: '3D model',
+        rig_model3d: '3D rigging',
+        segment_model3d: '3D segmentation',
+        post_process_model3d: '3D post-process',
         generate_world: 'Spatial world',
+        export_spatial_world: 'Spatial world export',
         decide: 'Decisions',
         graph_icon_refine: 'Icon refine',
         task_run: 'Workflow',
         asset_import: 'Import',
         blender_export: 'Blender export',
+        gameplay_build: 'Playable build',
         screen_record_stop: 'Screen record',
-        tutorial_compose: 'Tutorial compose'
+        tutorial_compose: 'Tutorial compose',
+        skill_search: 'Skill search',
+        skill_install: 'Skill install',
+        skill_uninstall: 'Skill uninstall',
+        game_one_sentence_create: 'One-sentence game'
       }
     },
     logs: {

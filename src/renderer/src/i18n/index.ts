@@ -9,7 +9,11 @@ export type AppLocale = AppSettings['language']
 export const i18n = createI18n({
   legacy: false,
   locale: 'zh-CN',
-  fallbackLocale: 'en-US',
+  fallbackLocale: {
+    'zh-CN': ['en-US'],
+    'en-US': [],
+    default: ['en-US']
+  },
   messages: {
     'zh-CN': zhCN,
     'en-US': enUS

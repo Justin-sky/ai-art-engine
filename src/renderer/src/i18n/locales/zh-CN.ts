@@ -631,6 +631,7 @@ export default {
         luma: '获取 Luma AI API Key：',
         lux3d: '获取 Lux3D API Key：',
         worldlabs: '获取 World Labs API Key（需先在 platform.worldlabs.ai/billing 充值积分）：',
+        elevenlabs: '获取 ElevenLabs API Key（xi-api-key）：',
         custom:
           '自定义提供商：选择端点类型后，填写端点 Base URL 与 API Key 即可拉取模型列表；无统一申请页。'
       },
@@ -693,6 +694,8 @@ export default {
         model3d: '用于 3D 模型生成，从文本和/或参考图生成 GLB 模型。',
         world:
           '用于空间世界生成（World Labs Marble）：从文本或参考图生成可交互 3D 世界（高斯泼溅 + 网格）。',
+        spatialWorld:
+          '用于空间世界生成（World Labs Marble）：从文本或参考图生成可交互 3D 世界（高斯泼溅 + 网格）。',
         decisions:
           '决策模型（TypeSafe Jev、Liquid D1 等）不生成文本，而是对问题返回带概率的类型化判定（noul 是/否、choice 多选一、score 有序打分）。OpenRouter 走 /api/v1/models?output_modalities=decisions 与 POST /api/alpha/decisions（注意不在 /v1 下）；TypeSafe 直连走 GET /v1/models 与 POST /v1/systemone（两家协议一致）。勾选后可在决策节点里按阈值直接分支。'
       },
@@ -717,7 +720,9 @@ export default {
         video:
           'MiniMax 视频：H3 走 V2（POST /v2/video_generation，多模态 content，2K，时长 4–15s）；Hailuo 2.3/02 仍走 V1。默认 Base URL 为 api.minimaxi.com；视频目录为本地静态列表。',
         audio:
-          'MiniMax 音色设计：POST /v1/voice_design。节点指令作为音色描述，返回 voice_id 与试听音频；目录为本地「音色设计」项。'
+          'MiniMax 音色设计：POST /v1/voice_design。节点指令作为音色描述，返回 voice_id 与试听音频；目录为本地「音色设计」项。',
+        music:
+          'MiniMax 音乐生成（music-3.0 等编曲模型）：支持伴奏与歌词编曲生成，勾选后可在「音乐生成」节点与时间线 BGM 生成里选用。'
       },
       dashscopeModalityHint: {
         text: '通义千问对话（OpenAI 兼容），默认 Base URL 为 dashscope.aliyuncs.com/compatible-mode/v1，对应 /chat/completions。',
@@ -726,6 +731,8 @@ export default {
         video:
           '万相文生/图生视频，异步调用 /api/v1/services/aigc/video-generation/video-synthesis；有首帧时传 img_url，请选用 i2v 模型。',
         audio:
+          '百炼 Fun-Music 音乐生成，调用 /api/v1/services/audio/music/generation（仅华北2北京）。fun-music-v1 / fun-music-preview 为邀测模型，需在百炼模型广场申请开通。',
+        music:
           '百炼 Fun-Music 音乐生成，调用 /api/v1/services/audio/music/generation（仅华北2北京）。fun-music-v1 / fun-music-preview 为邀测模型，需在百炼模型广场申请开通。'
       },
       modelscopeModalityHint: {
@@ -740,8 +747,17 @@ export default {
           '语音合成走 POST /audio/speech，请求体为 model + input + voice（可选 response_format / speed）——这就是 OpenAI 的 TTS 协议，绝大多数聚合器（new-api、one-api 等）都按这个形状对接，所以换成自建网关地址也能直接用。模型目录为本地静态表（GET /models 只给 id、不给声音列表）。音色在声音生成节点的指令面板里填，不在这里。'
       },
       openrouterModalityHint: {
+        text: 'OpenRouter 多模型对话聚合（Claude / GPT / Gemini / DeepSeek 等），默认 Base URL 为 openrouter.ai/api/v1，对应 /chat/completions；文本目录由 GET /models 拉取。',
+        image:
+          'OpenRouter 文生图 / 图生图聚合（FLUX / Gemini Image / GPT Image 等），目录由 /api/v1/models（output_modalities 含 image）拉取。',
+        video:
+          'OpenRouter 分镜视频生成聚合，目录由 /api/v1/videos/models 拉取，异步提交视频生成任务并轮询结果。',
         audio:
-          '语音合成走 POST /api/v1/audio/speech（model + input + voice），模型目录走 /api/v1/models?output_modalities=speech；OpenRouter 返回的 supported_voices 会成为声音节点指令面板里的音色候选。音色在节点上填，不在这里。'
+          '语音合成走 POST /api/v1/audio/speech（model + input + voice），模型目录走 /api/v1/models?output_modalities=speech；OpenRouter 返回的 supported_voices 会成为声音节点指令面板里的音色候选。音色在节点上填，不在这里。',
+        music:
+          'OpenRouter 音乐生成（如 Google Lyria 3 系列 google/lyria-3-*），请求走 POST /api/v1/audio/speech，勾选后可在「音乐生成」节点与时间线 BGM 中选用。',
+        decisions:
+          'OpenRouter 决策模型（TypeSafe Jev、Liquid D1 等）：目录走 /api/v1/models?output_modalities=decisions，判定走 POST /api/alpha/decisions，返回带概率的结构化判定（noul / choice / score）。'
       },
       elevenLabsModalityHint: {
         audio:
@@ -801,7 +817,9 @@ export default {
       },
       worldlabsModalityHint: {
         world:
-          'World Labs（Marble）：从文本 / 单图 / 多图生成可交互 3D 世界。默认 Base URL 为 api.worldlabs.ai，鉴权头 WLT-Api-Key；生成走 POST /marble/v1/worlds:generate 后轮询 operations/{id}（约 5 分钟）。模型 marble-1.1（标准）与 marble-1.1-plus（更大世界，消耗更多积分）；完成产物含高斯泼溅（SPZ）与 GLB 网格，需在 platform.worldlabs.ai/billing 充值积分。'
+          'World Labs（Marble）：从文本 / 单图 / 多图生成可交互 3D 世界。默认 Base URL 为 api.worldlabs.ai，鉴权头 WLT-Api-Key；生成走 POST /marble/v1/worlds:generate 后轮询 operations/{id}（约 5 分钟）。模型 marble-1.1（标准）与 marble-1.1-plus（更大世界，消耗更多积分）；完成产物含高斯泼溅（SPZ）与 GLB 网格，需在 platform.worldlabs.ai/billing 充值积分。',
+        spatialWorld:
+          'World Labs（Marble）：从文本 / 单图 / 多图生成可交互 3D 世界。默认 Base URL 为 api.worldlabs.ai，鉴权头 WLT-Api-Key；生成走 POST /marble/v1/worlds:generate 后轮询任务状态（约 5 分钟）。模型含 marble-1.1（标准）与 marble-1.1-plus（更大世界，消耗更多积分）；完成产物含高斯泼溅（SPZ）与 GLB 网格，需在 platform.worldlabs.ai/billing 充值积分。'
       },
       localModalityHint: {
         text: '本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）：无需 API Key，文本对话走 /chat/completions，模型目录由 /models 拉取；多模态理解可在文本节点传入图片。',
@@ -4028,16 +4046,27 @@ export default {
         generate_image: '图片',
         generate_video: '视频',
         generate_speech: '语音',
+        generate_dialogue: '多角色对话',
+        generate_sound_effect: '音效',
         generate_music: '音乐',
         generate_model3d: '3D 模型',
+        rig_model3d: '3D 绑骨蒙皮',
+        segment_model3d: '3D 模型拆分',
+        post_process_model3d: '3D 模型加工',
         generate_world: '空间世界',
+        export_spatial_world: '空间世界导出',
         decide: '决策判定',
         graph_icon_refine: '图标精修',
         task_run: '工作流',
         asset_import: '素材导入',
         blender_export: 'Blender 导出',
+        gameplay_build: '可玩游戏构建',
         screen_record_stop: '界面录制',
-        tutorial_compose: '教学成片'
+        tutorial_compose: '教学成片',
+        skill_search: '技能检索',
+        skill_install: '技能安装',
+        skill_uninstall: '技能卸载',
+        game_one_sentence_create: '一句话游戏'
       }
     },
     logs: {

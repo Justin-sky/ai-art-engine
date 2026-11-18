@@ -25,17 +25,20 @@ export interface MinimapTransform {
 }
 
 const EMPTY_WORLD: MinimapWorldBounds = { x: 0, y: 0, w: 1600, h: 1200 }
+export const DEFAULT_MINIMAP_INSET = 8
 
 /** 节点世界包围盒；空图回退固定范围 */
-export function resolveMinimapWorldBounds(nodes: GraphNode[], padding = 120): MinimapWorldBounds {
+export function resolveMinimapWorldBounds(nodes: GraphNode[], padding = 80): MinimapWorldBounds {
   const bounds = getNodesBounds(nodes, padding)
   if (!bounds || bounds.w <= 0 || bounds.h <= 0) return { ...EMPTY_WORLD }
-  // 保证最小可视范围，避免单节点时视口框盖满小地图
+  // 保证最小可视范围，避免单节点时视口框盖满小地图；扩展时保持中心对称
+  const w = Math.max(bounds.w, 400)
+  const h = Math.max(bounds.h, 300)
   return {
-    x: bounds.x,
-    y: bounds.y,
-    w: Math.max(bounds.w, 400),
-    h: Math.max(bounds.h, 300)
+    x: bounds.x - (w - bounds.w) / 2,
+    y: bounds.y - (h - bounds.h) / 2,
+    w,
+    h
   }
 }
 
@@ -53,23 +56,26 @@ export function collectMinimapNodeRects(nodes: GraphNode[]): MinimapNodeRect[] {
 }
 
 /**
- * 世界矩形等比落入画布。
- * 贴齐左下：多余空白只出现在上/右侧，左、下不留空。
+ * 世界矩形等比居中落入小地图画布（四周保留均匀像素内边距 inset）。
+ * 横向与纵向均自动居中显示，避免窄高布局贴死左边缘或宽扁布局贴死底边。
  */
 export function computeMinimapTransform(
   world: MinimapWorldBounds,
   canvasW: number,
   canvasH: number,
-  inset = 0
+  inset = DEFAULT_MINIMAP_INSET
 ): MinimapTransform {
-  const innerW = Math.max(1, canvasW - inset)
-  const innerH = Math.max(1, canvasH - inset)
+  const maxSafeInset = Math.max(0, Math.floor(Math.min(canvasW, canvasH) / 2) - 1)
+  const safeInset = Math.max(0, Math.min(inset, maxSafeInset))
+  const innerW = Math.max(1, canvasW - safeInset * 2)
+  const innerH = Math.max(1, canvasH - safeInset * 2)
   const scale = Math.min(innerW / world.w, innerH / world.h)
+  const contentW = world.w * scale
   const contentH = world.h * scale
   return {
     scale,
-    offsetX: -world.x * scale,
-    offsetY: canvasH - contentH - world.y * scale,
+    offsetX: (canvasW - contentW) / 2 - world.x * scale,
+    offsetY: (canvasH - contentH) / 2 - world.y * scale,
     canvasW,
     canvasH
   }

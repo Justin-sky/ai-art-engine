@@ -313,9 +313,16 @@ export function distributeNodes(nodes: GraphNode[], mode: DistributeMode): void 
 
 /**
  * 按连线拓扑做左→右分层自动布局。
- * 当存在 >= 2 个小说章节节点（asset.novel）时，自动将章节序列按每行 10 章（一幕）折行为二维矩阵，
- * 并同步生成「第N幕（第x~y章）」画布分组框（GraphGroup）。
+ * - 当存在 >= 2 个小说章节节点（asset.novel）时，自动将章节序列按每行 10 章（一幕）折行为二维矩阵，
+ *   并同步生成「第N幕（第x~y章）」画布分组框（GraphGroup）；
+ * - 当存在 >= 4 个彼此无连线的孤立节点（如批量音效、图标或素材卡）时，自动按约 1.5:1 横屏比例折行排成多列网格，
+ *   避免单列竖向堆叠成超长窄条；
+ * - 当普通拓扑单层节点过多（默认 > 8 个）时，自动在层内拆分为多组并排子列。
  */
+export const ISOLATED_GRID_MIN_NODES = 4
+export const MAX_LAYER_SUBCOLUMN_ROWS = 8
+const TARGET_GRID_ASPECT_RATIO = 1.5
+
 export function autoLayoutNodes(
   nodes: GraphNode[],
   edges: Pick<GraphEdge, 'source' | 'target'>[],
@@ -323,6 +330,8 @@ export function autoLayoutNodes(
     columnGap?: number
     rowGap?: number
     novelChaptersPerRow?: number
+    isolatedGridColumns?: number
+    maxRowsPerColumn?: number
     groups?: GraphGroup[]
   }
 ): void {
@@ -509,28 +518,128 @@ export function autoLayoutNodes(
     return
   }
 
-  const columns: string[][] = Array.from({ length: maxLayer + 1 }, () => [])
-  for (const id of ids) {
-    columns[layer.get(id)!]!.push(id)
-  }
-  for (const column of columns) {
-    column.sort((a, b) => (byId.get(a)?.position.y ?? 0) - (byId.get(b)?.position.y ?? 0))
+  const sortReadingOrder = (list: string[]): void => {
+    list.sort((a, b) => {
+      const na = byId.get(a)
+      const nb = byId.get(b)
+      const dy = (na?.position.y ?? 0) - (nb?.position.y ?? 0)
+      if (Math.abs(dy) > 1e-3) return dy
+      return (na?.position.x ?? 0) - (nb?.position.x ?? 0)
+    })
   }
 
-  let x = origin.x
+  const layoutIsolatedGrid = (targetIds: string[], startX: number, startY: number): void => {
+    const count = targetIds.length
+    if (count === 0) return
+    sortReadingOrder(targetIds)
 
-  for (const column of columns) {
-    let maxWidth = 0
-    let y = origin.y
-    for (const id of column) {
+    let sumW = 0
+    let sumH = 0
+    for (const id of targetIds) {
       const node = byId.get(id)
       if (!node) continue
       const size = getNodeSize(node)
-      node.position.x = x
-      node.position.y = y
-      y += size.h + rowGap
-      maxWidth = Math.max(maxWidth, size.w)
+      sumW += size.w
+      sumH += size.h
     }
-    x += maxWidth + columnGap
+    const avgPitchX = Math.max(1, sumW / count + columnGap)
+    const avgPitchY = Math.max(1, sumH / count + rowGap)
+    const computedCols = Math.round(
+      Math.sqrt((count * TARGET_GRID_ASPECT_RATIO * avgPitchY) / avgPitchX)
+    )
+    const gridCols = Math.max(
+      2,
+      Math.min(count, Math.floor(options?.isolatedGridColumns ?? computedCols))
+    )
+    const gridRows = Math.ceil(count / gridCols)
+
+    const colWidths = new Array<number>(gridCols).fill(0)
+    const rowHeights = new Array<number>(gridRows).fill(0)
+    for (let i = 0; i < count; i++) {
+      const node = byId.get(targetIds[i]!)
+      if (!node) continue
+      const size = getNodeSize(node)
+      const r = Math.floor(i / gridCols)
+      const c = i % gridCols
+      colWidths[c] = Math.max(colWidths[c]!, size.w)
+      rowHeights[r] = Math.max(rowHeights[r]!, size.h)
+    }
+
+    const colX = new Array<number>(gridCols).fill(startX)
+    for (let c = 1; c < gridCols; c++) {
+      colX[c] = colX[c - 1]! + colWidths[c - 1]! + columnGap
+    }
+    const rowY = new Array<number>(gridRows).fill(startY)
+    for (let r = 1; r < gridRows; r++) {
+      rowY[r] = rowY[r - 1]! + rowHeights[r - 1]! + rowGap
+    }
+
+    for (let i = 0; i < count; i++) {
+      const node = byId.get(targetIds[i]!)
+      if (!node) continue
+      const r = Math.floor(i / gridCols)
+      const c = i % gridCols
+      node.position.x = colX[c]!
+      node.position.y = rowY[r]!
+    }
+  }
+
+  const isolatedIds: string[] = []
+  const connectedIds: string[] = []
+  for (const id of ids) {
+    const hasIn = (indegree.get(id) ?? 0) > 0
+    const hasOut = (outgoing.get(id)?.length ?? 0) > 0
+    if (!hasIn && !hasOut) isolatedIds.push(id)
+    else connectedIds.push(id)
+  }
+
+  const useIsolatedGrid = isolatedIds.length >= ISOLATED_GRID_MIN_NODES
+  if (useIsolatedGrid && connectedIds.length === 0) {
+    layoutIsolatedGrid(isolatedIds, origin.x, origin.y)
+    return
+  }
+
+  const isolatedSkipSet = useIsolatedGrid ? new Set(isolatedIds) : null
+  const columns: string[][] = Array.from({ length: maxLayer + 1 }, () => [])
+  for (const id of ids) {
+    if (isolatedSkipSet?.has(id)) continue
+    columns[layer.get(id)!]!.push(id)
+  }
+  for (const column of columns) {
+    sortReadingOrder(column)
+  }
+
+  const maxRowsPerCol = Math.max(
+    2,
+    Math.floor(options?.maxRowsPerColumn ?? MAX_LAYER_SUBCOLUMN_ROWS)
+  )
+  const subColumnGap = Math.max(48, Math.round(columnGap * 0.65))
+  let x = origin.x
+  let maxBottomY = origin.y
+
+  for (const column of columns) {
+    if (column.length === 0) continue
+    for (let start = 0; start < column.length; start += maxRowsPerCol) {
+      const chunk = column.slice(start, start + maxRowsPerCol)
+      let maxWidth = 0
+      let y = origin.y
+      for (const id of chunk) {
+        const node = byId.get(id)
+        if (!node) continue
+        const size = getNodeSize(node)
+        node.position.x = x
+        node.position.y = y
+        maxBottomY = Math.max(maxBottomY, y + size.h)
+        y += size.h + rowGap
+        maxWidth = Math.max(maxWidth, size.w)
+      }
+      const isLastChunk = start + maxRowsPerCol >= column.length
+      x += maxWidth + (isLastChunk ? columnGap : subColumnGap)
+    }
+  }
+
+  if (useIsolatedGrid) {
+    const gridStartY = maxBottomY > origin.y ? maxBottomY + Math.round(rowGap * 1.5) : origin.y
+    layoutIsolatedGrid(isolatedIds, origin.x, gridStartY)
   }
 }
