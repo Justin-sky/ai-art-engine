@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [9.0.4] — 2026-11-18
+
+9.0.4 游戏 UI 图层分离架构精简与 Seedream Pro 5.5 多渠道增强版：**UI 图层分离（`image.layerSplit`）** 全面收敛至 **Seedream Pro（5.0 / 5.5+）原生 `layer_decomposition` 引擎**，打通 **OpenRouter `provider.options.seed` 原生拆层透传与 `row.layer` / `b64_json` 尺寸嗅探**，新增 **「拆图模型 + 单图层修复重绘模型」双下拉分离**、**「最大层数（`maxLayers`）」下拉档位与跨渠道透传**、**工作台底部直连执行按钮**，并按 **火山方舟 / ByteDance Seed 官方规范重构默认逐件拆层提示词与 6 套场景预设**。
+
+- **重构 · UI 图层分离全面统一为 Seedream Pro 原生 `layer_decomposition` 与双模型分工（`src/shared/graph/imageLayerSplit` + `LayerSplitInspector` + `LayerSplitEditorDialog`）**：下线效果不稳定的多模态 LLM + 本地抠图旧拆层分支及冗余 `ui.componentLib` / `ui.atlasCompose` 节点；支持 Seedream 5.0 Pro、Seedream 5.5+ 与火山方舟 `ep-*` 接入点（自动排除不支持拆层的 `lite` / `flash` 变体），保留「拆图模型（Seedream Pro）」与「重绘模型（单图层修复）」双独立下拉框，并在双击工作台底部工具栏直接集成节点执行/停止按钮。
+- **修复 · OpenRouter `bytedance-seed/seedream-5-5` 原生图层分离参数透传与响应解析（`src/main/services/modelProviders/openrouter/adapter` + `volcengineArk/layerDecomposition` + `imageMimeSniff`）**：修复 OpenRouter `/api/v1/images` 将顶层 `layer_decomposition` 静默丢弃并退化为单张重绘的问题，改为按网关规范注入 `provider.options.seed.layer_decomposition` 与 `layer_decomposition_options.max_images`，兼容解析 `data[i].layer` 嵌套元数据并从 Base64 PNG/JPEG/WebP 头部直接嗅探画布宽高。
+- **新增 · 「最大层数（`maxLayers`）」下拉框与 Seedream 官方风格逐件拆层提示词及预设（`volcengineArk/adapter` + `openrouter/adapter` + `imageLayerSplit`）**：新增 `自动 / 4 / 8 / 12 / 16 / 30 / 50 / 100` 最大层数选择并端到端透传 `layer_decomposition_options.max_images`（火山方舟 5.5 支持 `2~100`、5.0 Pro 与 OpenRouter 自动钳制 `2~16`）；重构默认拆层指令与 6 套快捷预设（`通用全元素 / 游戏 UI 精拆 / 战斗 HUD / 弹窗对话框 / 背包养成 / 抽卡商店`），严格遵循官方简短逐件指令规范（强调「每个元素作为独立可编辑图层输出，保持边缘干净无残留」），避免多个按钮/图标合并同层或漏拆角色立绘；同时为 `dev-launcher.mjs` 补充 6 GB 堆内存上限与 `clearScreen: false` 防止热重载报错被刷屏清掉。
+
 ## [9.0.3] — 2026-11-18
 
 9.0.3 画布排版、小地图体验与多语言补丁版：优化 **画布小地图（`minimapGeometry`）双向自动居中与四周安全内边距**、升级 **大批量无连线孤立节点（如音效/图标矩阵）自动折行排成多列横屏网格（`layout`）**，并补齐 **模型设置页与任务弹窗全部动态多语言词条及回退链保护（`zh-CN` / `en-US` / `ModelsPanel`）**。
