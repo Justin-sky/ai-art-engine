@@ -28,6 +28,8 @@ const DEFAULT_INTERACTION_TIMEOUT_MS = 10 * 60_000
 const PLAN_UNCONFIRMED_NATIVE_TOOLS = new Set<string>([
   'read',
   'search',
+  'web_search',
+  'web_fetch',
   'load_toolset',
   'ask_user',
   'ask_user_question',
@@ -41,6 +43,8 @@ const ALL_NATIVE_TOOL_NAMES = new Set<string>([
   'edit',
   'str_replace_editor',
   'search',
+  'web_search',
+  'web_fetch',
   'bash',
   'load_toolset',
   'ask_user',

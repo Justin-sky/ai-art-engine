@@ -207,6 +207,8 @@ export const BUILTIN_LAZY_TOOLSETS: ReadonlyArray<ToolsetCatalogEntry> = [
     description:
       '无头浏览器提取微信公众号/知乎/技术文章正文与配图、GitHub/技能市场搜索安装卸载、本地离线 OCR 文字识别与 YOLO 目标分割姿态检测、定时任务查看。',
     toolNames: [
+      'web_search',
+      'web_fetch',
       'web_extract_article',
       'skill_list',
       'skill_search',

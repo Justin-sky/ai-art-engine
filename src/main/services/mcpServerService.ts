@@ -236,6 +236,7 @@ import {
   type PartialGameSpecInput
 } from '@shared/gameAssets/oneSentenceGameSpec'
 import { extractWebArticleWithHeadlessBrowser } from './webArticleExtractService'
+import { executeStudioWebFetch, executeStudioWebSearch } from './webSearchService'
 import { fetchWebVideoClipsToImports } from './webVideoFetchService'
 import { broadcastToAllWindows } from '../broadcast'
 import {
@@ -1048,6 +1049,74 @@ const TOOL_DEFS: McpToolDef[] = [
         })),
         skipped: result.skipped
       }
+    }
+  },
+  {
+    name: 'web_search',
+    title: '实时联网搜索',
+    description:
+      '按关键词实时检索公网最新资讯、模型/API 技术文档、游戏/影视/UI 设计参考资料或实体百科。优先使用「设置 → 联网搜索」中已启用且配有密钥的搜索服务商（Tavily / Brave / SerpAPI），未配置密钥时自动使用内置免密钥实时公网搜索兜底。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '搜索关键词（中英文均可，建议简短精准）'
+        },
+        topK: {
+          type: 'number',
+          description: '返回结果数量上限（默认 8，最大 15）'
+        },
+        recencyDays: {
+          type: 'number',
+          description: '可选：限定最近 N 天内的结果（部分服务商支持）'
+        },
+        language: {
+          type: 'string',
+          description: '可选：优先语言标签（如 zh-CN / en-US）'
+        }
+      },
+      required: ['query']
+    },
+    handler: async (args) => {
+      const query = readString(args, 'query')
+      const topK = optionalNumber(args, 'topK')
+      const recencyDays = optionalNumber(args, 'recencyDays')
+      const language = optionalString(args, 'language')
+      return executeStudioWebSearch({
+        query,
+        ...(topK !== undefined ? { topK } : {}),
+        ...(recencyDays !== undefined ? { recencyDays } : {}),
+        ...(language ? { language } : {})
+      })
+    }
+  },
+  {
+    name: 'web_fetch',
+    title: '读取网页正文',
+    description:
+      '读取指定公网 http/https 网页并提取为干净可读的 Markdown/纯文本正文（静态页面极速提取，动态 SPA 页面自动回退本地无头浏览器渲染）。如需同时把文章内配图下载到工程 Cache/imports/ 目录用于成片制作，请改用 `web_extract_article`。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: '目标公网网页 URL（http:// 或 https://）'
+        },
+        maxChars: {
+          type: 'number',
+          description: '返回正文最大字符数（默认 16000，上限 48000）'
+        }
+      },
+      required: ['url']
+    },
+    handler: async (args) => {
+      const url = readString(args, 'url')
+      const maxChars = optionalNumber(args, 'maxChars')
+      return executeStudioWebFetch({
+        url,
+        ...(maxChars !== undefined ? { maxChars } : {})
+      })
     }
   },
   {

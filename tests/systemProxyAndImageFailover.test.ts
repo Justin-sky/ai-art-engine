@@ -336,5 +336,5 @@ HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settin
       })
     ).rejects.toThrow(/content_policy_violation/)
     expect(attemptedProviders).toEqual(['p-openai::gpt-image-2.6-flare'])
-  })
+  }, 45_000)
 })

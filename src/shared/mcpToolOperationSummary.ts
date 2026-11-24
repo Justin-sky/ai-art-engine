@@ -164,6 +164,10 @@ const TOOL_TITLE_EN: Record<string, string> = {
   vision_local_yolo: 'Local Vision Detection (YOLO/SAM2)',
   project_git_status: 'Project Git Status',
   project_git_diff: 'Project Git Diff',
+  web_search: 'Web Search',
+  web_fetch: 'Read Web Page',
+  web_extract_article: 'Extract Web Article',
+  web_fetch_video: 'Fetch Video Clips',
   'pi-agent': 'Pi Agent',
   'dsh-agent': 'Pi Agent',
   load_toolset: 'Load Toolset',
@@ -501,6 +505,18 @@ export function extractMcpToolStepsFromArgs(rawName: string, rawArgs: unknown): 
     case 'skill_uninstall': {
       const name = str(args, 'name')
       return [`卸载技能 ${name}`.trim()]
+    }
+    case 'web_search': {
+      const q = str(args, 'query') || str(args, 'q')
+      return [q ? `联网搜索「${q}」` : '联网搜索']
+    }
+    case 'web_fetch': {
+      const u = str(args, 'url')
+      return [u ? `读取网页 ${u.slice(0, 80)}` : '读取网页内容']
+    }
+    case 'web_extract_article': {
+      const u = str(args, 'url')
+      return [u ? `抓取文章图文 ${u.slice(0, 80)}` : '抓取网页文章图文']
     }
     case 'web_fetch_video': {
       const q = str(args, 'query') || str(args, 'url')

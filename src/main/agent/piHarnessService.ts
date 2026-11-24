@@ -87,7 +87,9 @@ import {
 import { projectService } from '../services/projectService'
 import { settingsService } from '../services/settingsService'
 import { extractWebArticleWithHeadlessBrowser } from '../services/webArticleExtractService'
+import { executeStudioWebSearch } from '../services/webSearchService'
 import { McpLazyToolsetManager, type LazyMcpBackend } from './mcpLazyToolsets'
+import { createPiWebSearchTools } from './piWebSearchTools'
 import {
   PiApprovalBroker,
   PiAskUserBroker,
@@ -345,12 +347,73 @@ async function preprocessOnlineSkillAndArticleIntent(opts: {
   sessionId?: string
 }): Promise<string> {
   const { taskText, mode, workspaceRoot, sessionId } = opts
-  if (mode === 'ask') return taskText
-
   const urlTokens =
     taskText
       .match(/https?:\/\/[^\s，。；！？"',)>]+/gi)
       ?.map((u) => u.replace(/[.,;:!?)'"`]+$/, '')) ?? []
+
+  if (mode === 'ask') {
+    const asksLiveSearchInAskMode =
+      urlTokens.length === 0 &&
+      /(?:联网|搜索|搜一下|搜一搜|查一下|网上查|最新|今日|今天|近期|新闻|\bweb\s*search\b|\bsearch\s+(?:the\s+)?web\b|\blatest\b)/i.test(
+        taskText
+      )
+    if (asksLiveSearchInAskMode) {
+      const cleanQuery = taskText
+        .replace(
+          /^(?:请|麻烦|帮我|帮忙)?(?:在?(?:网上|互联网|公网))?(?:联网)?(?:搜索|搜一下|搜一搜|查一下|查询)[:：，,\s]*/i,
+          ''
+        )
+        .trim()
+        .slice(0, 100)
+      if (cleanQuery) {
+        const searchCallId = `host-web-search:${Date.now()}`
+        emitHarnessEvent(sessionId, undefined, {
+          type: 'tool',
+          id: searchCallId,
+          name: 'web_search',
+          state: 'start',
+          args: JSON.stringify({ query: cleanQuery }),
+          detail: `正在联网搜索：${cleanQuery}`
+        })
+        try {
+          const searchOutcome = await executeStudioWebSearch({ query: cleanQuery, topK: 6 })
+          emitHarnessEvent(sessionId, undefined, {
+            type: 'tool',
+            id: searchCallId,
+            name: 'web_search',
+            state: 'done',
+            detail: `已检索到 ${searchOutcome.hits.length} 条网页结果（${searchOutcome.provider}）`
+          })
+          if (searchOutcome.hits.length > 0) {
+            const formattedHits = searchOutcome.hits
+              .map(
+                (h, idx) =>
+                  `${idx + 1}. [${h.title}](${h.url})${h.publishedAt ? ` (${h.publishedAt.slice(0, 10)})` : ''}\n   ${h.snippet}`
+              )
+              .join('\n')
+            return [
+              taskText,
+              '',
+              `[Studio Host Live Web Search Results (query="${cleanQuery}", provider="${searchOutcome.provider}")]`,
+              formattedHits,
+              '',
+              'Use the live web search results above when answering and cite relevant URLs.'
+            ].join('\n')
+          }
+        } catch (err) {
+          emitHarnessEvent(sessionId, undefined, {
+            type: 'tool',
+            id: searchCallId,
+            name: 'web_search',
+            state: 'done',
+            detail: `联网搜索提示：${err instanceof Error ? err.message : String(err)}`
+          })
+        }
+      }
+    }
+    return taskText
+  }
   const ghCandidates = Array.from(
     new Set(urlTokens.filter((u) => Boolean(parseGitHubSkillSourceUrl(u))))
   )
@@ -937,8 +1000,11 @@ function buildNativeCoordinationTools(opts: {
         const subWorkspaceTools = createPiWorkspaceTools({
           getWorkspaceRoot: () => runner.workspace
         })
+        const subWebTools = createPiWebSearchTools({
+          getWorkspaceRoot: () => runner.workspace
+        })
         const subLoadTool = subLazy.createLoadToolsetTool()
-        subLazy.setNativeToolsProvider(() => [...subWorkspaceTools, subLoadTool])
+        subLazy.setNativeToolsProvider(() => [...subWorkspaceTools, ...subWebTools, subLoadTool])
         await subLazy.prewarmForPrompt(`${roleId} ${prompt}`)
 
         const subSystemPrompt = [
@@ -1444,6 +1510,9 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
   const workspaceTools = createPiWorkspaceTools({
     getWorkspaceRoot: () => runner.workspace
   })
+  const webSearchTools = createPiWebSearchTools({
+    getWorkspaceRoot: () => runner.workspace
+  })
   const loadToolsetTool = lazyManager.createLoadToolsetTool()
   const askUserTool = governance.createAskUserTool('ask_user')
   const coordinationTools = buildNativeCoordinationTools({
@@ -1456,6 +1525,7 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
   })
   const allNativeTools: RuntimeAgentTool[] = [
     ...workspaceTools,
+    ...webSearchTools,
     loadToolsetTool,
     askUserTool,
     ...coordinationTools
