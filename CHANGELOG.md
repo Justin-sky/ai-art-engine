@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [9.0.5] — 2026-11-24
+
+9.0.5 智能体实时联网搜索增强版：为 **进程内 Pi Agent 运行时（`piWebSearchTools` + `piHarnessService` + `piGovernance` + `piPersona`）** 与 **本地 MCP 服务（`mcpServerService`）** 新增常驻原生 **`web_search`（实时联网搜索）** 与 **`web_fetch`（公网网页正文读取）** 工具，支持 **专业搜索 API（Tavily / Brave / SerpAPI）优先 + 免配置零密钥实时公网搜索兜底 + 动态 SPA 页面无头浏览器回退提取**。
+
+- **新增 · 三级智能联网检索与 SSRF 安全网页深读引擎（`src/main/services/webSearchService`）**：优先调用用户在「设置 → 联网搜索」中启用的真实搜索服务商（Tavily / Brave / SerpAPI）；未配置任何搜索密钥时自动启用免 Key 实时公网检索通道（Bing RSS → DuckDuckGo HTML，无缝复用主进程系统代理隧道）开箱即用；`web_fetch` 内置严格的回环/内网私网段 SSRF 安全拦截，自动将网页清洗为结构化 Markdown，并在遇到动态客户端渲染页面（如公众号 / SPA 文档站）时自动回退本地无头浏览器提取。
+- **新增 · 全模式（Craft / Plan / Ask）、领域子代理与外部 MCP 全面接入（`piWebSearchTools` + `piHarnessService` + `piGovernance` + `mcpServerService`）**：`web_search` 与 `web_fetch` 在 `Craft` 模式、全部领域子代理以及 `Plan` 模式（计划确认前只读阶段）下作为常驻工具默认激活；`Ask` 模式在严格保持零工具门禁的同时，对实时/联网资讯提问支持宿主自动预检索并注入网页来源；对话流卡片实时展示 `联网搜索「关键词」` / `读取网页 URL` 状态，且同步暴露至本地 MCP 服务供外部 Claude Code / Cursor 调用。
+
 ## [9.0.4] — 2026-11-18
 
 9.0.4 游戏 UI 图层分离架构精简与 Seedream Pro 5.5 多渠道增强版：**UI 图层分离（`image.layerSplit`）** 全面收敛至 **Seedream Pro（5.0 / 5.5+）原生 `layer_decomposition` 引擎**，打通 **OpenRouter `provider.options.seed` 原生拆层透传与 `row.layer` / `b64_json` 尺寸嗅探**，新增 **「拆图模型 + 单图层修复重绘模型」双下拉分离**、**「最大层数（`maxLayers`）」下拉档位与跨渠道透传**、**工作台底部直连执行按钮**，并按 **火山方舟 / ByteDance Seed 官方规范重构默认逐件拆层提示词与 6 套场景预设**。
