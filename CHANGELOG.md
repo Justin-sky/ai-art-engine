@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [9.0.6] — 2026-11-26
+
+9.0.6 OpenAI GPT-5/6 工具调用全链路兼容与 HTML 预览沙箱修复版：彻底解决 **Pi Agent 选择 OpenAI 最新模型（`gpt-6.1-terra`、`gpt-6.1-sol`、`gpt-6-astra`、`gpt-5.x` 等）时因 `/v1/chat/completions` 下 `reasoning_effort` 与 Function `tools` 互斥触发 `400` 报错** 的问题，接入 **`/v1/responses`（`openai-responses`）流式协议与四层故障自愈自动升级/回退机制**，并修复 **工作区 `.html` 资产预览因 `about:srcdoc` 触发渲染器严格 CSP 拦截内联脚本** 的问题。
+
+- **修复 · OpenAI GPT-5.1+ / GPT-6 系列工具调用 `reasoning_effort` 守卫与 `/v1/responses` 自动自愈（`piModelResolver` + `piSelfHealing` + `piHarnessService` + `openai/modelCapabilities`）**：新增 `doesOpenAiModelSupportReasoningNone` 与 `inferOpenAiThinkingLevelMap`，在官方 OpenAI 及各类自定义中转网关下按当前对话模式（`hasTools: mode !== 'ask'`）自动归一化工具兼容模型（如 `gpt-6.1-sol → gpt-6.1-terra`、`gpt-6-astra → gpt-6-sol`，`Ask` 模式仍保留完整默认思维链推理）；在底层 `onPayload`（`enforceOpenAiToolsLimitPayload`）为携带 `tools` 的 `/v1/chat/completions` 请求强制注入 `reasoning_effort: 'none'`（自动排除 OpenRouter、`o3`、`gpt-4o` 与 `/v1/responses`）；若上游仍返回协议冲突，自愈循环自动切换至 `/v1/responses`（`openai-responses`）无缝续跑，遇旧版中转 `404/405` 时再自动回退至兼容模型。
+- **修复 · 工作区 HTML 资产预览内联脚本 CSP 拦截（`WorkspaceFileEditor` + `studioGameplayProtocol`）**：移除 `WorkspaceFileEditor.vue` 中的 `:srcdoc` 内联挂载，统一通过 `window.studio.openGameplayDocument` 路由至独立 `studio-gameplay://` 沙箱协议（支持内联脚本、`wasm-unsafe-eval`、`studio-media:` 本地资产及 Three.js 本地依赖自动注入），保持主渲染进程严格零 `unsafe-inline` CSP 安全基线。
+
 ## [9.0.5] — 2026-11-24
 
 9.0.5 智能体实时联网搜索增强版：为 **进程内 Pi Agent 运行时（`piWebSearchTools` + `piHarnessService` + `piGovernance` + `piPersona`）** 与 **本地 MCP 服务（`mcpServerService`）** 新增常驻原生 **`web_search`（实时联网搜索）** 与 **`web_fetch`（公网网页正文读取）** 工具，支持 **专业搜索 API（Tavily / Brave / SerpAPI）优先 + 免配置零密钥实时公网搜索兜底 + 动态 SPA 页面无头浏览器回退提取**。
