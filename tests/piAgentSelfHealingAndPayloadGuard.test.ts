@@ -8,9 +8,14 @@ import {
 import type { HarnessTodoItem } from '../src/shared/ipc'
 import { McpLazyToolsetManager } from '../src/main/agent/mcpLazyToolsets'
 import {
+  enforceOpenAiToolsLimitPayload,
   isPiContextOrPayloadOverflowError,
+  isPiOpenAiReasoningToolsConflictError,
   isPiTransientUpstreamError,
   isPiUnsupportedImageError,
+  MIN_SAFE_OUTPUT_TOKENS,
+  OPENAI_HARD_MAX_TOOLS,
+  resolvePiModelFromProviders,
   type RuntimeAgentTool
 } from '../src/main/agent/piModelResolver'
 import {
@@ -560,5 +565,285 @@ describe('Pi Agent 全链路防中断、8 MB 载荷守卫与故障自愈回归�
 
     await manager.prewarmForPrompt('继续反编译分析 libil2cpp.so')
     expect(externalProbeCalls).toBe(1)
+  })
+
+  it('7. OpenAI GPT-5/6 工具调用兼容守卫：/v1/chat/completions 携带 tools 时自动注入 reasoning_effort="none" 并归一化模型 ID', () => {
+    const sampleTools = [{ type: 'function', function: { name: 'graph_read', parameters: {} } }]
+
+    // 复现用户报错场景：gpt-6.1-terra 携带 tools 走 chat/completions，自动注入 reasoning_effort='none'
+    const terraWithTools = enforceOpenAiToolsLimitPayload({
+      model: 'gpt-6.1-terra',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: sampleTools
+    }) as Record<string, unknown>
+    expect(terraWithTools.reasoning_effort).toBe('none')
+
+    // 若载荷中仍是 gpt-6.1-sol + tools，自动归一化为 gpt-6.1-terra 并设 reasoning_effort='none'
+    const solWithTools = enforceOpenAiToolsLimitPayload({
+      model: 'gpt-6.1-sol',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: sampleTools
+    }) as Record<string, unknown>
+    expect(solWithTools.model).toBe('gpt-6.1-terra')
+    expect(solWithTools.reasoning_effort).toBe('none')
+
+    // 无 tools（如 Ask 纯问答模式）时不注入 reasoning_effort，保留原引用
+    const askPayload = { model: 'gpt-6.1-terra', messages: [{ role: 'user', content: 'hi' }] }
+    expect(enforceOpenAiToolsLimitPayload(askPayload)).toBe(askPayload)
+
+    // o3 / gpt-4o / OpenRouter / openai-responses 不注入顶层 reasoning_effort='none'
+    const o3Payload = {
+      model: 'o3',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: sampleTools
+    }
+    expect(enforceOpenAiToolsLimitPayload(o3Payload)).toBe(o3Payload)
+
+    const gpt4oPayload = {
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: sampleTools
+    }
+    expect(enforceOpenAiToolsLimitPayload(gpt4oPayload)).toBe(gpt4oPayload)
+
+    const openRouterPayload = {
+      model: 'openai/gpt-6.1-terra',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: sampleTools
+    }
+    expect(
+      enforceOpenAiToolsLimitPayload(
+        openRouterPayload,
+        OPENAI_HARD_MAX_TOOLS,
+        MIN_SAFE_OUTPUT_TOKENS,
+        {
+          id: 'openai/gpt-6.1-terra',
+          api: 'openai-completions',
+          provider: 'openrouter',
+          baseUrl: 'https://openrouter.ai/api/v1'
+        }
+      )
+    ).toBe(openRouterPayload)
+
+    const responsesPayload = {
+      model: 'gpt-6.1-terra',
+      input: [{ role: 'user', content: 'hi' }],
+      tools: sampleTools
+    }
+    expect(
+      enforceOpenAiToolsLimitPayload(
+        responsesPayload,
+        OPENAI_HARD_MAX_TOOLS,
+        MIN_SAFE_OUTPUT_TOKENS,
+        {
+          id: 'gpt-6.1-terra',
+          api: 'openai-responses',
+          provider: 'openai',
+          baseUrl: 'https://api.openai.com/v1'
+        }
+      )
+    ).toBe(responsesPayload)
+
+    // 自定义中转与官方 OpenAI 解析：hasTools=true 时归一化 gpt-6.1-sol -> gpt-6.1-terra 且 thinkingLevelMap.off='none'
+    const relayResolved = resolvePiModelFromProviders(
+      [
+        {
+          id: 'relay-oai',
+          name: 'OpenAI Relay',
+          providerKind: 'openai',
+          enabled: true,
+          apiKey: 'sk-test',
+          baseUrl: 'https://relay.example.com/v1',
+          modalities: {
+            text: {
+              selectedModelIds: ['gpt-6.1-sol', 'gpt-5-mini'],
+              defaultModelId: 'gpt-6.1-sol'
+            }
+          }
+        }
+      ],
+      { providerId: 'relay-oai', modelId: 'gpt-6.1-sol', hasTools: true }
+    )
+    expect(relayResolved?.model.id).toBe('gpt-6.1-terra')
+    expect(relayResolved?.model.thinkingLevelMap?.off).toBe('none')
+
+    // Ask 模式（hasTools=false）保持 gpt-6.1-sol 原模型与默认推理深度
+    const askResolved = resolvePiModelFromProviders(
+      [
+        {
+          id: 'relay-oai',
+          name: 'OpenAI Relay',
+          providerKind: 'openai',
+          enabled: true,
+          apiKey: 'sk-test',
+          baseUrl: 'https://relay.example.com/v1',
+          modalities: {
+            text: {
+              selectedModelIds: ['gpt-6.1-sol'],
+              defaultModelId: 'gpt-6.1-sol'
+            }
+          }
+        }
+      ],
+      { providerId: 'relay-oai', modelId: 'gpt-6.1-sol', hasTools: false }
+    )
+    expect(askResolved?.model.id).toBe('gpt-6.1-sol')
+    expect(askResolved?.model.thinkingLevelMap?.off).toBeNull()
+
+    // 官方 OpenAI 下选择不支持 reasoning_effort='none' 的初代 gpt-5-mini 且带工具时直连 openai-responses
+    const officialGpt5Mini = resolvePiModelFromProviders(
+      [
+        {
+          id: 'official-oai',
+          name: 'OpenAI Official',
+          providerKind: 'openai',
+          enabled: true,
+          apiKey: 'sk-test',
+          baseUrl: 'https://api.openai.com/v1',
+          modalities: {
+            text: {
+              selectedModelIds: ['gpt-5-mini'],
+              defaultModelId: 'gpt-5-mini'
+            }
+          }
+        }
+      ],
+      { providerId: 'official-oai', modelId: 'gpt-5-mini', hasTools: true }
+    )
+    expect(officialGpt5Mini?.model.api).toBe('openai-responses')
+    expect(officialGpt5Mini?.model.thinkingLevelMap?.off).toBeNull()
+  })
+
+  it('8. runPiAgentWithSelfHealing：遇到 OpenAI reasoning_effort 与 Function tools 400 冲突时自动升级 /v1/responses（若中转 404 再无缝回退兼容模型）', async () => {
+    const exactErrorMsg =
+      '400: {"message":"Function tools with reasoning_effort are not supported for gpt-6.1-terra in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to \'none\'.","type":"invalid_request_error","param":"reasoning_effort","code":null}'
+
+    const conflictErrMsg: AssistantMessage = {
+      role: 'assistant',
+      content: [],
+      api: 'openai-completions',
+      provider: 'openai',
+      model: 'gpt-6.1-terra',
+      usage: makeUsage(0, 0),
+      stopReason: 'error',
+      errorMessage: exactErrorMsg,
+      timestamp: Date.now()
+    }
+    expect(isPiOpenAiReasoningToolsConflictError(conflictErrMsg)).toBe(true)
+    expect(isPiTransientUpstreamError(conflictErrMsg)).toBe(false)
+
+    // 场景 A：网关支持 /v1/responses -> 第 2 次调用直接以 openai-responses 成功返回
+    const seenApisA: string[] = []
+    const statusLogsA: string[] = []
+    const agentA = new Agent({
+      initialState: {
+        systemPrompt: 'Studio Pi Agent',
+        model: {
+          ...TEST_MODEL,
+          id: 'gpt-6.1-terra',
+          provider: 'openai',
+          api: 'openai-completions'
+        },
+        tools: []
+      },
+      streamFn: (model) => {
+        seenApisA.push(model.api)
+        const stream = createAssistantMessageEventStream()
+        queueMicrotask(() => {
+          if (seenApisA.length === 1) {
+            stream.push({ type: 'error', reason: 'error', error: conflictErrMsg })
+            stream.end(conflictErrMsg)
+            return
+          }
+          const ok: AssistantMessage = {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Responses API 执行成功' }],
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            usage: makeUsage(120, 30),
+            stopReason: 'stop',
+            timestamp: Date.now()
+          }
+          stream.push({ type: 'done', reason: 'stop', message: ok })
+          stream.end(ok)
+        })
+        return stream
+      }
+    })
+
+    await runPiAgentWithSelfHealing({
+      agent: agentA,
+      prompt: '帮我规划分镜',
+      onStatus: (t) => statusLogsA.push(t)
+    })
+    expect(seenApisA).toEqual(['openai-completions', 'openai-responses'])
+    expect(statusLogsA[0]).toContain('/v1/responses')
+    expect(agentA.state.errorMessage).toBeUndefined()
+
+    // 场景 B：用户在仅实现 /v1/chat/completions 的旧中转站选了 gpt-5-mini -> 升级 /v1/responses 遇 404 后自动回退到 gpt-5.4-mini 完成任务
+    const seenCallsB: Array<{ api: string; id: string }> = []
+    const agentB = new Agent({
+      initialState: {
+        systemPrompt: 'Studio Pi Agent',
+        model: {
+          ...TEST_MODEL,
+          id: 'gpt-5-mini',
+          provider: 'relay',
+          api: 'openai-completions'
+        },
+        tools: []
+      },
+      streamFn: (model) => {
+        seenCallsB.push({ api: model.api, id: model.id })
+        const stream = createAssistantMessageEventStream()
+        queueMicrotask(() => {
+          if (seenCallsB.length === 1) {
+            const err1: AssistantMessage = {
+              ...conflictErrMsg,
+              model: 'gpt-5-mini'
+            }
+            stream.push({ type: 'error', reason: 'error', error: err1 })
+            stream.end(err1)
+            return
+          }
+          if (seenCallsB.length === 2) {
+            const err404: AssistantMessage = {
+              ...conflictErrMsg,
+              api: 'openai-responses',
+              model: 'gpt-5-mini',
+              errorMessage: '404 Not Found: Cannot POST /v1/responses'
+            }
+            stream.push({ type: 'error', reason: 'error', error: err404 })
+            stream.end(err404)
+            return
+          }
+          const ok: AssistantMessage = {
+            role: 'assistant',
+            content: [{ type: 'text', text: '已回退至兼容模型完成任务' }],
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            usage: makeUsage(100, 25),
+            stopReason: 'stop',
+            timestamp: Date.now()
+          }
+          stream.push({ type: 'done', reason: 'stop', message: ok })
+          stream.end(ok)
+        })
+        return stream
+      }
+    })
+
+    await runPiAgentWithSelfHealing({
+      agent: agentB,
+      prompt: '生成角色设定'
+    })
+    expect(seenCallsB).toEqual([
+      { api: 'openai-completions', id: 'gpt-5-mini' },
+      { api: 'openai-responses', id: 'gpt-5-mini' },
+      { api: 'openai-completions', id: 'gpt-5.4-mini' }
+    ])
+    expect(agentB.state.errorMessage).toBeUndefined()
   })
 })

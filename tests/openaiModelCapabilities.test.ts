@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  doesOpenAiModelSupportReasoningNone,
   isOpenAiTextModelId,
   listOpenAiCatalogModels,
   mergeOpenAiCatalogWithBuiltin,
@@ -76,6 +77,23 @@ describe('openaiModelCapabilities', () => {
     expect(normalizeOpenAiTextModelId('gpt-6.1-mini')).toBe('gpt-6.1-terra')
     expect(normalizeOpenAiTextModelId('gpt-6.1', { hasTools: true })).toBe('gpt-6.1-terra')
     expect(normalizeOpenAiTextModelId('gpt-6.1-sol', { hasTools: true })).toBe('gpt-6.1-terra')
+    expect(normalizeOpenAiTextModelId('openai/gpt-6.1-sol', { hasTools: true })).toBe(
+      'openai/gpt-6.1-terra'
+    )
     expect(normalizeOpenAiTextModelId('gpt-6-astra', { hasTools: true })).toBe('gpt-6-sol')
+    expect(normalizeOpenAiTextModelId('gpt-5.5-pro', { hasTools: true })).toBe('gpt-5.5')
+
+    expect(doesOpenAiModelSupportReasoningNone('gpt-6.1-terra')).toBe(true)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-6-sol')).toBe(true)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-5.6-terra')).toBe(true)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-5.5')).toBe(true)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-5.4-mini')).toBe(true)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-5.1')).toBe(true)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-6.1-sol')).toBe(false)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-6-astra')).toBe(false)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-5-mini')).toBe(false)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-5')).toBe(false)
+    expect(doesOpenAiModelSupportReasoningNone('o3')).toBe(false)
+    expect(doesOpenAiModelSupportReasoningNone('gpt-4o')).toBe(false)
   })
 })

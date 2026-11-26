@@ -98,6 +98,8 @@ import {
   normalizeSandboxMode
 } from './piGovernance'
 import {
+  MIN_SAFE_OUTPUT_TOKENS,
+  OPENAI_HARD_MAX_TOOLS,
   enforceOpenAiToolsLimitPayload,
   isPiQuotaError,
   piMultiApiStreamFn,
@@ -1046,7 +1048,13 @@ function buildNativeCoordinationTools(opts: {
           },
           streamFn: piMultiApiStreamFn,
           getApiKey: () => resolvedModel.apiKey,
-          onPayload: (payload) => enforceOpenAiToolsLimitPayload(payload),
+          onPayload: (payload, model) =>
+            enforceOpenAiToolsLimitPayload(
+              payload,
+              OPENAI_HARD_MAX_TOOLS,
+              MIN_SAFE_OUTPUT_TOKENS,
+              model
+            ),
           beforeToolCall: (ctx, sig) => subGovernance.beforeToolCall(ctx, sig),
           prepareNextTurnWithContext: (turn) => ({
             context: {
@@ -1381,7 +1389,8 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
     skillPreprocessed.activeSkill?.modelOverride?.trim() || input.model?.trim()
   const resolvedModel = resolvePiModelFromProviders(providers, {
     providerId: input.providerId,
-    modelId: preferredModelId
+    modelId: preferredModelId,
+    hasTools: mode !== 'ask'
   })
 
   if (!resolvedModel) {
@@ -1562,7 +1571,8 @@ async function executeRunOnRunner(runner: SessionRunnerState, item: QueuedRunIte
     sessionId: persistenceSessionId,
     streamFn: piMultiApiStreamFn,
     getApiKey: () => resolvedModel.apiKey,
-    onPayload: (payload) => enforceOpenAiToolsLimitPayload(payload),
+    onPayload: (payload, model) =>
+      enforceOpenAiToolsLimitPayload(payload, OPENAI_HARD_MAX_TOOLS, MIN_SAFE_OUTPUT_TOKENS, model),
     beforeToolCall: async (ctx, sig) => {
       // Claude Skill PreToolUse Hook
       if (runner.activeSkill?.hooks) {

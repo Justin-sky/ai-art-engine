@@ -119,9 +119,10 @@
         <div v-else-if="file.kind === 'html'" class="wfe-html-container">
           <iframe
             v-if="viewMode === 'preview'"
+            :key="htmlReloadKey"
             class="wfe-html-iframe"
-            sandbox="allow-scripts"
-            :srcdoc="localText"
+            sandbox="allow-scripts allow-pointer-lock"
+            :src="htmlFrameSrc || 'about:blank'"
           />
           <textarea
             v-else
@@ -198,8 +199,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { renderChatMarkdown } from '@shared/chatMarkdown'
+import { detectGamePlayMode, injectThreeIntoHtml } from '@shared/gamePlay'
+import threeModuleSource from 'virtual:three-module-source'
+import threeCoreSource from 'virtual:three-core-source'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -266,6 +270,65 @@ const reloading = ref(false)
 const copied = ref(false)
 const statusText = ref('')
 const statusError = ref(false)
+const htmlFrameSrc = ref('')
+const htmlReloadKey = ref(0)
+let activeHtmlDocUrl = ''
+let htmlPublishSeq = 0
+let htmlDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function buildPreviewHtml(source: string): string {
+  if (detectGamePlayMode(source) !== '3d') return source
+  if (
+    /createElement\s*\(\s*['"]canvas['"]\s*\)/i.test(source) &&
+    !/from\s+['"]three['"]/i.test(source)
+  ) {
+    return source
+  }
+  try {
+    return injectThreeIntoHtml(source, threeModuleSource, threeCoreSource)
+  } catch {
+    return source
+  }
+}
+
+function releaseActiveHtmlDoc(): void {
+  const prev = activeHtmlDocUrl
+  activeHtmlDocUrl = ''
+  htmlFrameSrc.value = ''
+  if (!prev || typeof window.studio?.releaseGameplayDocument !== 'function') return
+  void window.studio.releaseGameplayDocument(prev).catch(() => {})
+}
+
+async function publishHtmlPreview(forceReload = false): Promise<void> {
+  const seq = ++htmlPublishSeq
+  const raw = localText.value
+  if (
+    file.value?.kind !== 'html' ||
+    viewMode.value !== 'preview' ||
+    !raw.trim() ||
+    typeof window.studio?.openGameplayDocument !== 'function'
+  ) {
+    releaseActiveHtmlDoc()
+    return
+  }
+  try {
+    const doc = buildPreviewHtml(raw)
+    const url = await window.studio.openGameplayDocument(doc)
+    if (seq !== htmlPublishSeq) {
+      void window.studio.releaseGameplayDocument?.(url).catch(() => {})
+      return
+    }
+    const prev = activeHtmlDocUrl
+    activeHtmlDocUrl = url
+    htmlFrameSrc.value = url
+    if (forceReload) htmlReloadKey.value += 1
+    if (prev && prev !== url) {
+      void window.studio.releaseGameplayDocument?.(prev).catch(() => {})
+    }
+  } catch {
+    if (seq === htmlPublishSeq) releaseActiveHtmlDoc()
+  }
+}
 
 const isEditableText = computed(() => {
   const k = file.value?.kind
@@ -296,7 +359,10 @@ watch(
   () => [file.value?.id, file.value?.nonce] as const,
   () => {
     const f = file.value
-    if (!f) return
+    if (!f) {
+      releaseActiveHtmlDoc()
+      return
+    }
     localText.value = f.content ?? ''
     dirty.value = Boolean(f.dirty)
     if (f.kind === 'markdown' || f.kind === 'html') {
@@ -307,6 +373,38 @@ watch(
   },
   { immediate: true }
 )
+
+watch(
+  () => [file.value?.kind, viewMode.value, localText.value] as const,
+  ([kind, mode]) => {
+    if (htmlDebounceTimer) {
+      clearTimeout(htmlDebounceTimer)
+      htmlDebounceTimer = null
+    }
+    if (kind !== 'html' || mode !== 'preview') {
+      releaseActiveHtmlDoc()
+      return
+    }
+    if (!activeHtmlDocUrl) {
+      void publishHtmlPreview()
+    } else {
+      htmlDebounceTimer = setTimeout(() => {
+        htmlDebounceTimer = null
+        void publishHtmlPreview()
+      }, 150)
+    }
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  if (htmlDebounceTimer) {
+    clearTimeout(htmlDebounceTimer)
+    htmlDebounceTimer = null
+  }
+  htmlPublishSeq += 1
+  releaseActiveHtmlDoc()
+})
 
 function showStatus(msg: string, isErr = false): void {
   statusText.value = msg
@@ -375,6 +473,9 @@ async function reloadFromDisk(): Promise<void> {
         sizeBytes: res.sizeBytes ?? f.sizeBytes,
         dirty: false
       })
+      if (f.kind === 'html' && viewMode.value === 'preview') {
+        void publishHtmlPreview(true)
+      }
       showStatus(ui.value.reloadedBanner, false)
     } else {
       showStatus(res?.error || 'Reload failed', true)

@@ -2,7 +2,13 @@ import type { Agent, AgentMessage } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage, ImageContent, ToolResultMessage } from '@earendil-works/pi-ai'
 import type { ChatMode, HarnessGoalView, HarnessTodoItem } from '@shared/ipc'
 import {
+  doesOpenAiModelSupportReasoningNone,
+  normalizeOpenAiTextModelId
+} from '@shared/modelProviders/openai/modelCapabilities'
+import {
+  inferOpenAiThinkingLevelMap,
   isPiContextOrPayloadOverflowError,
+  isPiOpenAiReasoningToolsConflictError,
   isPiTransientUpstreamError,
   isPiUnsupportedImageError
 } from './piModelResolver'
@@ -277,13 +283,25 @@ export interface RunPiAgentWithSelfHealingOptions {
   retryDelaysMs?: ReadonlyArray<number>
 }
 
+function resolveOpenAiChatToolsFallbackModelId(currentModelId: string): string {
+  const normalized = normalizeOpenAiTextModelId(currentModelId, { hasTools: true })
+  if (doesOpenAiModelSupportReasoningNone(normalized)) return normalized
+  const prefixMatch = /^(openai\/)/i.exec(normalized)
+  const prefix = prefixMatch ? prefixMatch[1]! : ''
+  if (/-nano\b/i.test(normalized)) return `${prefix}gpt-5.4-nano`
+  if (/-mini\b/i.test(normalized)) return `${prefix}gpt-5.4-mini`
+  return `${prefix}gpt-5.4`
+}
+
 /**
- * 执行 Pi Agent 主循环并内置三层故障自愈：
+ * 执行 Pi Agent 主循环并内置四层故障自愈：
  * 1) 上下文或 8 MB 请求体字节超限（`400: The total text input size exceeds 8 MB` / `context_length_exceeded` / `413`）：
  *    弹出失败帧 -> 按 1~3 级紧急强度渐进压缩历史载荷 -> `agent.continue()` 原地无感续跑；
  * 2) 模型网关拒绝多模态图片块（`image_url not supported`）：
  *    自动剥离消息中的图片块并将当前模型降级为纯文本输入后无缝续跑；
- * 3) 上游瞬时抖动（`429`、`500/502/503/504`、`fetch failed`、SSE 半途断流、`socket hang up`）：
+ * 3) OpenAI `/v1/chat/completions` 思维链与 `tools` 互斥（`Function tools with reasoning_effort are not supported`）：
+ *    自动升级为 `/v1/responses`（`openai-responses`）协议续跑；若第三方中转未开放 `/v1/responses`（404/405），再自动回退至工具兼容模型；
+ * 4) 上游瞬时抖动（`429`、`500/502/503/504`、`fetch failed`、SSE 半途断流、`socket hang up`）：
  *    弹出失败帧 -> 指数退避等待 -> `agent.continue()` 从断点恢复，不丢失任何已完成工具成果。
  */
 export async function runPiAgentWithSelfHealing(
@@ -301,6 +319,8 @@ export async function runPiAgentWithSelfHealing(
   let transientAttempts = 0
   let lastTransientMsgFloor = 0
   let strippedUnsupportedImages = false
+  let switchedOpenAiResponsesProtocol = false
+  let downgradedFromResponsesEndpoint = false
 
   while (!isAborted() && !signal?.aborted) {
     const currentMessages = agent.state.messages
@@ -349,6 +369,59 @@ export async function runPiAgentWithSelfHealing(
       agent.state.model = { ...agent.state.model, input: ['text'] }
       agent.state.messages = textOnly
       onStatus?.('当前模型网关不支持直接传入视觉图片，已自动降级为纯文本模式继续执行…', 'warn')
+      await agent.continue()
+      continue
+    }
+
+    // 分支 B2：OpenAI chat/completions 拒绝同时使用 reasoning_effort 与 function tools -> 自动切换 /v1/responses 协议续跑
+    if (
+      isPiOpenAiReasoningToolsConflictError(last) &&
+      !switchedOpenAiResponsesProtocol &&
+      agent.state.model.api === 'openai-completions'
+    ) {
+      switchedOpenAiResponsesProtocol = true
+      const withoutFailed = popTrailingFailedAssistantMessages(currentMessages)
+      const nextThinkingMap = inferOpenAiThinkingLevelMap(agent.state.model.id, {
+        preferFastOff: false
+      })
+      agent.state.messages = ensureContinuableTranscriptTail(withoutFailed)
+      agent.state.model = {
+        ...agent.state.model,
+        api: 'openai-responses',
+        ...(nextThinkingMap ? { thinkingLevelMap: nextThinkingMap } : {})
+      } as typeof agent.state.model
+      onStatus?.(
+        '当前 OpenAI 模型在 chat/completions 下限制思维链与工具并发，已自动切换至 /v1/responses 协议继续执行…',
+        'warn'
+      )
+      await agent.continue()
+      continue
+    }
+
+    // 分支 B3：第三方 OpenAI 中转站未实现 /v1/responses（404/405/501） -> 自动回退至支持 reasoning_effort='none' 的工具兼容模型
+    if (
+      switchedOpenAiResponsesProtocol &&
+      !downgradedFromResponsesEndpoint &&
+      agent.state.model.api === 'openai-responses' &&
+      /\b(404|405|501)\b|not[\s_-]*found|unsupported.*endpoint|unknown.*endpoint|cannot\s+post.*\/responses/i.test(
+        String(last.errorMessage ?? '')
+      )
+    ) {
+      downgradedFromResponsesEndpoint = true
+      const withoutFailed = popTrailingFailedAssistantMessages(currentMessages)
+      const fallbackId = resolveOpenAiChatToolsFallbackModelId(agent.state.model.id)
+      const fallbackThinkingMap = inferOpenAiThinkingLevelMap(fallbackId, { preferFastOff: true })
+      agent.state.messages = ensureContinuableTranscriptTail(withoutFailed)
+      agent.state.model = {
+        ...agent.state.model,
+        id: fallbackId,
+        api: 'openai-completions',
+        ...(fallbackThinkingMap ? { thinkingLevelMap: fallbackThinkingMap } : {})
+      } as typeof agent.state.model
+      onStatus?.(
+        `当前中转网关未开放 /v1/responses 端点，已自动回退至工具兼容模型 ${fallbackId} 继续执行…`,
+        'warn'
+      )
       await agent.continue()
       continue
     }

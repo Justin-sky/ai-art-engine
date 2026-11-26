@@ -8,11 +8,13 @@ import {
   type AssistantMessageEventStream,
   type Model,
   type ModelInputModality,
+  type ThinkingLevelMap,
   type ToolCall
 } from '@earendil-works/pi-ai'
 import { streamSimple as anthropicStreamSimple } from '@earendil-works/pi-ai/api/anthropic-messages'
 import { streamSimple as googleStreamSimple } from '@earendil-works/pi-ai/api/google-generative-ai'
 import { streamSimple as openAiStreamSimple } from '@earendil-works/pi-ai/api/openai-completions'
+import { streamSimple as openAiResponsesStreamSimple } from '@earendil-works/pi-ai/api/openai-responses'
 import {
   ANTHROPIC_DEFAULT_BASE_URL,
   DEEPSEEK_DEFAULT_BASE_URL,
@@ -28,7 +30,10 @@ import {
   resolveGoogleChatModelId,
   resolveGoogleOpenAiBaseUrl
 } from '@shared/modelProviders/google/modelCapabilities'
-import { normalizeOpenAiTextModelId } from '@shared/modelProviders/openai/modelCapabilities'
+import {
+  doesOpenAiModelSupportReasoningNone,
+  normalizeOpenAiTextModelId
+} from '@shared/modelProviders/openai/modelCapabilities'
 
 /** OpenAI 兼容网关对单次请求 tools 数组长度的硬上限 */
 export const OPENAI_HARD_MAX_TOOLS = 128
@@ -258,9 +263,47 @@ function normalizeOpenAiBaseUrl(provider: ModelProviderInstance, rawBaseUrl: str
 }
 
 /**
+ * 为 OpenAI GPT-5/6 系列与 o1/o3/o4 系列推导 `thinkingLevelMap`：
+ * - 支持 `reasoning_effort: 'none'` 的 GPT-5.1+/GPT-6 模型（如 `gpt-6.1-terra`、`gpt-6-sol`、`gpt-5.5`）
+ *   在携带工具调用（`preferFastOff !== false`）时设置 `off: 'none'`，避免 `/v1/chat/completions` 默认开启 `medium` 思维链与 `tools` 冲突报 400；
+ * - 不接受 `'none'` 的模型（如 `o3`、`gpt-5-mini`、`gpt-6.1-sol`、`gpt-6-astra`）显式声明 `off: null`，
+ *   防止 `/v1/responses` 或 `/v1/chat/completions` 误注入非法的 `effort: 'none'`。
+ */
+export function inferOpenAiThinkingLevelMap(
+  modelId: string,
+  opts?: { preferFastOff?: boolean }
+): ThinkingLevelMap | undefined {
+  if (doesOpenAiModelSupportReasoningNone(modelId)) {
+    return {
+      off: opts?.preferFastOff === false ? null : 'none',
+      minimal: null,
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      xhigh: 'xhigh'
+    }
+  }
+  const bare = modelId
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:openai|models)\//, '')
+  if (/^(?:o\d|gpt-(?:[5-9]|\d{2,})\b)/.test(bare) && inferChatModelReasoning(modelId)) {
+    return {
+      off: null,
+      minimal: null,
+      low: 'low',
+      medium: 'medium',
+      high: 'high'
+    }
+  }
+  return undefined
+}
+
+/**
  * 从应用已配置的 ModelProviderInstance 列表中解析供 Pi Agent 使用的聊天模型与 API 协议。
  * 同时支持：
  * - Anthropic Messages API（Claude 官方、自定义 Anthropic 代理、DeepSeek `/anthropic` 兼容端点）
+ * - OpenAI Responses API（官方 OpenAI 下仅支持 `/v1/responses` 工具并发的模型）
  * - OpenAI Chat Completions API（OpenAI、DeepSeek `/v1`、Google Gemini OpenAI 兼容层、OpenRouter、通义、豆包、智谱、Kimi、本地 Ollama/vLLM 及各类中转站）
  */
 export function resolvePiModelFromProviders(
@@ -268,8 +311,10 @@ export function resolvePiModelFromProviders(
   opts?: {
     providerId?: string
     modelId?: string
+    hasTools?: boolean
   }
 ): ResolvedPiChatModel | null {
+  const hasTools = opts?.hasTools !== false
   const hasTextModels = (p: ModelProviderInstance): boolean =>
     (modalityConfig(p, 'text').selectedModelIds?.length ?? 0) > 0
 
@@ -337,33 +382,69 @@ export function resolvePiModelFromProviders(
 
     const isGoogle =
       p.providerKind === 'google' || /generativelanguage\.googleapis\.com/i.test(rawBaseUrl)
+    const isOpenRouter = p.providerKind === 'openrouter' || /\bopenrouter\.ai\b/i.test(rawBaseUrl)
     const isOfficialOpenAi =
       p.providerKind === 'openai' && (!rawBaseUrl || /\bapi\.openai\.com\b/i.test(rawBaseUrl))
+    const isOpenAiGpt5PlusFamily =
+      !isGoogle &&
+      !isOpenRouter &&
+      p.providerKind !== 'deepseek' &&
+      /^(?:openai\/)?gpt-(?:[5-9]|\d{2,})(?:[-.]|$)/i.test(rawModelId)
 
     const resolvedModelId = isGoogle
       ? resolveGoogleChatModelId(rawModelId)
-      : isOfficialOpenAi
-        ? normalizeOpenAiTextModelId(rawModelId, { hasTools: true })
+      : isOfficialOpenAi || isOpenAiGpt5PlusFamily
+        ? normalizeOpenAiTextModelId(rawModelId, { hasTools })
         : rawModelId
     const capabilities = rawCapabilities ?? textCfg.catalog?.[resolvedModelId]?.capabilities
     const baseUrl = normalizeOpenAiBaseUrl(p, rawBaseUrl)
     const contextWindow = resolveChatModelContextWindow(resolvedModelId, p, capabilities)
     const maxTokens = resolveChatModelMaxTokens(resolvedModelId, contextWindow, capabilities)
+    const thinkingLevelMap =
+      !isGoogle && !isOpenRouter
+        ? inferOpenAiThinkingLevelMap(resolvedModelId, { preferFastOff: hasTools })
+        : undefined
+    const providerTag = isOfficialOpenAi
+      ? 'openai'
+      : p.providerKind === 'openrouter'
+        ? 'openrouter'
+        : p.providerKind === 'deepseek'
+          ? 'deepseek'
+          : p.id || p.providerKind
+
+    // 初代 gpt-5 / gpt-5-mini / gpt-5-nano 在 /v1/chat/completions 下不支持 reasoning_effort='none'，
+    // 官方 OpenAI 端点带工具时直接启用 /v1/responses（openai-responses）
+    if (
+      isOfficialOpenAi &&
+      hasTools &&
+      !doesOpenAiModelSupportReasoningNone(resolvedModelId) &&
+      /^gpt-(?:[5-9]|\d{2,})\b/i.test(resolvedModelId)
+    ) {
+      const responsesModel: Model<'openai-responses'> = {
+        id: resolvedModelId,
+        name: rawModelId,
+        api: 'openai-responses',
+        provider: providerTag,
+        baseUrl,
+        input: inferChatModelInputModalities(resolvedModelId, p, capabilities),
+        reasoning: inferChatModelReasoning(resolvedModelId, capabilities),
+        ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow,
+        maxTokens
+      }
+      return { model: responsesModel, apiKey, provider: p }
+    }
 
     const model: Model<'openai-completions'> = {
       id: resolvedModelId,
       name: rawModelId,
       api: 'openai-completions',
-      provider: isOfficialOpenAi
-        ? 'openai'
-        : p.providerKind === 'openrouter'
-          ? 'openrouter'
-          : p.providerKind === 'deepseek'
-            ? 'deepseek'
-            : p.id || p.providerKind,
+      provider: providerTag,
       baseUrl,
       input: inferChatModelInputModalities(resolvedModelId, p, capabilities),
       reasoning: inferChatModelReasoning(resolvedModelId, capabilities),
+      ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow,
       maxTokens,
@@ -651,6 +732,12 @@ export const piMultiApiStreamFn: StreamFn = (model, context, options) => {
   if (model.api === 'google-generative-ai') {
     return googleStreamSimple(model as Model<'google-generative-ai'>, context, mergedOptions)
   }
+  if (model.api === 'openai-responses') {
+    return wrapPiStreamWithDsmlRecovery(
+      openAiResponsesStreamSimple(model as Model<'openai-responses'>, context, mergedOptions),
+      knownTools
+    )
+  }
   return wrapPiStreamWithDsmlRecovery(
     openAiStreamSimple(model as Model<'openai-completions'>, context, mergedOptions),
     knownTools
@@ -660,13 +747,16 @@ export const piMultiApiStreamFn: StreamFn = (model, context, options) => {
 /**
  * 最后一道底层请求体安全阀（onPayload）：
  * 1) 即使调用侧出现异常配置，也确保发往 OpenAI 兼容端点的 `tools` 数组永远 <= 128；
- * 2) 若 `pi-ai` 的 `clampMaxTokensToContext` 因估算偏高将 `max_completion_tokens` / `max_tokens` 扼杀至 `< 4096`（如 `1`），
- *    自动抬升至 `MIN_SAFE_OUTPUT_TOKENS`（4096），杜绝只生成 1 个思维链 Token 就因 `finish_reason="length"` 静默退出的问题。
+ * 2) 若 `pi-ai` 的 `clampMaxTokensToContext` 因估算偏高将 `max_completion_tokens` / `max_tokens` / `max_output_tokens` 扼杀至 `< 4096`（如 `1`），
+ *    自动抬升至 `MIN_SAFE_OUTPUT_TOKENS`（4096），杜绝只生成 1 个思维链 Token 就因 `finish_reason="length"` 静默退出的问题；
+ * 3) OpenAI `/v1/chat/completions` 在携带 `tools` 时，GPT-5.1+/GPT-6 模型（如 `gpt-6.1-terra`）默认开启思维链会直接触发 400
+ *    `Function tools with reasoning_effort are not supported ... set reasoning_effort to 'none'`，此处统一归一化并强制注入 `reasoning_effort: 'none'`。
  */
 export function enforceOpenAiToolsLimitPayload(
   payload: unknown,
   maxTools = OPENAI_HARD_MAX_TOOLS,
-  minOutputTokens = MIN_SAFE_OUTPUT_TOKENS
+  minOutputTokens = MIN_SAFE_OUTPUT_TOKENS,
+  model?: Pick<Model<Api>, 'id' | 'api' | 'provider' | 'baseUrl'>
 ): unknown {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload
   const record = payload as Record<string, unknown>
@@ -694,6 +784,42 @@ export function enforceOpenAiToolsLimitPayload(
   ) {
     next.max_tokens = minOutputTokens
     changed = true
+  }
+
+  if (
+    typeof record.max_output_tokens === 'number' &&
+    record.max_output_tokens > 0 &&
+    record.max_output_tokens < minOutputTokens
+  ) {
+    next.max_output_tokens = minOutputTokens
+    changed = true
+  }
+
+  if (Array.isArray(next.tools) && next.tools.length > 0) {
+    const isResponsesPayload =
+      model?.api === 'openai-responses' || ('input' in record && !('messages' in record))
+    const isOpenRouterPayload =
+      model?.provider === 'openrouter' ||
+      /\bopenrouter\.ai\b/i.test(String(model?.baseUrl ?? '')) ||
+      (typeof record.reasoning === 'object' && record.reasoning !== null)
+
+    if (!isResponsesPayload && !isOpenRouterPayload) {
+      const rawPayloadModel = String(record.model ?? model?.id ?? '').trim()
+      if (/^(?:openai\/)?gpt-(?:[5-9]|\d{2,})(?:[-.]|$)/i.test(rawPayloadModel)) {
+        const normalizedModel = normalizeOpenAiTextModelId(rawPayloadModel, { hasTools: true })
+        if (typeof record.model === 'string' && normalizedModel !== record.model) {
+          next.model = normalizedModel
+          changed = true
+        }
+        if (
+          doesOpenAiModelSupportReasoningNone(normalizedModel) &&
+          record.reasoning_effort !== 'none'
+        ) {
+          next.reasoning_effort = 'none'
+          changed = true
+        }
+      }
+    }
   }
 
   return changed ? next : payload
@@ -1014,6 +1140,31 @@ export function isPiUnsupportedImageError(messageOrText: AssistantMessage | stri
   )
 }
 
+/**
+ * 识别 OpenAI / OpenAI 兼容网关在 `/v1/chat/completions` 下因 `reasoning_effort` 与 `tools`（Function Tools）互斥导致的 400 报错：
+ * 例如：`Function tools with reasoning_effort are not supported for gpt-6.1-terra in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.`
+ * 命中后可由自愈循环无缝切换至 `/v1/responses`（`openai-responses`）或兼容模型继续执行。
+ */
+export function isPiOpenAiReasoningToolsConflictError(
+  messageOrText: AssistantMessage | string
+): boolean {
+  const errText =
+    typeof messageOrText === 'object' && messageOrText !== null
+      ? messageOrText.stopReason === 'error'
+        ? String(messageOrText.errorMessage ?? '')
+        : ''
+      : String(messageOrText ?? '')
+  if (!errText) return false
+  return (
+    /function tools with reasoning_effort are not supported/i.test(errText) ||
+    /to use function tools,\s*use\s*\/v1\/responses/i.test(errText) ||
+    /reasoning_effort.*not supported.*\/v1\/chat\/completions/i.test(errText) ||
+    /unsupported value:\s*['"]?none['"]?\s*is not supported with the\s*['"]?reasoning[._]effort['"]?/i.test(
+      errText
+    )
+  )
+}
+
 function isPiDeterministicAuthOrModelError(errText: string): boolean {
   const lower = errText.toLowerCase()
   return (
@@ -1029,14 +1180,20 @@ function isPiDeterministicAuthOrModelError(errText: string): boolean {
 
 /**
  * 识别可在 Agent 轮次级别安全重连重试的瞬时上游/网络/流中断错误（429 限流、502/503/504 网关抖动、SSE 半途断流、socket hang up 等）。
- * 显式排除余额耗尽（402）、鉴权失败（401/403）与上下文超限（走压缩分支）。
+ * 显式排除余额耗尽（402）、鉴权失败（401/403）、协议参数冲突与上下文超限（分别走各自自愈分支）。
  */
 export function isPiTransientUpstreamError(message: AssistantMessage): boolean {
   if (!message || message.stopReason !== 'error') return false
   const errText = String(message.errorMessage ?? '').trim()
   if (!errText) return true
   if (isPiQuotaError(errText) || isPiDeterministicAuthOrModelError(errText)) return false
-  if (isPiContextOrPayloadOverflowError(message) || isPiUnsupportedImageError(message)) return false
+  if (
+    isPiContextOrPayloadOverflowError(message) ||
+    isPiUnsupportedImageError(message) ||
+    isPiOpenAiReasoningToolsConflictError(message)
+  ) {
+    return false
+  }
   if (isRetryableAssistantError(message)) return true
   return (
     /\b(408|409|425|429|500|502|503|504|520|521|522|523|524|529)\b/.test(errText) ||

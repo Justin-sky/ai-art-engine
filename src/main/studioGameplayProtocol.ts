@@ -5,16 +5,16 @@
 import { randomUUID } from 'crypto'
 
 const docs = new Map<string, { html: string; createdAt: number }>()
-const MAX_DOCS = 24
+const MAX_DOCS = 64
 const MAX_HTML_BYTES = 8 * 1024 * 1024
 
-/** 试玩文档 CSP：允许内联/模块脚本与 data/blob，禁止联网与跳出 */
+/** 试玩文档 CSP：允许内联/模块/WASM 脚本与本地媒体，禁止公网联网与跳出 */
 const GAMEPLAY_CSP = [
   "default-src 'none'",
-  "script-src 'unsafe-inline' 'unsafe-eval' data: blob:",
+  "script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:",
   "style-src 'unsafe-inline'",
-  'img-src data: blob:',
-  'media-src data: blob:',
+  'img-src data: blob: studio-media:',
+  'media-src data: blob: studio-media:',
   'font-src data:',
   "connect-src 'none'",
   'worker-src blob:',

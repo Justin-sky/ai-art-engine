@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import {
+  handleStudioGameplayRequest,
+  openGameplayDocument,
+  releaseGameplayDocument
+} from '../src/main/studioGameplayProtocol'
 
 /**
  * 渲染层的 CSP 必须允许编译 wasm。
@@ -30,5 +35,42 @@ describe('renderer CSP', () => {
     const built = resolve(import.meta.dirname, '../out/renderer/index.html')
     if (!existsSync(built)) return
     expect(readCsp(built)).toContain("'wasm-unsafe-eval'")
+  })
+
+  it('forbids iframe srcdoc in renderer Vue components so inline HTML scripts always run under studio-gameplay:// CSP', () => {
+    const root = resolve(import.meta.dirname, '../src/renderer/src')
+    const vueFiles: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else if (entry.isFile() && entry.name.endsWith('.vue')) vueFiles.push(full)
+      }
+    }
+    walk(root)
+
+    const offenders = vueFiles.filter((file) =>
+      /\bsrcdoc\s*=|:srcdoc\s*=/.test(readFileSync(file, 'utf8'))
+    )
+    expect(offenders).toEqual([])
+  })
+
+  it('serves registered HTML via studio-gameplay:// with inline, eval, wasm, and studio-media CSP', async () => {
+    const html = '<!doctype html><html><body><script>window.__OK__=1</script></body></html>'
+    const url = openGameplayDocument(html)
+    expect(url).toMatch(/^studio-gameplay:\/\/local\/\?id=/)
+
+    const res = handleStudioGameplayRequest(new Request(url))
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe(html)
+    const csp = res.headers.get('Content-Security-Policy') ?? ''
+    expect(csp).toContain("'unsafe-inline'")
+    expect(csp).toContain("'wasm-unsafe-eval'")
+    expect(csp).toContain('studio-media:')
+    expect(csp).toContain("connect-src 'none'")
+
+    releaseGameplayDocument(url)
+    const afterRelease = handleStudioGameplayRequest(new Request(url))
+    expect(afterRelease.status).toBe(404)
   })
 })

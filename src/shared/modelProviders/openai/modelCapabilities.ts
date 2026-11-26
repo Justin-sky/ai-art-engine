@@ -115,11 +115,37 @@ const OPENAI_TEXT_MODEL_ALIASES: Readonly<Record<string, string>> = {
 
 /**
  * 在 `/v1/chat/completions` 上不支持携带 `tools`（因其不支持 `reasoning_effort: 'none'`）的模型，
- * 在带工具调用（如 AI 对话 dsh-agent）时自动映射到同代支持工具调用的模型。
+ * 在带工具调用（如 AI 对话 Pi Agent）时自动映射到同代支持 `reasoning_effort: 'none'` 与工具调用的模型。
  */
 const OPENAI_CHAT_TOOLS_MODEL_MAP: Readonly<Record<string, string>> = {
   'gpt-6.1-sol': 'gpt-6.1-terra',
-  'gpt-6-astra': 'gpt-6-sol'
+  'gpt-6-astra': 'gpt-6-sol',
+  'gpt-5.6-cyber': 'gpt-5.6-sol',
+  'gpt-5.5-pro': 'gpt-5.5',
+  'gpt-5.4-pro': 'gpt-5.4',
+  'gpt-5.2-pro': 'gpt-5.2',
+  'gpt-5-pro': 'gpt-5.1'
+}
+
+/**
+ * 判断指定 OpenAI 文本模型是否支持将 `reasoning_effort` 设为 `'none'`：
+ * - `gpt-5.1+` / `gpt-6*`（如 `gpt-6.1-terra`、`gpt-6-sol`、`gpt-5.6-sol/terra`、`gpt-5.5`、`gpt-5.4*`）在 `/v1/chat/completions`
+ *   下默认开启思维链，携带 `tools` 时必须显式传 `reasoning_effort: 'none'`（否则上游报 400）；
+ * - 初代 `gpt-5`（`gpt-5` / `gpt-5-mini` / `gpt-5-nano`）、`o1/o3/o4` 系列以及 `-pro` / `-cyber` / `-astra` / `gpt-6.1-sol`
+ *   不接受 `'none'`（需走 `/v1/responses` 或同代工具兼容模型）。
+ */
+export function doesOpenAiModelSupportReasoningNone(modelId: string): boolean {
+  const id = modelId
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:openai|models)\//, '')
+    .replace(/-\d{4}-\d{2}-\d{2}$/, '')
+  if (!id) return false
+  if (/^gpt-daybreak\b/.test(id)) return true
+  if (!/^gpt-(?:5\.[1-9]|[6-9]|\d{2,})\b/.test(id)) return false
+  if (id === 'gpt-6.1-sol' || id === 'gpt-6-astra') return false
+  if (/(?:^|-)(?:pro|cyber|astra|spark)$/.test(id)) return false
+  return true
 }
 
 export const OPENAI_CHAT_FALLBACK_MODELS: readonly string[] = [
@@ -137,12 +163,16 @@ export function normalizeOpenAiTextModelId(
 ): string {
   const trimmed = modelId.trim()
   if (!trimmed) return trimmed
-  const lower = trimmed.toLowerCase()
-  const mapped = OPENAI_TEXT_MODEL_ALIASES[lower] ?? trimmed
+  const prefixMatch = /^(openai\/)/i.exec(trimmed)
+  const prefix = prefixMatch ? prefixMatch[1]! : ''
+  const bare = prefix ? trimmed.slice(prefix.length) : trimmed
+  const lower = bare.toLowerCase()
+  const mappedBare = OPENAI_TEXT_MODEL_ALIASES[lower] ?? bare
   if (options?.hasTools) {
-    return OPENAI_CHAT_TOOLS_MODEL_MAP[mapped.toLowerCase()] ?? mapped
+    const toolCompatible = OPENAI_CHAT_TOOLS_MODEL_MAP[mappedBare.toLowerCase()] ?? mappedBare
+    return `${prefix}${toolCompatible}`
   }
-  return mapped
+  return `${prefix}${mappedBare}`
 }
 
 /**
